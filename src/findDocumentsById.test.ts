@@ -43,7 +43,8 @@ describe('findDocumentsById - withDeleted semantics', () => {
 			schema: testSchema,
 			options: {},
 			multiInstance: false,
-			devMode: false
+			devMode: false,
+			databaseInstanceToken: 'test-token'
 		});
 
 		const docs: RxDocumentData<TestDoc>[] = [
@@ -71,7 +72,8 @@ describe('findDocumentsById - withDeleted semantics', () => {
 			schema: testSchema,
 			options: {},
 			multiInstance: false,
-			devMode: false
+			devMode: false,
+			databaseInstanceToken: 'test-token'
 		});
 
 		const docs: RxDocumentData<TestDoc>[] = [
@@ -100,7 +102,8 @@ describe('findDocumentsById - withDeleted semantics', () => {
 			schema: testSchema,
 			options: {},
 			multiInstance: false,
-			devMode: false
+			devMode: false,
+			databaseInstanceToken: 'test-token'
 		});
 
 		const docs: RxDocumentData<TestDoc>[] = [
