@@ -135,11 +135,13 @@ status: 409,  // Proper RxDB conflict handling
 
 ---
 
-### **Phase 2.5: Prepared Statement Caching (NOT IMPLEMENTED)**
+### **Phase 2.5: Prepared Statement Caching (DEFERRED)**
 
 **Goal:** Cache query builders by schema hash for faster repeated queries
 
-**Status:** 🚧 TODO (optimization, not critical)
+**Why deferred:** Optimization, not correctness. Validate first, optimize later if benchmarks show it's needed.
+
+**Status:** ⏸️ DEFERRED (will revisit after Phase 3 if needed)
 
 ---
 
@@ -197,9 +199,13 @@ status: 409,  // Proper RxDB conflict handling
 
 ---
 
-## 🔮 Phase 4: Advanced Features (OPTIONAL)
+## 🔮 Phase 4: Advanced Features (BLOCKED - After Phase 3.1 ✅)
 
 **Goal:** Feature parity with premium RxDB storages
+
+**Prerequisites:** Phase 3.1 must pass (RxDB official test suite validation)
+
+**Why blocked:** Don't add features to unvalidated code. Prove correctness first.
 
 **Potential Features:**
 - Attachments (base64 storage)
@@ -209,7 +215,7 @@ status: 409,  // Proper RxDB conflict handling
 - Query plan hints (EXPLAIN QUERY PLAN)
 - Custom indexes (beyond default deleted/mtime_ms)
 
-**Status:** Deferred (ship Phase 2 first)
+**Status:** ⏸️ BLOCKED (waiting for Phase 3.1 to pass)
 
 ---
 
@@ -218,18 +224,20 @@ status: 409,  // Proper RxDB conflict handling
 ### **Immediate (This Week):**
 1. ✅ Phase 1 complete
 2. ✅ Phase 2 complete (Query Builder + WAL + Conflict Detection + JSONB)
+   - ⏸️ Phase 2.5 deferred (prepared statement caching - optimize later if needed)
 3. ✅ Phase 4.5 complete (Smart regex optimization + FTS5 investigation)
 4. 🚧 **Phase 3.1: RxDB Official Test Suite (NEXT - 4-6 hours)**
    - Implement RxTestStorage interface
    - Run official validation
    - Fix any failures
+   - **BLOCKER for Phase 4**
 
 ### **Short-term (Next Week):**
-5. Phase 3.2: Custom integration tests (validate optimizations)
-6. Phase 3.3: Performance benchmarks (measure gains)
+5. Phase 3.2: Performance benchmarks (measure gains)
+6. Phase 4: Advanced features (ONLY after Phase 3.1 passes)
 
 ### **Long-term (Future):**
-7. Phase 4: Advanced features (attachments, replication, migrations)
+7. Phase 2.5: Prepared statement caching (if benchmarks show it's needed)
 8. npm publish
 9. Community adoption
 
