@@ -3,6 +3,8 @@ export interface SqlFragment {
 	args: (string | number | boolean | null)[];
 }
 
+import { smartRegexToLike } from './smart-regex';
+
 export function translateEq(field: string, value: unknown): SqlFragment {
 	if (value === null) {
 		return { sql: `${field} IS NULL`, args: [] };
@@ -91,29 +93,10 @@ export function translateExists(field: string, exists: boolean): SqlFragment {
 }
 
 export function translateRegex(field: string, pattern: string, options?: string): SqlFragment | null {
-	const caseInsensitive = options?.includes('i');
+	const smartResult = smartRegexToLike(field, pattern, options);
+	if (smartResult) return smartResult;
 	
-	const startsWithAnchor = pattern.startsWith('^');
-	const endsWithAnchor = pattern.endsWith('$');
-	
-	let cleanPattern = pattern.replace(/^\^/, '').replace(/\$$/, '');
-	
-	const isSimple = /^[\w\s\-@.\\]+$/.test(cleanPattern);
-	if (!isSimple) return null;
-	
-	cleanPattern = cleanPattern.replace(/\\\./g, '.');
-	cleanPattern = cleanPattern.replace(/%/g, '\\%').replace(/_/g, '\\_');
-	
-	let likePattern = cleanPattern;
-	if (!startsWithAnchor) likePattern = '%' + likePattern;
-	if (!endsWithAnchor) likePattern = likePattern + '%';
-	
-	const collation = caseInsensitive ? ' COLLATE NOCASE' : '';
-	
-	return { 
-		sql: `${field} LIKE ?${collation} ESCAPE '\\'`, 
-		args: [likePattern] 
-	};
+	return null;
 }
 
 export function translateElemMatch(field: string, criteria: any): SqlFragment | null {
