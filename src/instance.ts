@@ -41,7 +41,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 		const filename = settings.filename || ':memory:';
 		this.db = new Database(filename);
-		
+
 		this.internals = {
 			db: this.db,
 			primaryPath: this.primaryPath
@@ -52,10 +52,10 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 	private initTable(filename: string) {
 		if (filename !== ':memory:') {
-			this.db.exec("PRAGMA journal_mode = WAL");
-			this.db.exec("PRAGMA synchronous = NORMAL");
+			this.db.run("PRAGMA journal_mode = WAL");
+			this.db.run("PRAGMA synchronous = NORMAL");
 		}
-		
+
 		const tableName = this.collectionName;
 		this.db.run(`
 			CREATE TABLE IF NOT EXISTS "${tableName}" (
@@ -66,7 +66,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 				mtime_ms REAL NOT NULL
 			)
 		`);
-		
+
 		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${tableName}_deleted_id" ON "${tableName}"(deleted, id)`);
 		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${tableName}_mtime_ms_id" ON "${tableName}"(mtime_ms, id)`);
 	}
@@ -90,16 +90,16 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 					INSERT INTO "${this.collectionName}" (id, data, deleted, rev, mtime_ms)
 					VALUES (?, ?, ?, ?, ?)
 				`);
-				
+
 				stmt.run(id, data, deleted, rev, mtime_ms);
 			} catch (err: any) {
 				if (err.message?.includes('UNIQUE constraint failed')) {
 					const doc = write.document as RxDocumentData<RxDocType>;
 					const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
-					
+
 					const existing = this.db.prepare(`SELECT data FROM "${this.collectionName}" WHERE id = ?`).get(id) as { data: string };
 					const documentInDb = JSON.parse(existing.data) as RxDocumentData<RxDocType>;
-					
+
 					error.push({
 						status: 409,
 						documentId: id,
@@ -156,13 +156,13 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	async query(preparedQuery: PreparedQuery<RxDocType>): Promise<RxStorageQueryResult<RxDocType>> {
 		try {
 			const { sql: whereClause, args } = buildWhereClause(preparedQuery.query.selector, this.schema);
-			
+
 			const sql = `
 				SELECT data FROM "${this.collectionName}"
 				WHERE deleted = 0 AND (${whereClause})
 				ORDER BY id
 			`;
-			
+
 			const rows = this.db.prepare(sql).all(...args) as Array<{ data: string }>;
 			let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 
@@ -205,7 +205,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	private matchesSelector(doc: RxDocumentData<RxDocType>, selector: MangoQuerySelector<RxDocumentData<RxDocType>>): boolean {
 		for (const [key, value] of Object.entries(selector)) {
 			const docValue = this.getNestedValue(doc, key);
-			
+
 			if (typeof value === 'object' && value !== null) {
 				for (const [op, opValue] of Object.entries(value)) {
 					if (op === '$eq' && docValue !== opValue) return false;
@@ -228,7 +228,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 				const [key, direction] = Object.entries(sortField)[0];
 				const aVal = this.getNestedValue(a, key) as number | string;
 				const bVal = this.getNestedValue(b, key) as number | string;
-				
+
 				if (aVal < bVal) return direction === 'asc' ? -1 : 1;
 				if (aVal > bVal) return direction === 'asc' ? 1 : -1;
 			}
