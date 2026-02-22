@@ -1,9 +1,34 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+## [0.3.1] - 2026-02-22
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+### Added
+- **JSONB Storage**: Implemented SQLite's native binary JSON format as default storage
+  - 1.57x faster complex queries (657ms → 418ms at 1M docs)
+  - 1.20x faster read + parse operations
+  - 1.04x faster simple queries
+  - Uses `jsonb()` on INSERT, `json()` on SELECT
+- **Smart Regex Optimization**: Convert simple regex patterns to SQL operators
+  - 2.03x faster exact matches (^text$ → = operator)
+  - 1.23x faster case-insensitive (COLLATE NOCASE vs LOWER())
+  - Overall 1.24x speedup across all patterns
+- **Regression Tests**: Added tests for % and _ escaping edge cases
+
+### Fixed
+- Critical bug: Missing % and _ escaping in case-insensitive exact match regex patterns
+
+### Investigated
+- **FTS5 Trigram Indexes**: Benchmarked at 100k and 1M scales
+  - Result: 1.5-1.79x SLOWER at our scale
+  - Decision: NOT implemented (only beneficial at 10M+ rows)
+  - Documented findings in architectural-patterns.md
+
+### Performance
+- Complex queries: 1.57x faster (JSONB)
+- Exact match regex: 2.03x faster (smart optimization)
+- Read operations: 1.20x faster (JSONB)
+
+---
 
 ## [0.3.0] - 2026-02-22
 
