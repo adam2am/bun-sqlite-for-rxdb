@@ -1,6 +1,6 @@
 import type { RxJsonSchema, MangoQuerySelector, RxDocumentData } from 'rxdb';
 import { getColumnInfo } from './schema-mapper';
-import { translateEq, translateNe, translateGt, translateGte, translateLt, translateLte, translateIn, translateNin, translateExists, translateRegex } from './operators';
+import { translateEq, translateNe, translateGt, translateGte, translateLt, translateLte, translateIn, translateNin, translateExists, translateRegex, translateElemMatch } from './operators';
 import type { SqlFragment } from './operators';
 
 export function buildWhereClause<RxDocType>(
@@ -79,6 +79,11 @@ function processSelector<RxDocType>(
 						const regexFragment = translateRegex(fieldName, opValue as string, options);
 						if (!regexFragment) continue;
 						fragment = regexFragment;
+						break;
+					case '$elemMatch':
+						const elemMatchFragment = translateElemMatch(fieldName, opValue);
+						if (!elemMatchFragment) continue;
+						fragment = elemMatchFragment;
 						break;
 					default:
 						continue;

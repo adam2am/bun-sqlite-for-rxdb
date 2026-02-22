@@ -115,3 +115,7 @@ export function translateRegex(field: string, pattern: string, options?: string)
 		args: [likePattern] 
 	};
 }
+
+export function translateElemMatch(field: string, criteria: any): SqlFragment | null {
+	return null;
+}
