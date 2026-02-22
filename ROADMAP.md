@@ -143,31 +143,66 @@ status: 409,  // Proper RxDB conflict handling
 
 ---
 
-## 📊 Phase 3: Benchmarking & Validation (NEXT 🚧)
+## 📊 Phase 3: Validation & Benchmarking (NEXT 🚧)
 
-**Goal:** Prove performance claims with real measurements
+**Goal:** Prove correctness and measure real-world performance
+
+### **Phase 3.1: RxDB Official Test Suite (PRIORITY 1)**
+
+**Why first:** Official validation proves our adapter works correctly with RxDB. No point benchmarking broken code.
 
 **Tasks:**
-1. Run RxDB test suite (validate correctness)
-2. Benchmark queries (1k, 10k, 100k docs)
-3. Measure write throughput
-4. Compare to pe-sqlite-for-rxdb (better-sqlite3)
-5. Document performance gains
+1. Implement `RxTestStorage` interface
+2. Set up test configuration in RxDB repo
+3. Run official test suite: `DEFAULT_STORAGE=custom npm test`
+4. Fix any failures
+5. Document test results
 
-**Metrics to Measure:**
-- Query latency (ms)
-- Write throughput (docs/sec)
-- Storage size (MB)
-- Memory usage (MB)
+**Expected outcome:** All RxDB storage tests passing
 
-**Expected Results:**
-- Queries: 10-100x faster (SQL WHERE vs JS filter)
-- Writes: 3-6x faster (bun:sqlite vs better-sqlite3)
-- Smart regex: 2.03x faster for exact matches (measured ✅)
+**Effort:** 4-6 hours
+
+**Status:** 🚧 TODO (next priority)
+
+---
+
+### **Phase 3.2: Custom Integration Tests (PRIORITY 2)**
+
+**Why second:** After official validation, test our specific optimizations (JSONB, smart regex).
+
+**Tasks:**
+1. Write Vitest integration tests (like pe-sqlite reference)
+2. Test JSONB performance with real RxDB queries
+3. Test smart regex optimization with real patterns
+4. Test all 18 operators in RxDB context
+5. Measure query performance at scale (1k, 10k, 100k docs)
+
+**Expected outcome:** Proof that our optimizations work in real usage
+
+**Effort:** 4-6 hours
+
+**Status:** 🚧 TODO
+
+---
+
+### **Phase 3.3: Performance Benchmarks (PRIORITY 3)**
+
+**Why last:** After correctness is proven, measure and document performance gains.
+
+**Tasks:**
+1. Benchmark vs pe-sqlite-for-rxdb (better-sqlite3)
+2. Measure write throughput (docs/sec)
+3. Measure query latency at scale
+4. Document performance gains in README
+5. Create performance comparison charts
+
+**Expected outcome:** Documented proof of 3-6x speedup claim
 
 **Effort:** 4 hours
 
-**Status:** 🚧 TODO (next priority)
+**Status:** 🚧 TODO
+
+---
 
 ---
 
@@ -191,17 +226,21 @@ status: 409,  // Proper RxDB conflict handling
 
 ### **Immediate (This Week):**
 1. ✅ Phase 1 complete
-2. ✅ Phase 2 complete (Query Builder + WAL + Conflict Detection)
+2. ✅ Phase 2 complete (Query Builder + WAL + Conflict Detection + JSONB)
 3. ✅ Phase 4.5 complete (Smart regex optimization + FTS5 investigation)
-4. 🚧 **Phase 3: Benchmarking & Validation (NEXT)**
+4. 🚧 **Phase 3.1: RxDB Official Test Suite (NEXT - 4-6 hours)**
+   - Implement RxTestStorage interface
+   - Run official validation
+   - Fix any failures
 
 ### **Short-term (Next Week):**
-5. Phase 2.5: Prepared statement caching (optional optimization)
-6. Phase 4: Advanced features (attachments, replication, migrations)
+5. Phase 3.2: Custom integration tests (validate optimizations)
+6. Phase 3.3: Performance benchmarks (measure gains)
 
 ### **Long-term (Future):**
-7. npm publish
-8. Community adoption
+7. Phase 4: Advanced features (attachments, replication, migrations)
+8. npm publish
+9. Community adoption
 
 ---
 
