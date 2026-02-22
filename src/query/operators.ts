@@ -89,3 +89,29 @@ export function translateExists(field: string, exists: boolean): SqlFragment {
 		args: []
 	};
 }
+
+export function translateRegex(field: string, pattern: string, options?: string): SqlFragment | null {
+	const caseInsensitive = options?.includes('i');
+	
+	const startsWithAnchor = pattern.startsWith('^');
+	const endsWithAnchor = pattern.endsWith('$');
+	
+	let cleanPattern = pattern.replace(/^\^/, '').replace(/\$$/, '');
+	
+	const isSimple = /^[\w\s\-@.\\]+$/.test(cleanPattern);
+	if (!isSimple) return null;
+	
+	cleanPattern = cleanPattern.replace(/\\\./g, '.');
+	cleanPattern = cleanPattern.replace(/%/g, '\\%').replace(/_/g, '\\_');
+	
+	let likePattern = cleanPattern;
+	if (!startsWithAnchor) likePattern = '%' + likePattern;
+	if (!endsWithAnchor) likePattern = likePattern + '%';
+	
+	const collation = caseInsensitive ? ' COLLATE NOCASE' : '';
+	
+	return { 
+		sql: `${field} LIKE ?${collation} ESCAPE '\\'`, 
+		args: [likePattern] 
+	};
+}
