@@ -562,6 +562,54 @@ Index creation: 23717.26ms (23.7 seconds)
 
 ---
 
+## 14. JSONB Storage (SQLite Native Binary JSON)
+
+**Rule:** Use SQLite's native JSONB format (BLOB) instead of TEXT for JSON storage.
+
+**Why:**
+- 1.57x faster complex queries (657ms → 418ms at 1M docs)
+- 1.20x faster read + parse operations
+- 1.04x faster simple queries
+- No parsing overhead - binary format is more efficient
+- All json_extract() functions work identically
+
+**Benchmark Results** (`benchmarks/text-vs-jsonb.ts`):
+```
+1M documents, 15 runs each:
+- Simple query:  1.04x faster (481ms → 464ms)
+- Complex query: 1.57x faster (657ms → 418ms) 🔥
+- Read + parse:  1.20x faster (2.37ms → 1.98ms)
+```
+
+**Implementation:**
+```typescript
+// CREATE TABLE with BLOB column
+CREATE TABLE users (
+  id TEXT PRIMARY KEY,
+  data BLOB NOT NULL  // JSONB storage
+);
+
+// INSERT with jsonb() function
+INSERT INTO users (id, data) VALUES (?, jsonb(?));
+
+// SELECT with json() function to convert back
+SELECT json(data) as data FROM users WHERE id = ?;
+
+// json_extract() works on both TEXT and BLOB
+SELECT * FROM users WHERE json_extract(data, '$.age') > 30;
+```
+
+**Key Differences from TEXT:**
+- **TEXT:** Stores JSON as string, requires parsing on every access
+- **JSONB:** Stores JSON as binary, optimized for SQLite's JSON functions
+- **Compatibility:** All JSON functions work identically on both formats
+
+**SQLite Version Required:** 3.45.0+ (we have 3.51.2 ✅)
+
+**History:** v0.3.0+ benchmarked TEXT vs JSONB at 1M scale, implemented JSONB as default storage format.
+
+---
+
 ## Quick Reference
 
 | Pattern | Version | Key Benefit |
@@ -579,6 +627,7 @@ Index creation: 23717.26ms (23.7 seconds)
 | SQL vs Mingo hybrid | v0.3.0 | Right tool for job |
 | Smart regex optimization | v0.3.0+ | 2.03x for exact matches |
 | FTS5 NOT worth it | v0.3.0+ | 1.79x slower at 100k scale |
+| JSONB storage | v0.3.0+ | 1.57x faster complex queries |
 
 ---
 

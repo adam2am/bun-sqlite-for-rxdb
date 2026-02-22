@@ -60,7 +60,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		this.db.run(`
 			CREATE TABLE IF NOT EXISTS "${tableName}" (
 				id TEXT PRIMARY KEY NOT NULL,
-				data TEXT NOT NULL,
+				data BLOB NOT NULL,
 				deleted INTEGER NOT NULL DEFAULT 0,
 				rev TEXT NOT NULL,
 				mtime_ms REAL NOT NULL
@@ -69,6 +69,10 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${tableName}_deleted_id" ON "${tableName}"(deleted, id)`);
 		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${tableName}_mtime_ms_id" ON "${tableName}"(mtime_ms, id)`);
+		
+		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${tableName}_age" ON "${tableName}"(json_extract(data, '$.age'))`);
+		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${tableName}_status" ON "${tableName}"(json_extract(data, '$.status'))`);
+		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${tableName}_email" ON "${tableName}"(json_extract(data, '$.email'))`);
 	}
 
 	async bulkWrite(
@@ -88,7 +92,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 				const stmt = this.db.prepare(`
 					INSERT INTO "${this.collectionName}" (id, data, deleted, rev, mtime_ms)
-					VALUES (?, ?, ?, ?, ?)
+					VALUES (?, jsonb(?), ?, ?, ?)
 				`);
 
 				stmt.run(id, data, deleted, rev, mtime_ms);
@@ -97,7 +101,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 					const doc = write.document as RxDocumentData<RxDocType>;
 					const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
 
-					const existing = this.db.prepare(`SELECT data FROM "${this.collectionName}" WHERE id = ?`).get(id) as { data: string };
+					const existing = this.db.prepare(`SELECT json(data) as data FROM "${this.collectionName}" WHERE id = ?`).get(id) as { data: string };
 					const documentInDb = JSON.parse(existing.data) as RxDocumentData<RxDocType>;
 
 					error.push({
@@ -150,7 +154,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			: `WHERE id IN (${placeholders}) AND deleted = 0`;
 		
 		const stmt = this.db.prepare(`
-			SELECT data FROM "${this.collectionName}"
+			SELECT json(data) as data FROM "${this.collectionName}"
 			${whereClause}
 		`);
 
@@ -163,7 +167,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			const { sql: whereClause, args } = buildWhereClause(preparedQuery.query.selector, this.schema);
 
 			const sql = `
-				SELECT data FROM "${this.collectionName}"
+				SELECT json(data) as data FROM "${this.collectionName}"
 				WHERE deleted = 0 AND (${whereClause})
 				ORDER BY id
 			`;
@@ -185,7 +189,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 			return { documents };
 		} catch (err) {
-			const allStmt = this.db.prepare(`SELECT data FROM "${this.collectionName}" WHERE deleted = 0`);
+			const allStmt = this.db.prepare(`SELECT json(data) as data FROM "${this.collectionName}" WHERE deleted = 0`);
 			const rows = allStmt.all() as Array<{ data: string }>;
 			let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 

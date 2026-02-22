@@ -1,6 +1,6 @@
 # bun-sqlite-for-rxdb Roadmap
 
-> **Status:** Phase 1 Complete ✅ | Phase 2 In Progress 🚧
+> **Status:** Phase 2 Complete ✅ | Phase 3 Next 🚧
 > **Last Updated:** 2026-02-22
 
 ---
@@ -42,9 +42,9 @@ Build the **fastest RxDB storage adapter** by leveraging Bun's native SQLite (3-
 
 ---
 
-## 🚧 Phase 2: Query Builder (IN PROGRESS)
+## 🚧 Phase 2: Query Builder & Production Hardening (COMPLETE ✅)
 
-**Goal:** 10-100x query speedup via SQL WHERE clauses
+**Goal:** 10-100x query speedup + production-ready features
 
 ### **Phase 2.1: Basic Operators (COMPLETE ✅)**
 
@@ -79,103 +79,73 @@ Build the **fastest RxDB storage adapter** by leveraging Bun's native SQLite (3-
 
 ---
 
-### **Phase 2.2: WAL Mode (NEXT - 5 minutes)**
+### **Phase 2.2: WAL Mode (COMPLETE ✅)**
 
-**Problem:** Phase 1 fetches ALL documents, filters in JavaScript
+**Delivered:**
 ```typescript
-// Current (slow):
-const all = db.query('SELECT * FROM docs').all();  // Fetches everything
-return all.filter(doc => doc.age > 18);            // Filters in JS
+// src/instance.ts line 55
+this.db.run("PRAGMA journal_mode = WAL");
 ```
 
-**Solution:** Translate Mango queries → SQL WHERE clauses
-```typescript
-// Target (fast):
-const sql = 'SELECT * FROM docs WHERE age > ?';
-return db.query(sql).all(18);  // Uses index, filters in SQL
-```
-
-**Components:**
-1. **Column Mapping** — Map schema paths to SQL columns/JSON paths
-   - `_deleted` → `deleted` column
-   - `_meta.lwt` → `mtime_ms` column
-   - `user.name` → `jsonb ->> '$.user.name'` JSON path
-
-2. **Operator Translation** — Convert Mango operators to SQL
-   - `$eq` → `=`
-   - `$gt` → `>`
-   - `$in` → `IN (?, ?, ?)`
-   - `$or` → `OR` with parentheses
-
-3. **NULL Handling** — Edge cases for null values
-   - `{ status: { $eq: null } }` → `status IS NULL`
-   - `{ status: { $in: ["active", null] } }` → `status IN (?) OR status IS NULL`
-
-4. **Logical Operators** — Recursive $and/$or with proper parentheses
-   - `{ $or: [{ a: 1 }, { b: 2 }] }` → `(a = ? OR b = ?)`
-
-5. **ORDER BY Generation** — Sort fields to SQL ORDER BY
-   - `[{ name: "asc" }, { age: "desc" }]` → `ORDER BY name ASC, age DESC`
-
-**Reference:** `query-sqlite3.ts` (557 lines from pe-sqlite-for-rxdb)
-
-**Effort:** 1 day (port + test)
-
-**Impact:** 10-100x query speedup (uses indexes!)
-
-**Status:** Not started
-
----
-
-### **Priority 2: Production Hardening (HIGH)**
-
-**Goal:** Make adapter production-ready
-
-#### **2.2 WAL Mode** ⚡ (5 minutes - NEXT)
-```typescript
-// Enable Write-Ahead Logging
-this.db.pragma("journal_mode = WAL");
-```
 **Impact:** 3-6x write speedup, better concurrency
 
-#### **2.3 JSONB Storage** 📦 (2 hours)
-```sql
--- Current: TEXT (slower)
-CREATE TABLE docs (id TEXT, data TEXT);
-
--- Target: BLOB (faster, smaller)
-CREATE TABLE docs (id TEXT, data BLOB);  -- Store as binary JSONB
-```
-**Impact:** 20-30% storage reduction, faster parsing
-
-#### **2.4 Conflict Detection** ⚔️ (1 hour)
-```typescript
-// Catch primary key conflicts
-catch (err) {
-  if (err.code === "SQLITE_CONSTRAINT_PRIMARYKEY") {
-    const documentInDb = /* fetch existing */;
-    return { status: 409, documentInDb, isError: true };
-  }
-}
-```
-**Impact:** Proper RxDB conflict handling (required for replication)
-
-#### **2.5 Prepared Statement Caching** 🗄️ (2 hours)
-```typescript
-// Cache query builder by schema hash
-private queryBuilders = new Map<string, QueryBuilder>();
-```
-**Impact:** Faster repeated queries
-
-**Total Effort:** 1 day
-
-**Status:** Not started
+**Status:** ✅ COMPLETE
 
 ---
 
-## 📊 Phase 3: Benchmarking & Validation
+### **Phase 2.3: JSONB Storage (COMPLETE ✅)**
 
-**Goal:** Prove 3-6x speedup claim
+**Delivered:**
+```typescript
+// CREATE TABLE with BLOB column
+CREATE TABLE users (id TEXT PRIMARY KEY, data BLOB NOT NULL);
+
+// INSERT with jsonb() function
+INSERT INTO users (id, data) VALUES (?, jsonb(?));
+
+// SELECT with json() function
+SELECT json(data) as data FROM users WHERE id = ?;
+```
+
+**Benchmark Results** (`benchmarks/text-vs-jsonb.ts`):
+```
+1M documents, 15 runs each:
+- Simple query:  1.04x faster (481ms → 464ms)
+- Complex query: 1.57x faster (657ms → 418ms) 🔥
+- Read + parse:  1.20x faster (2.37ms → 1.98ms)
+```
+
+**Impact:** 1.57x faster complex queries, 1.20x faster reads
+
+**Status:** ✅ COMPLETE (implemented as default storage format)
+
+---
+
+### **Phase 2.4: Conflict Detection (COMPLETE ✅)**
+
+**Delivered:**
+```typescript
+// src/instance.ts line 108
+status: 409,  // Proper RxDB conflict handling
+```
+
+**Impact:** Required for replication support
+
+**Status:** ✅ COMPLETE
+
+---
+
+### **Phase 2.5: Prepared Statement Caching (NOT IMPLEMENTED)**
+
+**Goal:** Cache query builders by schema hash for faster repeated queries
+
+**Status:** 🚧 TODO (optimization, not critical)
+
+---
+
+## 📊 Phase 3: Benchmarking & Validation (NEXT 🚧)
+
+**Goal:** Prove performance claims with real measurements
 
 **Tasks:**
 1. Run RxDB test suite (validate correctness)
@@ -193,11 +163,11 @@ private queryBuilders = new Map<string, QueryBuilder>();
 **Expected Results:**
 - Queries: 10-100x faster (SQL WHERE vs JS filter)
 - Writes: 3-6x faster (bun:sqlite vs better-sqlite3)
-- Storage: 20-30% smaller (JSONB vs TEXT)
+- Smart regex: 2.03x faster for exact matches (measured ✅)
 
 **Effort:** 4 hours
 
-**Status:** Not started
+**Status:** 🚧 TODO (next priority)
 
 ---
 
@@ -221,19 +191,17 @@ private queryBuilders = new Map<string, QueryBuilder>();
 
 ### **Immediate (This Week):**
 1. ✅ Phase 1 complete
-2. ✅ Phase 2.1 complete (Query Builder + Type Safety)
-3. 🚧 Add WAL mode (Phase 2.2)
+2. ✅ Phase 2 complete (Query Builder + WAL + Conflict Detection)
+3. ✅ Phase 4.5 complete (Smart regex optimization + FTS5 investigation)
+4. 🚧 **Phase 3: Benchmarking & Validation (NEXT)**
 
 ### **Short-term (Next Week):**
-4. JSONB storage (Phase 2.3)
-5. Conflict detection (Phase 2.4)
-6. Prepared statement caching (Phase 2.5)
-7. Benchmarking (Phase 3)
+5. Phase 2.5: Prepared statement caching (optional optimization)
+6. Phase 4: Advanced features (attachments, replication, migrations)
 
 ### **Long-term (Future):**
-8. Advanced features (Phase 4)
-9. npm publish
-10. Community adoption
+7. npm publish
+8. Community adoption
 
 ---
 
