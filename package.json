@@ -1,0 +1,37 @@
+{
+  "name": "bun-sqlite-for-rxdb",
+  "version": "0.1.0",
+  "description": "RxDB storage adapter for Bun's native SQLite (bun:sqlite)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "rxdb",
+    "sqlite",
+    "bun",
+    "bun:sqlite",
+    "storage",
+    "adapter",
+    "database",
+    "reactive"
+  ],
+  "author": "adam2am",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/adam2am/bun-sqlite-for-rxdb.git"
+  },
+  "peerDependencies": {
+    "rxdb": "^16.0.0 || ^17.0.0-beta"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "rxdb": "^16.21.1",
+    "typescript": "^5.0.0"
+  }
+}
