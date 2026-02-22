@@ -8,3 +8,4 @@ dist/
 *.db-shm
 benchmark.db*
 test-wal.db*
+sketch
