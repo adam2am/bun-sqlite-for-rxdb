@@ -1,6 +1,6 @@
 import type { RxJsonSchema, MangoQuerySelector, RxDocumentData } from 'rxdb';
 import { getColumnInfo } from './schema-mapper';
-import { translateEq, translateNe, translateGt, translateGte, translateLt, translateLte, translateIn, translateNin, translateExists, translateRegex, translateElemMatch } from './operators';
+import { translateEq, translateNe, translateGt, translateGte, translateLt, translateLte, translateIn, translateNin, translateExists, translateRegex, translateElemMatch, translateNot, translateNor } from './operators';
 import type { SqlFragment } from './operators';
 
 export function buildWhereClause<RxDocType>(
@@ -36,6 +36,13 @@ function processSelector<RxDocType>(
 			const joined = orConditions.join(' OR ');
 			conditions.push(needsParens ? `(${joined})` : joined);
 			orFragments.forEach(f => args.push(...f.args));
+			continue;
+		}
+
+		if (field === '$nor' && Array.isArray(value)) {
+			const norFragment = translateNor(value);
+			conditions.push(norFragment.sql);
+			args.push(...norFragment.args);
 			continue;
 		}
 
@@ -84,6 +91,9 @@ function processSelector<RxDocType>(
 						const elemMatchFragment = translateElemMatch(fieldName, opValue);
 						if (!elemMatchFragment) continue;
 						fragment = elemMatchFragment;
+						break;
+					case '$not':
+						fragment = translateNot(fieldName, opValue);
 						break;
 					default:
 						continue;

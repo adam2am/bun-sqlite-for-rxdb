@@ -119,3 +119,50 @@ export function translateRegex(field: string, pattern: string, options?: string)
 export function translateElemMatch(field: string, criteria: any): SqlFragment | null {
 	return null;
 }
+
+export function translateNot(field: string, criteria: any): SqlFragment {
+	const inner = processOperatorValue(field, criteria);
+	return {
+		sql: `NOT(${inner.sql})`,
+		args: inner.args
+	};
+}
+
+export function translateNor(conditions: any[]): SqlFragment {
+	if (conditions.length === 0) {
+		return { sql: '1=1', args: [] };
+	}
+	
+	const fragments = conditions.map(condition => {
+		const [[field, value]] = Object.entries(condition);
+		return processOperatorValue(field, value);
+	});
+	
+	const sql = fragments.map(f => `(${f.sql})`).join(' OR ');
+	const args = fragments.flatMap(f => f.args);
+	
+	return {
+		sql: `NOT(${sql})`,
+		args
+	};
+}
+
+function processOperatorValue(field: string, value: any): SqlFragment {
+	if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+		const [[op, opValue]] = Object.entries(value);
+		
+		switch (op) {
+			case '$eq': return translateEq(field, opValue);
+			case '$ne': return translateNe(field, opValue);
+			case '$gt': return translateGt(field, opValue);
+			case '$gte': return translateGte(field, opValue);
+			case '$lt': return translateLt(field, opValue);
+			case '$lte': return translateLte(field, opValue);
+			case '$in': return translateIn(field, opValue as unknown[]);
+			case '$nin': return translateNin(field, opValue as unknown[]);
+			default: return translateEq(field, opValue);
+		}
+	}
+	
+	return translateEq(field, value);
+}
