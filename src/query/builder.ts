@@ -1,6 +1,6 @@
 import type { RxJsonSchema, MangoQuerySelector, RxDocumentData } from 'rxdb';
 import { getColumnInfo } from './schema-mapper';
-import { translateEq, translateNe, translateGt, translateGte, translateLt, translateLte, translateIn, translateNin } from './operators';
+import { translateEq, translateNe, translateGt, translateGte, translateLt, translateLte, translateIn, translateNin, translateExists } from './operators';
 import type { SqlFragment } from './operators';
 
 export function buildWhereClause<RxDocType>(
@@ -70,6 +70,9 @@ function processSelector<RxDocType>(
 						break;
 					case '$nin':
 						fragment = translateNin(fieldName, opValue as unknown[]);
+						break;
+					case '$exists':
+						fragment = translateExists(fieldName, opValue as boolean);
 						break;
 					default:
 						continue;

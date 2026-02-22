@@ -82,3 +82,10 @@ export function translateNin(field: string, values: unknown[]): SqlFragment {
 
 	return { sql: ninClause, args: nonNullValues };
 }
+
+export function translateExists(field: string, exists: boolean): SqlFragment {
+	return {
+		sql: exists ? `${field} IS NOT NULL` : `${field} IS NULL`,
+		args: []
+	};
+}
