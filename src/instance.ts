@@ -8,23 +8,29 @@ import type {
 	RxStorageQueryResult,
 	RxStorageCountResult,
 	EventBulk,
-	RxStorageChangeEvent
+	RxStorageChangeEvent,
+	RxJsonSchema,
+	PreparedQuery,
+	RxStorageWriteError,
+	MangoQuerySelector,
+	MangoQuerySortPart
 } from 'rxdb';
 import { Subject, Observable } from 'rxjs';
-import type { BunSQLiteStorageSettings } from './types';
+import type { BunSQLiteStorageSettings, BunSQLiteInternals } from './types';
+import { buildWhereClause } from './query/builder';
 
-export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<RxDocType, unknown, unknown> {
+export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<RxDocType, BunSQLiteInternals, BunSQLiteStorageSettings> {
 	private db: Database;
-	private changeStream$ = new Subject<EventBulk<RxStorageChangeEvent<RxDocumentData<RxDocType>>, unknown>>();
+	private changeStream$ = new Subject<EventBulk<RxStorageChangeEvent<RxDocType>, unknown>>();
 	public readonly databaseName: string;
 	public readonly collectionName: string;
-	public readonly schema: any;
-	public readonly internals: Readonly<unknown> = {};
-	public readonly options: any;
+	public readonly schema: Readonly<RxJsonSchema<RxDocumentData<RxDocType>>>;
+	public readonly internals: Readonly<BunSQLiteInternals>;
+	public readonly options: Readonly<BunSQLiteStorageSettings>;
 	private primaryPath: string;
 
 	constructor(
-		params: RxStorageInstanceCreationParams<RxDocType, unknown>,
+		params: RxStorageInstanceCreationParams<RxDocType, BunSQLiteStorageSettings>,
 		settings: BunSQLiteStorageSettings = {}
 	) {
 		this.databaseName = params.databaseName;
@@ -35,6 +41,11 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 		const filename = settings.filename || ':memory:';
 		this.db = new Database(filename);
+		
+		this.internals = {
+			db: this.db,
+			primaryPath: this.primaryPath
+		};
 
 		this.initTable();
 	}
@@ -59,50 +70,45 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		documentWrites: BulkWriteRow<RxDocType>[],
 		context: string
 	): Promise<RxStorageBulkWriteResponse<RxDocType>> {
-		const error: any[] = [];
+		const error: RxStorageWriteError<RxDocType>[] = [];
 
 		const transaction = this.db.transaction((writes: BulkWriteRow<RxDocType>[]) => {
 			for (const write of writes) {
-				try {
-					const doc = write.document;
-					const id = (doc as any)[this.primaryPath];
-					const deleted = (doc as any)._deleted ? 1 : 0;
-					const rev = (doc as any)._rev;
-					const mtime_ms = (doc as any)._meta?.lwt || Date.now();
-					const data = JSON.stringify(doc);
+				const doc = write.document as RxDocumentData<RxDocType>;
+				const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
+				const deleted = doc._deleted ? 1 : 0;
+				const rev = doc._rev;
+				const mtime_ms = doc._meta?.lwt || Date.now();
+				const data = JSON.stringify(doc);
 
-					const stmt = this.db.prepare(`
-						INSERT OR REPLACE INTO "${this.collectionName}" (id, data, deleted, rev, mtime_ms)
-						VALUES (?, ?, ?, ?, ?)
-					`);
-					
-					stmt.run(id, data, deleted, rev, mtime_ms);
-				} catch (err: unknown) {
-					error.push({
-						status: 500,
-						documentId: (write.document as any)[this.primaryPath],
-						writeRow: write,
-						error: err
-					});
-				}
+				const stmt = this.db.prepare(`
+					INSERT OR REPLACE INTO "${this.collectionName}" (id, data, deleted, rev, mtime_ms)
+					VALUES (?, ?, ?, ?, ?)
+				`);
+				
+				stmt.run(id, data, deleted, rev, mtime_ms);
 			}
 		});
 
 		transaction(documentWrites);
 
-		if (error.length === 0) {
-			this.changeStream$.next({
-				checkpoint: null,
-				context,
-				events: documentWrites.map(w => ({
-					operation: 'INSERT',
-					documentId: (w.document as any)[this.primaryPath],
-					documentData: w.document as any,
-					previousDocumentData: w.previous
-				})),
-				id: ''
-			} as any);
-		}
+		const success = documentWrites
+			.filter(w => !error.find(e => e.documentId === (w.document as RxDocumentData<RxDocType>)[this.primaryPath as keyof RxDocumentData<RxDocType>]))
+			.map(w => ({
+				...w.document as RxDocumentData<RxDocType>
+			}));
+
+		this.changeStream$.next({
+			checkpoint: null,
+			context,
+			events: success.map(doc => ({
+				documentId: doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string,
+				documentData: doc,
+				operation: 'INSERT' as const,
+				previousDocumentData: undefined
+			})),
+			id: ''
+		});
 
 		return { error };
 	}
@@ -120,36 +126,56 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		return rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 	}
 
-	async query(preparedQuery: any): Promise<RxStorageQueryResult<RxDocType>> {
-		const stmt = this.db.prepare(`
-			SELECT data FROM "${this.collectionName}"
-			WHERE deleted = 0
-			ORDER BY id
-		`);
+	async query(preparedQuery: PreparedQuery<RxDocType>): Promise<RxStorageQueryResult<RxDocType>> {
+		try {
+			const { sql: whereClause, args } = buildWhereClause(preparedQuery.query.selector, this.schema);
+			
+			const sql = `
+				SELECT data FROM "${this.collectionName}"
+				WHERE deleted = 0 AND (${whereClause})
+				ORDER BY id
+			`;
+			
+			const rows = this.db.prepare(sql).all(...args) as Array<{ data: string }>;
+			let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 
-		const rows = stmt.all() as Array<{ data: string }>;
-		let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
+			if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
+				documents = this.sortDocuments(documents, preparedQuery.query.sort);
+			}
 
-		if (preparedQuery.selector) {
-			documents = documents.filter(doc => this.matchesSelector(doc, preparedQuery.selector));
+			if (preparedQuery.query.skip) {
+				documents = documents.slice(preparedQuery.query.skip);
+			}
+
+			if (preparedQuery.query.limit) {
+				documents = documents.slice(0, preparedQuery.query.limit);
+			}
+
+			return { documents };
+		} catch (err) {
+			const allStmt = this.db.prepare(`SELECT data FROM "${this.collectionName}" WHERE deleted = 0`);
+			const rows = allStmt.all() as Array<{ data: string }>;
+			let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
+
+			documents = documents.filter(doc => this.matchesSelector(doc, preparedQuery.query.selector));
+
+			if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
+				documents = this.sortDocuments(documents, preparedQuery.query.sort);
+			}
+
+			if (preparedQuery.query.skip) {
+				documents = documents.slice(preparedQuery.query.skip);
+			}
+
+			if (preparedQuery.query.limit) {
+				documents = documents.slice(0, preparedQuery.query.limit);
+			}
+
+			return { documents };
 		}
-
-		if (preparedQuery.sort) {
-			documents = this.sortDocuments(documents, preparedQuery.sort);
-		}
-
-		if (preparedQuery.skip) {
-			documents = documents.slice(preparedQuery.skip);
-		}
-
-		if (preparedQuery.limit) {
-			documents = documents.slice(0, preparedQuery.limit);
-		}
-
-		return { documents };
 	}
 
-	private matchesSelector(doc: any, selector: any): boolean {
+	private matchesSelector(doc: RxDocumentData<RxDocType>, selector: MangoQuerySelector<RxDocumentData<RxDocType>>): boolean {
 		for (const [key, value] of Object.entries(selector)) {
 			const docValue = this.getNestedValue(doc, key);
 			
@@ -157,10 +183,10 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 				for (const [op, opValue] of Object.entries(value)) {
 					if (op === '$eq' && docValue !== opValue) return false;
 					if (op === '$ne' && docValue === opValue) return false;
-					if (op === '$gt' && !(docValue > opValue)) return false;
-					if (op === '$gte' && !(docValue >= opValue)) return false;
-					if (op === '$lt' && !(docValue < opValue)) return false;
-					if (op === '$lte' && !(docValue <= opValue)) return false;
+					if (op === '$gt' && !((docValue as number) > (opValue as number))) return false;
+					if (op === '$gte' && !((docValue as number) >= (opValue as number))) return false;
+					if (op === '$lt' && !((docValue as number) < (opValue as number))) return false;
+					if (op === '$lte' && !((docValue as number) <= (opValue as number))) return false;
 				}
 			} else {
 				if (docValue !== value) return false;
@@ -169,12 +195,12 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		return true;
 	}
 
-	private sortDocuments(docs: any[], sort: any[]): any[] {
+	private sortDocuments(docs: RxDocumentData<RxDocType>[], sort: MangoQuerySortPart<RxDocType>[]): RxDocumentData<RxDocType>[] {
 		return docs.sort((a, b) => {
 			for (const sortField of sort) {
 				const [key, direction] = Object.entries(sortField)[0];
-				const aVal = this.getNestedValue(a, key);
-				const bVal = this.getNestedValue(b, key);
+				const aVal = this.getNestedValue(a, key) as number | string;
+				const bVal = this.getNestedValue(b, key) as number | string;
 				
 				if (aVal < bVal) return direction === 'asc' ? -1 : 1;
 				if (aVal > bVal) return direction === 'asc' ? 1 : -1;
@@ -183,11 +209,11 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		});
 	}
 
-	private getNestedValue(obj: any, path: string): any {
-		return path.split('.').reduce((current, key) => current?.[key], obj);
+	private getNestedValue(obj: RxDocumentData<RxDocType>, path: string): unknown {
+		return path.split('.').reduce((current, key) => (current as Record<string, unknown>)?.[key], obj as unknown);
 	}
 
-	async count(preparedQuery: any): Promise<RxStorageCountResult> {
+	async count(preparedQuery: PreparedQuery<RxDocType>): Promise<RxStorageCountResult> {
 		const result = await this.query(preparedQuery);
 		return {
 			count: result.documents.length,
@@ -195,7 +221,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		};
 	}
 
-	changeStream(): Observable<EventBulk<RxStorageChangeEvent<RxDocumentData<RxDocType>>, unknown>> {
+	changeStream(): Observable<EventBulk<RxStorageChangeEvent<RxDocType>, unknown>> {
 		return this.changeStream$.asObservable();
 	}
 
@@ -218,11 +244,11 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		await this.close();
 	}
 
-	conflictResultionTasks(): Observable<any> {
+	conflictResultionTasks(): Observable<never> {
 		return new Observable();
 	}
 
-	async resolveConflictResultionTask(taskSolution: any): Promise<void> {
+	async resolveConflictResultionTask(taskSolution: unknown): Promise<void> {
 	}
 
 	async getAttachmentData(documentId: string, attachmentId: string, digest: string): Promise<string> {
