@@ -1,225 +1,247 @@
 # RxDB Test Suite Debugging Journey
 
 ## Problem Statement
-RxDB official test suite hangs when running with our Bun SQLite storage adapter.
+RxDB official test suite had 8 failures when running with our Bun SQLite storage adapter.
 
 ---
 
-## Iteration 1: Initial Investigation (EventBulk.id Bug)
+## Iteration 1-9: Previous Work (See Git History)
 
-### What We Tried
-- Added debug logs to track test execution
-- Ran single test "should emit all events"
-
-### What We Found
-- Test was timing out waiting for events
-- EventBulk.id was empty string `''`
-- `flattenEvents()` checks `if (input.id && input.events)` - empty string is FALSY!
-
-### What Worked
-✅ **Fix:** Changed `id: ''` to `id: Date.now().toString() + '-' + Math.random().toString(36).substring(2, 11)`
-✅ **Result:** Single test passes in 924ms
-
-### What Didn't Work
-❌ Test suite still hangs when running ALL tests
+**Summary of earlier iterations:**
+- Fixed EventBulk.id bug (empty string → unique ID)
+- Fixed cleanup order (stream before DB)
+- Added idempotency guards
+- Investigated connection pooling (reverted - made things worse)
+- Baseline: 48 pass, 8 fail
 
 ---
 
-## Iteration 2: Cleanup Order Investigation
+## Iteration 10: Statement Lifecycle Investigation (2026-02-23)
 
 ### What We Tried
-- Lisa agents investigated cleanup patterns in official adapters
-- Analyzed close() and remove() order
+- Lisa agents investigated why tests were hanging
+- Analyzed db.prepare() vs db.query() behavior
+- Researched Bun's SQLite statement lifecycle
 
 ### What We Found
-- Official adapters complete stream BEFORE closing database
-- We were closing database BEFORE completing stream
-- This orphans subscribers waiting on closed DB
+**CRITICAL:** Prepared statements were NEVER being finalized!
 
-### What Worked
-✅ **Fix:** Swapped cleanup order - `changeStream$.complete()` then `db.close()`
-✅ **Result:** Single test still passes
+**Evidence:**
+- 7 leak locations in src/instance.ts
+- Each test creates ~10 operations × 2 statements = ~20 leaked statements
+- 48 tests × 20 = ~960 leaked statement objects → OOM
 
-### What Didn't Work
-❌ Test suite still hangs when running ALL tests
-
----
-
-## Iteration 3: Idempotency Guard
-
-### What We Tried
-- Added Promise memoization pattern for close()
-- Prevents double-close issues
-
-### What We Found
-- Official adapters use `if (this.closed) return this.closed` pattern
-- Handles concurrent close() calls correctly
-
-### What Worked
-✅ **Fix:** Added `closed?: Promise<void>` property with guard
-✅ **Result:** Single test passes, handles non-awaited remove() correctly
-
-### What Didn't Work
-❌ Test suite still hangs when running ALL tests
-
----
-
-## Iteration 4: Test Cleanup
-
-### What We Tried
-- Added manual cleanup to our unit tests (10 tests were leaking)
-
-### What We Found
-- Our storage.test.ts had 10/15 tests without cleanup
-- Each leaked instance holds open Database + uncompleted Subject
-
-### What Worked
-✅ **Fix:** Added `await instance.remove()` to all tests
-✅ **Result:** Our unit tests: 101 pass, 0 fail
-
-### What Didn't Work
-❌ RxDB test suite still hangs (we can't modify their test file)
-
----
-
-## Iteration 5: Parallel Construction Hang (THE SMOKING GUN)
-
-### What We Tried
-- Added strategic instrumentation to track WHERE hang occurs
-- Ran full test suite with detailed logging
-
-### What We Found
-**CRITICAL:** Multiple `new Database(':memory:')` calls in parallel → only one completes!
-
-```
-[STORAGE] createStorageInstance called - db: jlamlebnztqm
-[INSTANCE] Constructor START - db: jlamlebnztqm
-[STORAGE] createStorageInstance called - db: fujptizuenzh  ← BEFORE first finishes!
-[INSTANCE] Constructor START - db: fujptizuenzh
-[STORAGE] createStorageInstance called - db: kqgcjynxefmi  ← BEFORE either finishes!
-[INSTANCE] Creating Database - filename: :memory:  ← Only ONE completes!
+**Root Cause:**
+```typescript
+// LEAKING CODE:
+const stmt = this.db.prepare(sql);
+stmt.run(...);
+// Statement NEVER finalized → resource leak
 ```
 
-**Root Cause:** Bun's `new Database()` is NOT thread-safe for parallel construction.
+**Bun's SQLite has TWO APIs:**
+1. `db.query(sql)` - Cached (max 20), auto-finalized on db.close()
+2. `db.prepare(sql)` - Uncached, requires manual finalize()
 
 ### What Worked
-✅ **Discovery:** Official adapters use connection pooling + reference counting
-✅ **Evidence:** Lisa found the exact pattern in SQLite and Dexie adapters
+✅ **Discovery:** We were using db.prepare() without finalize()
+✅ **Research:** Librarian found Bun's caching behavior
+✅ **Analysis:** Lisa identified all 7 leak locations
 
 ### What Didn't Work
 ❌ Haven't implemented the fix yet
 
 ---
 
-## Iteration 6: Connection Pooling (First Attempt)
+## Iteration 11: StatementManager Abstraction (2026-02-23)
 
 ### What We Tried
-- Created `src/connection-pool.ts` with reference counting
-- Modified instance.ts to use `getDatabase()` and `releaseDatabase()`
+- Created StatementManager abstraction layer
+- Automatic statement lifecycle management
+- Smart caching strategy based on SQL type
 
 ### What We Found
-- Connection pooling FIXED THE HANG!
-- Tests ran much further (845 lines vs 16 before)
-- But hit new issue: `SQLiteError: out of memory`
+**Key Insight:** Static SQL vs Dynamic SQL need different strategies
+
+**Static SQL** (INSERT/UPDATE with placeholders):
+- Same SQL string reused many times
+- Perfect for db.query() caching
+- Example: `INSERT INTO users VALUES (?, ?, ?)`
+
+**Dynamic SQL** (WHERE clauses from buildWhereClause):
+- Different SQL string each time
+- Would pollute db.query() cache (max 20)
+- Example: `SELECT * FROM users WHERE (age > 25 AND status = 'active')`
 
 ### What Worked
-✅ **Fix:** Connection pooling prevents parallel construction hang
-✅ **Result:** Tests run sequentially, no more parallel construction issues
+✅ **Fix:** Created StatementManager with smart routing
+```typescript
+class StatementManager {
+  all(query, params) {
+    if (isStaticSQL(query)) {
+      // Cache with db.query()
+      return this.db.query(query).all(...params);
+    } else {
+      // Use db.prepare() + finalize()
+      const stmt = this.db.prepare(query);
+      try {
+        return stmt.all(...params);
+      } finally {
+        stmt.finalize();
+      }
+    }
+  }
+}
+```
+
+✅ **Result:** 52/56 tests pass (was 48/56)
+✅ **Improvement:** +4 tests fixed (OOM errors eliminated)
+✅ **No hangs:** Tests complete in 12.91s
 
 ### What Didn't Work
-❌ **New Problem:** All instances share ONE `:memory:` database → data accumulates → OOM
+❌ **4 tests still fail:**
+1. cleanup() test - Returns true always (known issue)
+2-4. Multi-instance tests - Need connection pooling
 
 ---
 
-## Iteration 7: Per-Database Pooling
+## Iteration 12: Connection Pooling Analysis (2026-02-23)
 
-### What We Tried
-- Use database NAME as pool key instead of just `:memory:`
-- Pool key: `${databaseName}:memory:` for in-memory databases
+### What We Need
+**Multi-instance tests require connection pooling** (Lisa #3 investigation)
 
-### What We Found
-- Each database name gets its own connection
-- Collections within same database share connection
-- This matches how databases actually work
+**Evidence from official adapters:**
+```typescript
+// Official SQLite adapter pattern:
+const DATABASE_STATE_BY_NAME = new Map();
 
-### What Worked
-✅ **Fix:** `poolKey = filename === ':memory:' ? ${databaseName}:memory: : filename`
-✅ **Result:** No more OOM - each database isolated
+function getDatabaseConnection(databaseName) {
+  let state = DATABASE_STATE_BY_NAME.get(databaseName);
+  if (!state) {
+    state = { database: open(databaseName), openConnections: 1 };
+    DATABASE_STATE_BY_NAME.set(databaseName, state);
+  } else {
+    state.openConnections++; // REUSE existing connection
+  }
+  return state.database;
+}
+```
 
-### What Didn't Work
-❌ **Bug:** Passed pool key to `new Database()` → tried to open FILE "testdb:memory:"
-❌ **Result:** Unit tests failed with "unable to open database file"
+**Why it's needed:**
+- Multi-instance tests create 2-3 instances with SAME databaseName
+- Each instance currently: `new Database(':memory:')` → separate DBs
+- Test expects: instance A writes, instance B reads → should see data
+- Reality: instance A writes to DB #1, instance B reads from DB #2 → no data
+
+**Critical line 44 from official adapter:**
+```typescript
+// :memory: databases CAN be shared even with different creators
+if (state.sqliteBasics !== sqliteBasics && databaseName !== ':memory:') {
+  throw new Error('different creator');
+}
+```
+
+### What We Learned
+✅ **Connection pooling is MANDATORY** (not optional)
+✅ **Pool by databaseName** (not filename)
+✅ **Use reference counting** (openConnections)
+✅ **Only close when refCount = 0**
+
+### Status
+⏳ **NOT IMPLEMENTED YET** - Next step after StatementManager
 
 ---
 
-## Iteration 8: Separate Pool Key from Filename
-
-### What We Tried
-- Modified `getDatabase(poolKey, actualFilename)` to separate concerns
-- Pool by database name, but pass `:memory:` to Database constructor
-
-### What We Found
-- Pool key is for INDEXING (which connection to reuse)
-- Actual filename is for DATABASE CREATION (what to pass to Bun)
-- These are two different concerns
-
-### What Worked
-✅ **Fix:** `getDatabase(poolKey, actualFilename)` with separate parameters
-✅ **Result:** Unit tests: 101 pass, 0 fail
-
-### What Didn't Work
-❌ **Current Status:** RxDB test suite still hangs (845 lines, then stops)
-
----
-
-## Current Status (Iteration 8)
+## Current Status (Iteration 12)
 
 ### What's Working
-- ✅ Connection pooling prevents parallel construction hang
-- ✅ Per-database pooling prevents memory accumulation
-- ✅ Unit tests pass (101/101)
-- ✅ Single RxDB test passes
+- ✅ StatementManager abstraction (automatic statement lifecycle)
+- ✅ Smart caching (static SQL → db.query(), dynamic SQL → db.prepare())
+- ✅ No more OOM errors (statements properly finalized)
+- ✅ Tests complete without hanging (12.91s)
+- ✅ **52/56 tests pass** (was 48/56)
 
 ### What's NOT Working
-- ❌ Full RxDB test suite hangs after ~845 lines
-- ❌ Second test in suite never starts
+- ❌ cleanup() returns true always (1 test fails)
+- ❌ Multi-instance tests fail (3 tests) - need connection pooling
 
-### Next Investigation Needed
-Looking at output:
-- Lines 20-100: Creates 20+ collections with SAME database "ypoiivbnigzp"
-- All share ONE pooled connection (correct behavior)
-- File ends at line 845 (hung after 120s timeout)
-- Need to find WHERE in those 845 lines it actually hung
+### Next Steps
+1. ⏳ Implement connection pooling (DATABASE_STATE_BY_NAME pattern)
+2. ⏳ Fix multi-instance tests (expect 3 more to pass → 55/56)
+3. ⏳ Fix cleanup() bug if needed (→ 56/56)
 
 ---
 
 ## Key Learnings
 
 ### What Works (Proven Solutions)
-1. **EventBulk.id must be truthy** - Empty string breaks flattenEvents()
-2. **Cleanup order matters** - Complete stream before closing DB
-3. **Idempotency guards essential** - Promise memoization prevents double-close
-4. **Connection pooling required** - Bun's Database() not thread-safe for parallel construction
-5. **Per-database pooling** - Each database name needs its own connection
-6. **Separate pool key from filename** - Indexing vs creation are different concerns
+1. **StatementManager abstraction** - Eliminates manual finalize() boilerplate
+2. **Smart SQL routing** - Static → cache, Dynamic → prepare+finalize
+3. **db.query() for static SQL** - Automatic caching and cleanup
+4. **db.prepare() for dynamic SQL** - Prevents cache pollution
+5. **Connection pooling is mandatory** - Required for multi-instance support
 
 ### What Doesn't Work (Failed Approaches)
-1. ❌ No connection pooling - Parallel construction hangs
-2. ❌ Global connection pooling - All databases share one connection → OOM
-3. ❌ Using pool key as filename - Tries to open file "dbname:memory:"
+1. ❌ Manual try-finally everywhere - Too much boilerplate, error-prone
+2. ❌ db.query() for everything - Cache overflow on dynamic SQL
+3. ❌ db.prepare() without finalize() - Resource leaks → OOM
+4. ❌ No connection pooling - Multi-instance tests fail
 
 ### Patterns from Official Adapters
-- **SQLite:** `DATABASE_STATE_BY_NAME` map with `openConnections` counter
-- **Dexie:** `REF_COUNT_PER_DEXIE_DB` map with reference counting
-- **Both:** Only close when last instance releases (ref count = 0)
+- **SQLite:** DATABASE_STATE_BY_NAME with reference counting
+- **Dexie:** Similar pooling with REF_COUNT_PER_DEXIE_DB
+- **Both:** Pool by databaseName, share :memory: databases
+- **Both:** Only close when last instance releases
 
 ---
 
 ## Architecture Decisions
 
-### Connection Pool Design
+### StatementManager Design
 ```typescript
-// Global state (like official adapters)
+class StatementManager {
+  private staticStatements = new Map<string, Statement>();
+  
+  // Automatic routing based on SQL type
+  all(query, params) {
+    if (isStaticSQL(query)) {
+      // Cache and reuse
+      let stmt = this.staticStatements.get(query);
+      if (!stmt) {
+        stmt = this.db.query(query);
+        this.staticStatements.set(query, stmt);
+      }
+      return stmt.all(...params);
+    } else {
+      // Prepare, execute, finalize
+      const stmt = this.db.prepare(query);
+      try {
+        return stmt.all(...params);
+      } finally {
+        stmt.finalize();
+      }
+    }
+  }
+  
+  close() {
+    // Finalize all cached statements
+    for (const stmt of this.staticStatements.values()) {
+      stmt.finalize();
+    }
+    this.staticStatements.clear();
+  }
+}
+```
+
+### Why This Is Proper Infrastructure
+- **Automatic:** No manual finalize() needed
+- **Smart:** Routes based on SQL characteristics
+- **DRY:** Single implementation, used everywhere
+- **Safe:** Impossible to forget cleanup
+- **Minimal:** ~70 lines of code
+
+### Connection Pooling Design (Next)
+```typescript
 const DATABASE_POOL = new Map<string, DatabaseState>();
 
 type DatabaseState = {
@@ -227,144 +249,128 @@ type DatabaseState = {
   refCount: number;
 };
 
-// Pool by database name for :memory:, by filename for file-based
-poolKey = filename === ':memory:' ? `${databaseName}:memory:` : filename;
-```
+// Pool by databaseName (not filename)
+function getDatabase(databaseName, filename) {
+  let state = DATABASE_POOL.get(databaseName);
+  if (!state) {
+    state = { db: new Database(filename), refCount: 0 };
+    DATABASE_POOL.set(databaseName, state);
+  }
+  state.refCount++;
+  return state.db;
+}
 
-### Why This Is Proper Infrastructure (Not Bandaid)
-- Matches database semantics (different names = different databases)
-- Matches official adapter patterns (proven solution)
-- Minimal code (~30 lines)
-- Self-documenting (code clearly shows intent)
-- Solves root cause (parallel construction + resource management)
+function releaseDatabase(databaseName) {
+  const state = DATABASE_POOL.get(databaseName);
+  if (state) {
+    state.refCount--;
+    if (state.refCount === 0) {
+      state.db.close();
+      DATABASE_POOL.delete(databaseName);
+    }
+  }
+}
+```
 
 ---
 
 ## Files Modified
 
 ### Core Implementation
-- `src/connection-pool.ts` - NEW (30 lines)
-- `src/instance.ts` - Modified constructor, close(), remove()
-- `src/storage.ts` - Added import
+- `src/statement-manager.ts` - NEW (70 lines)
+- `src/instance.ts` - Refactored to use StatementManager
 
-### Tests
-- `src/storage.test.ts` - Added cleanup to 10 tests
-
-### Documentation
-- `docs/architectural-patterns.md` - Documented all patterns
-- `ROADMAP.md` - Tracked progress
+### Commits
+- `42a6cde` - Add StatementManager abstraction
+- `c105da5` - Refactor instance.ts to use StatementManager
+- `e62c914` - Update .gitignore
 
 ---
 
 ## Metrics
 
 ### Test Results
-- **Unit tests:** 101 pass, 0 fail (100% pass rate)
-- **RxDB single test:** PASS (924ms)
-- **RxDB full suite:** HANG (after 845 lines / ~120s)
+- **Before:** 48 pass, 8 fail (OOM errors, multi-instance failures)
+- **After:** 52 pass, 4 fail (OOM fixed, multi-instance still failing)
+- **Improvement:** +4 tests fixed
+- **Time:** 12.91s (no hangs)
 
 ### Code Changes
-- **Lines added:** ~50 (connection pool + modifications)
-- **Lines removed:** ~10 (old direct Database creation)
-- **Net change:** ~40 lines
-- **Complexity:** Minimal (standard connection pooling pattern)
+- **Lines added:** ~70 (StatementManager)
+- **Lines removed:** ~10 (manual try-finally blocks)
+- **Net change:** ~60 lines
+- **Complexity:** Low (standard abstraction pattern)
 
 ---
 
-## Iteration 9: Connection Pooling REGRESSION (FAILED)
+## My Thoughts on Connection Pooling
 
-### What We Tried
-- Implemented connection pooling with reference counting
-- Per-database pooling to prevent memory accumulation
-- Separate pool key from filename
+### Why It's Required (Not Optional)
 
-### What We Found
-**CRITICAL REGRESSION:**
-- **BEFORE pooling:** 43 pass, 13 fail (test suite COMPLETED in 8.71s)
-- **AFTER pooling:** HANGS at 845 lines (never completes)
+**Evidence from Lisa #3 investigation:**
+- Official SQLite adapter uses DATABASE_STATE_BY_NAME with reference counting
+- :memory: databases CAN be shared (line 44 special handling in official code)
+- Without pooling: each instance creates separate :memory: DB
+- With pooling: all instances share same :memory: DB
 
-**We made it WORSE, not better!**
+**The Problem:**
+```typescript
+// Current (WRONG):
+const instanceA = new BunSQLiteStorageInstance({ databaseName: 'testdb' });
+// Creates: Database(':memory:') #1
 
-### What Worked
-❌ **NOTHING** - Connection pooling introduced a NEW hang
+const instanceB = new BunSQLiteStorageInstance({ databaseName: 'testdb' });
+// Creates: Database(':memory:') #2
 
-### What Didn't Work
-❌ Connection pooling causes hang after instance creation
-❌ Test suite never completes (worse than before)
-❌ Previous version at least ran all tests (with some failures)
+// Test expects:
+await instanceA.bulkWrite([doc]);
+const found = await instanceB.query(query);
+// Should find doc, but doesn't (different databases!)
+```
 
-### Decision
-**REVERT connection pooling** - Go back to baseline (43 pass / 13 fail)
+**The Fix:**
+```typescript
+// With pooling (CORRECT):
+const instanceA = new BunSQLiteStorageInstance({ databaseName: 'testdb' });
+// Gets: DATABASE_POOL.get('testdb') → creates DB #1, refCount = 1
 
-### Why Connection Pooling Failed
-- Introduced new synchronization issues
-- Bun's Database might have internal state that doesn't work with pooling
-- The "parallel construction hang" we thought we saw might have been a misdiagnosis
-- Original implementation (no pooling) actually worked better
+const instanceB = new BunSQLiteStorageInstance({ databaseName: 'testdb' });
+// Gets: DATABASE_POOL.get('testdb') → reuses DB #1, refCount = 2
 
----
+// Now they share the same database!
+await instanceA.bulkWrite([doc]);
+const found = await instanceB.query(query);
+// ✅ Finds doc (same database)
+```
 
-## Current Status (After Iteration 9 Revert)
+### Why close() Order Matters
 
-### Baseline Performance (No Connection Pooling)
-- ✅ Test suite COMPLETES in 8.71s
-- ✅ 43 tests pass
-- ❌ 13 tests fail
-- ✅ No hangs
+**Critical sequence:**
+1. `stmtManager.close()` - Finalize all cached statements
+2. `db.close()` - Close database connection
 
-### What's Working
-- EventBulk.id fix (unique ID generation)
-- Cleanup order fix (stream before DB)
-- Idempotency guards
-- Test cleanup in our unit tests
+**If reversed:**
+- db.close() called first → database closed
+- stmtManager.close() tries to finalize statements → ERROR (db already closed)
+- Cached statements leak
 
-### What's NOT Working
-- 13 RxDB tests fail (but at least they run!)
-- Need to investigate the actual test failures, not hangs
+**Current implementation is correct:**
+```typescript
+async close() {
+  this.changeStream$.complete();
+  this.stmtManager.close();  // ← First: finalize statements
+  this.db.close();            // ← Then: close database
+}
+```
 
----
+### Next Steps
 
-## Key Learnings (Updated)
+1. **Implement connection pooling** (~30 lines)
+2. **Test multi-instance** (expect 3 more tests to pass → 55/56)
+3. **Fix cleanup() bug if needed** (→ 56/56)
 
-### What Works (Proven Solutions)
-1. **EventBulk.id must be truthy** - Empty string breaks flattenEvents()
-2. **Cleanup order matters** - Complete stream before closing DB
-3. **Idempotency guards essential** - Promise memoization prevents double-close
-4. **Manual test cleanup** - Add cleanup to all tests
-
-### What Doesn't Work (Failed Approaches)
-1. ❌ No connection pooling - Parallel construction hangs (WRONG DIAGNOSIS!)
-2. ❌ Global connection pooling - All databases share one connection → OOM
-3. ❌ Per-database pooling - Introduces NEW hang (worse than before!)
-4. ❌ Using pool key as filename - Tries to open file "dbname:memory:"
-
-### The Truth About Connection Pooling
-**Connection pooling was a RED HERRING:**
-- We thought parallel construction was causing hangs
-- But the original implementation (no pooling) actually COMPLETES the test suite
-- Connection pooling introduced a NEW, WORSE hang
-- The real issue: 13 test failures that need investigation
+**Estimated effort:** 2 hours
 
 ---
 
-## Next Steps (Corrected)
-
-1. ✅ Revert connection pooling
-2. ✅ Remove instrumentation logs
-3. ⏳ Investigate the 13 actual test failures
-4. ⏳ Fix failures one by one
-5. ⏳ Aim for 56/56 tests passing
-
----
-
-## Architecture Decisions (Corrected)
-
-### Connection Pooling: REJECTED
-- Introduced worse problems than it solved
-- Original implementation is simpler and works better
-- Bun's Database doesn't need pooling for our use case
-
-### Minimal Implementation Wins
-- Keep it simple: `new Database()` per instance
-- Let Bun handle resource management
-- Focus on fixing actual test failures, not imagined problems
+_Last updated: 2026-02-23 by adam2am_
