@@ -302,6 +302,62 @@ function translateIn(field: string, values: unknown[]): SqlFragment {
 
 ---
 
+## 11. SQL vs Mingo Hybrid Strategy
+
+**Rule:** Use SQL for simple operators, Mingo fallback for complex operators.
+
+**Why:**
+- SQL excels at simple predicates (=, >, <, IN, IS NULL)
+- Mingo excels at complex logic ($elemMatch, $type, nested arrays)
+- Right tool for the right job
+- Future-proof for indexes
+
+**Benchmark Results** (`benchmarks/sql-vs-mingo-benchmark.ts`):
+```
+100k documents:
+- SQL operators ($exists, $regex, $gt, $in): 250.67ms avg
+- Mingo fallback ($elemMatch): 250.36ms
+- Ratio: 1.00x (identical performance without indexes)
+
+Conclusion: Similar performance at 100k docs, but SQL will benefit 
+from indexes in future. Use SQL for simple, Mingo for complex.
+```
+
+**Decision Matrix:**
+
+| Operator | Implementation | Reasoning |
+|----------|---------------|-----------|
+| $eq, $ne, $gt, $gte, $lt, $lte | SQL | Trivial (1 line), benefits from indexes |
+| $in, $nin | SQL | Native IN operator |
+| $exists | SQL | IS NULL is instant |
+| $regex (simple) | SQL | LIKE for simple patterns |
+| $regex (complex) | Mingo | Full regex support |
+| $and, $or, $not, $nor | SQL | Logical operators are SQL's strength |
+| $elemMatch | Mingo | json_each() is complex, Mingo is simple |
+| $type | Mingo | SQLite has no typeof |
+| $size | SQL | json_array_length() is simple |
+| $mod | SQL | Native % operator |
+
+**Implementation Pattern:**
+```typescript
+export function translateOperator(field: string, value: any): SqlFragment | null {
+  // Return SqlFragment for SQL translation
+  // Return null to trigger Mingo fallback
+  
+  if (isSimpleCase) {
+    return { sql: `${field} = ?`, args: [value] };
+  }
+  
+  return null; // Complex case → Mingo
+}
+```
+
+**Key Insight:** Don't benchmark SQL vs Mingo. Ask: "Is this query simple enough for SQL?" If yes, use SQL (1-5 lines). If no, use Mingo (return null).
+
+**History:** v0.3.0 benchmarked at scale, decided on hybrid approach based on operator complexity, not performance.
+
+---
+
 ## Quick Reference
 
 | Pattern | Version | Key Benefit |
@@ -316,6 +372,7 @@ function translateIn(field: string, values: unknown[]): SqlFragment {
 | Recursive builder | v0.3.0 | Nested queries |
 | NULL handling | v0.3.0 | Correctness |
 | Minimal code | All | Maintainability |
+| SQL vs Mingo hybrid | v0.3.0 | Right tool for job |
 
 ---
 
