@@ -14,25 +14,30 @@ import type {
 	PreparedQuery,
 	RxJsonSchema,
 	MangoQuerySelector,
-	MangoQuerySortPart
+	MangoQuerySortPart,
+	RxStorageDefaultCheckpoint
 } from 'rxdb';
 import type { BunSQLiteStorageSettings, BunSQLiteInternals } from './types';
 import { buildWhereClause } from './query/builder';
+import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from './rxdb-helpers';
 
 export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<RxDocType, BunSQLiteInternals, BunSQLiteStorageSettings> {
 	private db: Database;
-	private changeStream$ = new Subject<EventBulk<RxStorageChangeEvent<RxDocType>, unknown>>();
+	private changeStream$ = new Subject<EventBulk<RxStorageChangeEvent<RxDocumentData<RxDocType>>, RxStorageDefaultCheckpoint>>();
 	public readonly databaseName: string;
 	public readonly collectionName: string;
 	public readonly schema: Readonly<RxJsonSchema<RxDocumentData<RxDocType>>>;
 	public readonly internals: Readonly<BunSQLiteInternals>;
 	public readonly options: Readonly<BunSQLiteStorageSettings>;
 	private primaryPath: string;
+	public closed?: Promise<void>;
 
 	constructor(
 		params: RxStorageInstanceCreationParams<RxDocType, BunSQLiteStorageSettings>,
 		settings: BunSQLiteStorageSettings = {}
 	) {
+		ensureRxStorageInstanceParamsAreCorrect(params);
+		
 		this.databaseName = params.databaseName;
 		this.collectionName = params.collectionName;
 		this.schema = params.schema;
@@ -79,37 +84,47 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		documentWrites: BulkWriteRow<RxDocType>[],
 		context: string
 	): Promise<RxStorageBulkWriteResponse<RxDocType>> {
-		const error: RxStorageWriteError<RxDocType>[] = [];
+		if (documentWrites.length === 0) {
+			return { error: [] };
+		}
 
-		for (const write of documentWrites) {
+		const ids = documentWrites.map(w => (w.document as RxDocumentData<RxDocType>)[this.primaryPath as keyof RxDocumentData<RxDocType>] as string);
+		const docsInDb = await this.findDocumentsById(ids, true);
+		const docsInDbMap = new Map(docsInDb.map(d => [d[this.primaryPath as keyof RxDocumentData<RxDocType>] as string, d]));
+
+		const categorized = categorizeBulkWriteRows(
+			this,
+			this.primaryPath as any,
+			docsInDbMap,
+			documentWrites,
+			context
+		);
+
+		const insertStmt = this.db.prepare(`
+			INSERT INTO "${this.collectionName}" (id, data, deleted, rev, mtime_ms)
+			VALUES (?, jsonb(?), ?, ?, ?)
+		`);
+
+		const updateStmt = this.db.prepare(`
+			UPDATE "${this.collectionName}"
+			SET data = jsonb(?), deleted = ?, rev = ?, mtime_ms = ?
+			WHERE id = ?
+		`);
+
+		for (const row of categorized.bulkInsertDocs) {
+			const doc = row.document;
+			const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
 			try {
-				const doc = write.document as RxDocumentData<RxDocType>;
-				const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
-				const deleted = doc._deleted ? 1 : 0;
-				const rev = doc._rev;
-				const mtime_ms = doc._meta?.lwt || Date.now();
-				const data = JSON.stringify(doc);
-
-				const stmt = this.db.prepare(`
-					INSERT INTO "${this.collectionName}" (id, data, deleted, rev, mtime_ms)
-					VALUES (?, jsonb(?), ?, ?, ?)
-				`);
-
-				stmt.run(id, data, deleted, rev, mtime_ms);
+				insertStmt.run(id, JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt);
 			} catch (err: any) {
-				if (err.message?.includes('UNIQUE constraint failed')) {
-					const doc = write.document as RxDocumentData<RxDocType>;
-					const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
-
-					const existing = this.db.prepare(`SELECT json(data) as data FROM "${this.collectionName}" WHERE id = ?`).get(id) as { data: string };
-					const documentInDb = JSON.parse(existing.data) as RxDocumentData<RxDocType>;
-
-					error.push({
+				if (err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+					const documentInDb = docsInDbMap.get(id);
+					categorized.errors.push({
+						isError: true,
 						status: 409,
 						documentId: id,
-						writeRow: write,
-						documentInDb,
-						isError: true
+						writeRow: row,
+						documentInDb: documentInDb || doc
 					});
 				} else {
 					throw err;
@@ -117,31 +132,27 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			}
 		}
 
-		const success = documentWrites
-			.filter(w => !error.find(e => e.documentId === (w.document as RxDocumentData<RxDocType>)[this.primaryPath as keyof RxDocumentData<RxDocType>]))
-			.map(w => ({
-				...w.document as RxDocumentData<RxDocType>
-			}));
+		for (const row of categorized.bulkUpdateDocs) {
+			const doc = row.document;
+			const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
+			updateStmt.run(JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt, id);
+		}
 
-		const lastDoc = success[success.length - 1];
-		const checkpoint = lastDoc ? {
-			id: lastDoc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string,
-			lwt: (lastDoc._meta as { lwt: number }).lwt
-		} : null;
+		const failedDocIds = new Set(categorized.errors.map(e => e.documentId));
+		categorized.eventBulk.events = categorized.eventBulk.events.filter(
+			event => !failedDocIds.has(event.documentId)
+		);
 
-		this.changeStream$.next({
-			checkpoint,
-			context,
-			events: success.map(doc => ({
-				documentId: doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string,
-				documentData: doc,
-				operation: 'INSERT' as const,
-				previousDocumentData: undefined
-			})),
-			id: ''
-		});
+		if (categorized.eventBulk.events.length > 0 && categorized.newestRow) {
+			const lastState = categorized.newestRow.document;
+			categorized.eventBulk.checkpoint = {
+				id: lastState[this.primaryPath as keyof typeof lastState] as string,
+				lwt: lastState._meta.lwt
+			};
+			this.changeStream$.next(categorized.eventBulk);
+		}
 
-		return { error };
+		return { error: categorized.errors };
 	}
 
 	async findDocumentsById(ids: string[], withDeleted: boolean): Promise<RxDocumentData<RxDocType>[]> {
@@ -168,7 +179,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 			const sql = `
 				SELECT json(data) as data FROM "${this.collectionName}"
-				WHERE deleted = 0 AND (${whereClause})
+				WHERE (${whereClause})
 				ORDER BY id
 			`;
 
@@ -189,7 +200,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 			return { documents };
 		} catch (err) {
-			const allStmt = this.db.prepare(`SELECT json(data) as data FROM "${this.collectionName}" WHERE deleted = 0`);
+			const allStmt = this.db.prepare(`SELECT json(data) as data FROM "${this.collectionName}"`);
 			const rows = allStmt.all() as Array<{ data: string }>;
 			let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 
@@ -257,7 +268,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		};
 	}
 
-	changeStream(): Observable<EventBulk<RxStorageChangeEvent<RxDocType>, unknown>> {
+	changeStream(): Observable<EventBulk<RxStorageChangeEvent<RxDocumentData<RxDocType>>, RxStorageDefaultCheckpoint>> {
 		return this.changeStream$.asObservable();
 	}
 
@@ -271,16 +282,43 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	}
 
 	async close(): Promise<void> {
-		this.db.close();
-		this.changeStream$.complete();
+		if (this.closed) return this.closed;
+		this.closed = (async () => {
+			this.changeStream$.complete();
+			this.db.close();
+		})();
+		return this.closed;
 	}
 
 	async remove(): Promise<void> {
-		this.db.run(`DROP TABLE IF EXISTS "${this.collectionName}"`);
-		await this.close();
+		if (this.closed) throw new Error('already closed');
+		try {
+			this.db.run(`DROP TABLE IF EXISTS "${this.collectionName}"`);
+		} catch {}
+		return this.close();
 	}
 
 	async getAttachmentData(documentId: string, attachmentId: string, digest: string): Promise<string> {
 		throw new Error('Attachments not yet implemented');
+	}
+
+	async getChangedDocumentsSince(limit: number, checkpoint?: { id: string; lwt: number }) {
+		const checkpointLwt = checkpoint?.lwt ?? 0;
+		const checkpointId = checkpoint?.id ?? '';
+
+		const sql = `
+			SELECT json(data) as data FROM "${this.collectionName}"
+			WHERE (mtime_ms > ? OR (mtime_ms = ? AND id > ?))
+			ORDER BY mtime_ms ASC, id ASC
+			LIMIT ?
+		`;
+
+		const rows = this.db.prepare(sql).all(checkpointLwt, checkpointLwt, checkpointId, limit) as Array<{ data: string }>;
+		const documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
+
+		const lastDoc = documents[documents.length - 1];
+		const newCheckpoint = lastDoc ? { id: (lastDoc as any)[this.primaryPath] as string, lwt: lastDoc._meta.lwt } : checkpoint ?? null;
+
+		return { documents, checkpoint: newCheckpoint };
 	}
 }
