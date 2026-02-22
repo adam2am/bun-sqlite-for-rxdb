@@ -1,15 +1,21 @@
 {
   "name": "bun-sqlite-for-rxdb",
-  "version": "0.1.0",
-  "description": "RxDB storage adapter for Bun's native SQLite (bun:sqlite)",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "type": "module",
-  "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target bun",
-    "test": "bun test src/",
-    "typecheck": "tsc --noEmit"
+  "version": "0.2.0",
+  "author": "adam2am",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/adam2am/bun-sqlite-for-rxdb.git"
   },
+  "main": "dist/index.js",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "rxdb": "^16.21.1",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "rxdb": "^16.0.0 || ^17.0.0-beta"
+  },
+  "description": "RxDB storage adapter for Bun's native SQLite (bun:sqlite)",
   "keywords": [
     "rxdb",
     "sqlite",
@@ -20,18 +26,12 @@
     "database",
     "reactive"
   ],
-  "author": "adam2am",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/adam2am/bun-sqlite-for-rxdb.git"
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "test": "bun test src/",
+    "typecheck": "tsc --noEmit"
   },
-  "peerDependencies": {
-    "rxdb": "^16.0.0 || ^17.0.0-beta"
-  },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "rxdb": "^16.21.1",
-    "typescript": "^5.0.0"
-  }
+  "type": "module",
+  "types": "dist/index.d.ts"
 }

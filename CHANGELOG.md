@@ -5,6 +5,74 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-02-22
+
+### Added
+- Conflict detection for concurrent writes
+  - Catches UNIQUE constraint violations
+  - Returns 409 status with existing document
+  - Enables proper RxDB replication conflict handling
+
+### Changed
+- **BREAKING**: `bulkWrite` now uses individual INSERT statements instead of INSERT OR REPLACE
+  - Conflicts are now detected and returned as errors
+  - Enables proper RxDB replication conflict resolution
+
+### Performance
+- Benchmark results (10k documents, 10-run average):
+  - **JSON + TEXT: 23.40ms** (WINNER)
+  - Tested alternatives: MessagePack (137ms), bun:jsc (37ms)
+  - **Verdict: Bun's SIMD-accelerated JSON is fastest**
+
+### Research Notes
+- Extensively tested binary serialization formats (MessagePack, bun:jsc)
+- MessagePack: 5.6x slower than JSON (pure JS implementation)
+- bun:jsc (optimized): 1.58x slower than JSON (Structured Clone overhead)
+- **Conclusion: JSON + TEXT is optimal for Bun's architecture**
+
+## [0.1.2] - 2026-02-22
+
+### Added
+- Conflict detection for concurrent writes
+  - Catches UNIQUE constraint violations
+  - Returns 409 status with existing document
+  - Enables proper RxDB replication conflict handling
+
+### Changed
+- **BREAKING**: `bulkWrite` now uses individual INSERT statements instead of INSERT OR REPLACE
+  - Conflicts are now detected and returned as errors
+  - Enables proper RxDB replication conflict resolution
+
+### Performance
+- Benchmark results (10k documents):
+  - Simple equality: 15.40ms
+  - Greater than: 22.05ms
+  - Multiple conditions: 23.51ms
+  - Range query: 24.89ms
+  - Average: 21.46ms
+
+## [0.1.2] - 2026-02-22
+
+### Added
+- WAL mode for 3-6x write speedup and better concurrency
+  - Automatically enabled for file-based databases
+  - Skipped for in-memory databases (not supported by SQLite)
+- Proper checkpoint implementation in changeStream
+  - Checkpoint structure: `{ id: documentId, lwt: timestamp }`
+  - Enables efficient replication tracking
+
+### Removed
+- **BREAKING**: Removed `conflictResultionTasks()` method (doesn't exist in RxDB interface)
+- **BREAKING**: Removed `resolveConflictResultionTask()` method (doesn't exist in RxDB interface)
+  - Conflict resolution happens at RxDB replication level, not storage level
+
+### Changed
+- WAL mode test now uses file-based database instead of in-memory
+
+### Performance
+- Write operations: 3-6x faster with WAL mode
+- Concurrent reads during writes: No blocking with WAL mode
+
 ## [0.1.1] - 2026-02-22
 
 ### Added

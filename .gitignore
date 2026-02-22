@@ -3,3 +3,8 @@ dist/
 *.log
 .DS_Store
 .ignoreFolder
+*.db
+*.db-wal
+*.db-shm
+benchmark.db*
+test-wal.db*

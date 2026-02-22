@@ -1,4 +1,5 @@
 import { Database } from 'bun:sqlite';
+import { Subject, Observable } from 'rxjs';
 import type {
 	RxStorageInstance,
 	RxStorageInstanceCreationParams,
@@ -9,13 +10,12 @@ import type {
 	RxStorageCountResult,
 	EventBulk,
 	RxStorageChangeEvent,
-	RxJsonSchema,
-	PreparedQuery,
 	RxStorageWriteError,
+	PreparedQuery,
+	RxJsonSchema,
 	MangoQuerySelector,
 	MangoQuerySortPart
 } from 'rxdb';
-import { Subject, Observable } from 'rxjs';
 import type { BunSQLiteStorageSettings, BunSQLiteInternals } from './types';
 import { buildWhereClause } from './query/builder';
 
@@ -47,10 +47,15 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			primaryPath: this.primaryPath
 		};
 
-		this.initTable();
+		this.initTable(filename);
 	}
 
-	private initTable() {
+	private initTable(filename: string) {
+		if (filename !== ':memory:') {
+			this.db.exec("PRAGMA journal_mode = WAL");
+			this.db.exec("PRAGMA synchronous = NORMAL");
+		}
+		
 		const tableName = this.collectionName;
 		this.db.run(`
 			CREATE TABLE IF NOT EXISTS "${tableName}" (
@@ -72,8 +77,8 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	): Promise<RxStorageBulkWriteResponse<RxDocType>> {
 		const error: RxStorageWriteError<RxDocType>[] = [];
 
-		const transaction = this.db.transaction((writes: BulkWriteRow<RxDocType>[]) => {
-			for (const write of writes) {
+		for (const write of documentWrites) {
+			try {
 				const doc = write.document as RxDocumentData<RxDocType>;
 				const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
 				const deleted = doc._deleted ? 1 : 0;
@@ -82,15 +87,31 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 				const data = JSON.stringify(doc);
 
 				const stmt = this.db.prepare(`
-					INSERT OR REPLACE INTO "${this.collectionName}" (id, data, deleted, rev, mtime_ms)
+					INSERT INTO "${this.collectionName}" (id, data, deleted, rev, mtime_ms)
 					VALUES (?, ?, ?, ?, ?)
 				`);
 				
 				stmt.run(id, data, deleted, rev, mtime_ms);
+			} catch (err: any) {
+				if (err.message?.includes('UNIQUE constraint failed')) {
+					const doc = write.document as RxDocumentData<RxDocType>;
+					const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
+					
+					const existing = this.db.prepare(`SELECT data FROM "${this.collectionName}" WHERE id = ?`).get(id) as { data: string };
+					const documentInDb = JSON.parse(existing.data) as RxDocumentData<RxDocType>;
+					
+					error.push({
+						status: 409,
+						documentId: id,
+						writeRow: write,
+						documentInDb,
+						isError: true
+					});
+				} else {
+					throw err;
+				}
 			}
-		});
-
-		transaction(documentWrites);
+		}
 
 		const success = documentWrites
 			.filter(w => !error.find(e => e.documentId === (w.document as RxDocumentData<RxDocType>)[this.primaryPath as keyof RxDocumentData<RxDocType>]))
@@ -98,8 +119,14 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 				...w.document as RxDocumentData<RxDocType>
 			}));
 
+		const lastDoc = success[success.length - 1];
+		const checkpoint = lastDoc ? {
+			id: lastDoc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string,
+			lwt: (lastDoc._meta as { lwt: number }).lwt
+		} : null;
+
 		this.changeStream$.next({
-			checkpoint: null,
+			checkpoint,
 			context,
 			events: success.map(doc => ({
 				documentId: doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string,
@@ -242,13 +269,6 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	async remove(): Promise<void> {
 		this.db.run(`DROP TABLE IF EXISTS "${this.collectionName}"`);
 		await this.close();
-	}
-
-	conflictResultionTasks(): Observable<never> {
-		return new Observable();
-	}
-
-	async resolveConflictResultionTask(taskSolution: unknown): Promise<void> {
 	}
 
 	async getAttachmentData(documentId: string, attachmentId: string, digest: string): Promise<string> {
