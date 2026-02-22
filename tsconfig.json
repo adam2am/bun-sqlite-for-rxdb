@@ -3,7 +3,9 @@
     "target": "ESNext",
     "module": "ESNext",
     "lib": [
-      "ESNext"
+      "ESNext",
+      "ES2021",
+      "ES2021.WeakRef"
     ],
     "moduleResolution": "bundler",
     "types": [
