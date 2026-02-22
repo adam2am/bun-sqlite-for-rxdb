@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { getRxStorageBunSQLite } from './storage';
-import type { RxDocumentData } from 'rxdb';
+import type { RxDocumentData, RxStorage, RxStorageInstance, PreparedQuery, EventBulk, RxStorageChangeEvent } from 'rxdb';
+import type { BunSQLiteStorageSettings, BunSQLiteInternals } from './types';
+
+interface TestDocType {
+	id: string;
+	name: string;
+	age: number;
+}
 
 describe('BunSQLiteStorage', () => {
 	it('creates storage instance', async () => {
@@ -9,7 +16,8 @@ describe('BunSQLiteStorage', () => {
 		expect(storage.name).toBe('bun-sqlite');
 		expect(storage.rxdbVersion).toBe('16.21.1');
 		
-		const instance = await storage.createStorageInstance({
+		const instance = await storage.createStorageInstance<TestDocType>({
+			databaseInstanceToken: 'test-token',
 			databaseName: 'testdb',
 			collectionName: 'users',
 			schema: {
@@ -19,9 +27,18 @@ describe('BunSQLiteStorage', () => {
 				properties: {
 					id: { type: 'string', maxLength: 100 },
 					name: { type: 'string' },
-					age: { type: 'number' }
+					age: { type: 'number' },
+					_deleted: { type: 'boolean' },
+					_attachments: { type: 'object' },
+					_rev: { type: 'string' },
+					_meta: { 
+						type: 'object',
+						properties: {
+							lwt: { type: 'number' }
+						}
+					}
 				},
-				required: ['id']
+				required: ['id', '_deleted', '_attachments', '_rev', '_meta']
 			},
 			options: {},
 			multiInstance: false,
@@ -36,12 +53,13 @@ describe('BunSQLiteStorage', () => {
 });
 
 describe('BunSQLiteStorageInstance', () => {
-	let storage: any;
-	let instance: any;
+	let storage: RxStorage<BunSQLiteInternals, BunSQLiteStorageSettings>;
+	let instance: RxStorageInstance<TestDocType, BunSQLiteInternals, BunSQLiteStorageSettings>;
 	
 	beforeEach(async () => {
 		storage = getRxStorageBunSQLite();
-		instance = await storage.createStorageInstance({
+		instance = await storage.createStorageInstance<TestDocType>({
+			databaseInstanceToken: 'test-token',
 			databaseName: 'testdb',
 			collectionName: 'users',
 			schema: {
@@ -51,9 +69,18 @@ describe('BunSQLiteStorageInstance', () => {
 				properties: {
 					id: { type: 'string', maxLength: 100 },
 					name: { type: 'string' },
-					age: { type: 'number' }
+					age: { type: 'number' },
+					_deleted: { type: 'boolean' },
+					_attachments: { type: 'object' },
+					_rev: { type: 'string' },
+					_meta: { 
+						type: 'object',
+						properties: {
+							lwt: { type: 'number' }
+						}
+					}
 				},
-				required: ['id']
+				required: ['id', '_deleted', '_attachments', '_rev', '_meta']
 			},
 			options: {},
 			multiInstance: false,
@@ -62,7 +89,7 @@ describe('BunSQLiteStorageInstance', () => {
 	});
 	
 	it('bulkWrite inserts documents', async () => {
-		const doc: RxDocumentData<any> = {
+		const doc: RxDocumentData<TestDocType> = {
 			id: 'user1',
 			name: 'Alice',
 			age: 30,
@@ -78,7 +105,7 @@ describe('BunSQLiteStorageInstance', () => {
 	});
 	
 	it('findDocumentsById retrieves documents', async () => {
-		const doc: RxDocumentData<any> = {
+		const doc: RxDocumentData<TestDocType> = {
 			id: 'user1',
 			name: 'Alice',
 			age: 30,
@@ -98,20 +125,23 @@ describe('BunSQLiteStorageInstance', () => {
 	});
 	
 	it('query returns all documents', async () => {
-		const docs = [
+		const docs: RxDocumentData<TestDocType>[] = [
 			{ id: 'user1', name: 'Alice', age: 30, _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
 			{ id: 'user2', name: 'Bob', age: 25, _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
 		];
 		
 		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
 		
-		const result = await instance.query({ selector: {}, sort: [], skip: 0 });
+		const result = await instance.query({
+			query: { selector: {}, sort: [], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
 		
 		expect(result.documents).toHaveLength(2);
 	});
 	
 	it('query filters by selector', async () => {
-		const docs = [
+		const docs: RxDocumentData<TestDocType>[] = [
 			{ id: 'user1', name: 'Alice', age: 30, _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
 			{ id: 'user2', name: 'Bob', age: 25, _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
 		];
@@ -119,9 +149,8 @@ describe('BunSQLiteStorageInstance', () => {
 		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
 		
 		const result = await instance.query({ 
-			selector: { age: { $gt: 26 } }, 
-			sort: [], 
-			skip: 0 
+			query: { selector: { age: { $gt: 26 } }, sort: [], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
 		});
 		
 		expect(result.documents).toHaveLength(1);
@@ -129,21 +158,24 @@ describe('BunSQLiteStorageInstance', () => {
 	});
 	
 	it('count returns document count', async () => {
-		const docs = [
+		const docs: RxDocumentData<TestDocType>[] = [
 			{ id: 'user1', name: 'Alice', age: 30, _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
 			{ id: 'user2', name: 'Bob', age: 25, _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
 		];
 		
 		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
 		
-		const result = await instance.count({ selector: {}, sort: [], skip: 0 });
+		const result = await instance.count({
+			query: { selector: {}, sort: [], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
 		
 		expect(result.count).toBe(2);
 		expect(result.mode).toBe('fast');
 	});
 	
 	it('cleanup removes old deleted documents', async () => {
-		const doc: RxDocumentData<any> = {
+		const doc: RxDocumentData<TestDocType> = {
 			id: 'user1',
 			name: 'Alice',
 			age: 30,
@@ -164,12 +196,12 @@ describe('BunSQLiteStorageInstance', () => {
 	});
 	
 	it('changeStream emits events', async () => {
-		const events: any[] = [];
-		const subscription = instance.changeStream().subscribe((event: any) => {
+		const events: EventBulk<RxStorageChangeEvent<TestDocType>, unknown>[] = [];
+		const subscription = instance.changeStream().subscribe((event) => {
 			events.push(event);
 		});
 		
-		const doc: RxDocumentData<any> = {
+		const doc: RxDocumentData<TestDocType> = {
 			id: 'user1',
 			name: 'Alice',
 			age: 30,
