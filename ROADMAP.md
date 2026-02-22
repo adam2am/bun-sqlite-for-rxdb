@@ -145,11 +145,13 @@ status: 409,  // Proper RxDB conflict handling
 
 ## 📊 Phase 3: Validation & Benchmarking (NEXT 🚧)
 
-**Goal:** Prove correctness and measure real-world performance
+**Goal:** Prove correctness with official tests, then measure performance
+
+**Philosophy:** Trust the official test suite. Don't reinvent the wheel.
 
 ### **Phase 3.1: RxDB Official Test Suite (PRIORITY 1)**
 
-**Why first:** Official validation proves our adapter works correctly with RxDB. No point benchmarking broken code.
+**Why:** Official validation proves our adapter works correctly. Period.
 
 **Tasks:**
 1. Implement `RxTestStorage` interface
@@ -158,7 +160,7 @@ status: 409,  // Proper RxDB conflict handling
 4. Fix any failures
 5. Document test results
 
-**Expected outcome:** All RxDB storage tests passing
+**Expected outcome:** All RxDB storage tests passing = proof of correctness
 
 **Effort:** 4-6 hours
 
@@ -166,41 +168,30 @@ status: 409,  // Proper RxDB conflict handling
 
 ---
 
-### **Phase 3.2: Custom Integration Tests (PRIORITY 2)**
+### **Phase 3.2: Performance Benchmarks (PRIORITY 2)**
 
-**Why second:** After official validation, test our specific optimizations (JSONB, smart regex).
+**Why:** After correctness is proven, measure and document performance gains.
 
 **Tasks:**
-1. Write Vitest integration tests (like pe-sqlite reference)
-2. Test JSONB performance with real RxDB queries
-3. Test smart regex optimization with real patterns
-4. Test all 18 operators in RxDB context
-5. Measure query performance at scale (1k, 10k, 100k docs)
+1. Benchmark vs pe-sqlite-for-rxdb (better-sqlite3)
+2. Measure write throughput (docs/sec)
+3. Measure query latency at scale (1k, 10k, 100k docs)
+4. Document performance gains in README
+5. Create performance comparison charts
 
-**Expected outcome:** Proof that our optimizations work in real usage
+**Expected outcome:** Documented proof of performance claims
 
-**Effort:** 4-6 hours
+**Effort:** 4 hours
 
 **Status:** 🚧 TODO
 
 ---
 
-### **Phase 3.3: Performance Benchmarks (PRIORITY 3)**
+### **Phase 3.3: Custom Tests (OPTIONAL - YAGNI)**
 
-**Why last:** After correctness is proven, measure and document performance gains.
+**Why:** Only if users report specific edge cases not covered by official suite.
 
-**Tasks:**
-1. Benchmark vs pe-sqlite-for-rxdb (better-sqlite3)
-2. Measure write throughput (docs/sec)
-3. Measure query latency at scale
-4. Document performance gains in README
-5. Create performance comparison charts
-
-**Expected outcome:** Documented proof of 3-6x speedup claim
-
-**Effort:** 4 hours
-
-**Status:** 🚧 TODO
+**Status:** ❌ SKIPPED (not needed - official suite is comprehensive)
 
 ---
 
