@@ -490,20 +490,307 @@ const whereClause = withDeleted
 
 ## 📋 Phase 4 Execution Plan (Linus Style)
 
-### **Week 1: Bug Fix + Critical Operators**
-1. **Day 1:** Fix `findDocumentsById` bug (TDD)
-2. **Day 2:** Implement $exists operator (TDD)
-3. **Day 3:** Implement $regex operator (TDD)
-4. **Day 4:** Implement $elemMatch operator (TDD)
-5. **Day 5:** Implement $not + $nor operators (TDD)
+### **Week 1: Operators (TDD Approach)**
 
-### **Week 2: Testing + Benchmarking**
-6. **Day 6-7:** Run RxDB test suite, fix failures
-7. **Day 8-9:** Benchmark vs pe-sqlite-for-rxdb
-8. **Day 10:** Documentation + npm publish prep
+---
 
-**Total Effort:** 2 weeks  
-**Status:** Ready to start
+#### **Day 1: $exists Operator**
+
+**SQL Pattern:** `field IS NULL` / `field IS NOT NULL`
+
+**Steps:**
+1. Create `src/query/exists-operator.test.ts`
+   - Test: `{ age: { $exists: true } }` → finds docs with age field
+   - Test: `{ age: { $exists: false } }` → finds docs without age field
+   - Test: Edge case with null values
+   - Test: Nested field `{ "address.city": { $exists: true } }`
+   - **Expected:** All tests FAIL initially
+
+2. Implement `translateExists()` in `src/query/operators.ts`
+   ```typescript
+   export function translateExists(field: string, exists: boolean): SqlFragment {
+     return {
+       sql: exists ? `${field} IS NOT NULL` : `${field} IS NULL`,
+       args: []
+     };
+   }
+   ```
+
+3. Update `buildWhereClause()` in `src/query/builder.ts`
+   - Add case for `$exists` operator
+   - Call `translateExists(field, value)`
+
+4. Run tests: `bun test src/query/exists-operator.test.ts`
+   - **Expected:** All tests PASS
+
+5. Run full suite: `bun test`
+   - **Expected:** 58/58 tests passing (54 + 4 new)
+
+6. Commit: `feat: add $exists operator with SQL translation`
+
+**Effort:** 2 hours  
+**Complexity:** Low (simple IS NULL check)
+
+---
+
+#### **Day 2: $regex Operator**
+
+**SQL Pattern:** `field REGEXP ?` or `field LIKE ?` (fallback)
+
+**Steps:**
+1. Create `src/query/regex-operator.test.ts`
+   - Test: `{ name: { $regex: "^John" } }` → starts with "John"
+   - Test: `{ email: { $regex: "@gmail\\.com$" } }` → ends with "@gmail.com"
+   - Test: Case-insensitive: `{ name: { $regex: "john", $options: "i" } }`
+   - Test: Complex pattern: `{ phone: { $regex: "\\d{3}-\\d{4}" } }`
+   - Test: LIKE fallback for simple patterns
+   - Test: Edge case with special chars
+   - **Expected:** All tests FAIL initially
+
+2. Check SQLite REGEXP support
+   - SQLite doesn't have REGEXP by default
+   - Options: Load extension OR use LIKE for simple patterns OR use Mingo fallback
+
+3. Implement `translateRegex()` in `src/query/operators.ts`
+   ```typescript
+   export function translateRegex(field: string, pattern: string, options?: string): SqlFragment {
+     // Strategy: Use LIKE for simple patterns, Mingo for complex
+     const isSimple = /^[\w\s]+$/.test(pattern);
+     if (isSimple) {
+       const likePattern = pattern.replace(/\^/g, '').replace(/\$/g, '');
+       return { sql: `${field} LIKE ?`, args: [`%${likePattern}%`] };
+     }
+     // Complex regex: return null to trigger Mingo fallback
+     return null;
+   }
+   ```
+
+4. Update `buildWhereClause()` to handle `$regex`
+
+5. Run tests: `bun test src/query/regex-operator.test.ts`
+
+6. Run full suite: `bun test`
+   - **Expected:** 64/64 tests passing (58 + 6 new)
+
+7. Commit: `feat: add $regex operator with LIKE translation and Mingo fallback`
+
+**Effort:** 3 hours  
+**Complexity:** Medium (regex → SQL translation tricky)
+
+---
+
+#### **Day 3: $elemMatch Operator**
+
+**SQL Pattern:** `json_each()` for array queries
+
+**Steps:**
+1. Create `src/query/elemMatch-operator.test.ts`
+   - Test: `{ tags: { $elemMatch: { $eq: "urgent" } } }` → array contains "urgent"
+   - Test: `{ items: { $elemMatch: { price: { $gt: 100 } } } }` → array has item with price > 100
+   - Test: Nested conditions: `{ $elemMatch: { $and: [...] } }`
+   - Test: Multiple criteria in $elemMatch
+   - Test: Edge case: empty array
+   - **Expected:** All tests FAIL initially
+
+2. Research SQLite JSON functions
+   - `json_each(field)` extracts array elements
+   - `json_extract(value, '$.price')` for nested fields
+
+3. Implement `translateElemMatch()` in `src/query/operators.ts`
+   ```typescript
+   export function translateElemMatch(field: string, criteria: any): SqlFragment {
+     // Complex: requires subquery with json_each
+     // For MVP: return null to use Mingo fallback
+     // Future: Implement full SQL translation
+     return null; // Mingo fallback for now
+   }
+   ```
+
+4. Add Mingo fallback in query builder
+   - If `translateElemMatch()` returns null, use Mingo for in-memory filtering
+
+5. Run tests: `bun test src/query/elemMatch-operator.test.ts`
+
+6. Run full suite: `bun test`
+   - **Expected:** 69/69 tests passing (64 + 5 new)
+
+7. Commit: `feat: add $elemMatch operator with Mingo fallback`
+
+**Effort:** 4 hours  
+**Complexity:** High (array queries in SQL are complex)
+
+---
+
+#### **Day 4: $not + $nor Operators**
+
+**SQL Pattern:** `NOT(...)` and `NOT(... OR ...)`
+
+**Steps:**
+1. Create `src/query/not-operators.test.ts`
+   - Test: `{ age: { $not: { $gt: 25 } } }` → age <= 25 OR age IS NULL
+   - Test: `{ $nor: [{ age: { $lt: 18 } }, { age: { $gt: 65 } }] }` → age between 18-65
+   - Test: Nested $not with $and
+   - Test: $nor with multiple conditions
+   - **Expected:** All tests FAIL initially
+
+2. Implement `translateNot()` in `src/query/operators.ts`
+   ```typescript
+   export function translateNot(field: string, criteria: any): SqlFragment {
+     const inner = processSelector(criteria);
+     return {
+       sql: `NOT(${inner.sql})`,
+       args: inner.args
+     };
+   }
+   ```
+
+3. Implement `translateNor()` in `src/query/operators.ts`
+   ```typescript
+   export function translateNor(conditions: any[]): SqlFragment {
+     const fragments = conditions.map(c => processSelector(c));
+     const sql = fragments.map(f => f.sql).join(' OR ');
+     return {
+       sql: `NOT(${sql})`,
+       args: fragments.flatMap(f => f.args)
+     };
+   }
+   ```
+
+4. Update query builder for `$not` and `$nor`
+
+5. Run tests: `bun test src/query/not-operators.test.ts`
+
+6. Run full suite: `bun test`
+   - **Expected:** 73/73 tests passing (69 + 4 new)
+
+7. Commit: `feat: add $not and $nor operators`
+
+**Effort:** 2 hours each (4 hours total)  
+**Complexity:** Medium (negation logic)
+
+---
+
+#### **Day 5: $type + $size + $mod Operators**
+
+**SQL Patterns:** `typeof()`, `json_array_length()`, `field % divisor = remainder`
+
+**Steps:**
+1. Create `src/query/advanced-operators.test.ts`
+   - Test: `{ age: { $type: "number" } }` → field is number
+   - Test: `{ tags: { $size: 3 } }` → array has exactly 3 elements
+   - Test: `{ count: { $mod: [5, 0] } }` → count divisible by 5
+   - Test: Edge cases for each
+   - **Expected:** All tests FAIL initially
+
+2. Implement `translateType()` in `src/query/operators.ts`
+   ```typescript
+   export function translateType(field: string, type: string): SqlFragment {
+     // SQLite doesn't have native typeof
+     // Use Mingo fallback for now
+     return null;
+   }
+   ```
+
+3. Implement `translateSize()` in `src/query/operators.ts`
+   ```typescript
+   export function translateSize(field: string, size: number): SqlFragment {
+     return {
+       sql: `json_array_length(${field}) = ?`,
+       args: [size]
+     };
+   }
+   ```
+
+4. Implement `translateMod()` in `src/query/operators.ts`
+   ```typescript
+   export function translateMod(field: string, [divisor, remainder]: [number, number]): SqlFragment {
+     return {
+       sql: `${field} % ? = ?`,
+       args: [divisor, remainder]
+     };
+   }
+   ```
+
+5. Update query builder for all three operators
+
+6. Run tests: `bun test src/query/advanced-operators.test.ts`
+
+7. Run full suite: `bun test`
+   - **Expected:** 79/79 tests passing (73 + 6 new)
+
+8. Commit: `feat: add $type, $size, and $mod operators`
+
+**Effort:** 2 hours  
+**Complexity:** Low-Medium
+
+---
+
+### **Week 2: Integration + Benchmarking**
+
+#### **Day 6: Install Mingo + Fallback Integration**
+
+**Steps:**
+1. Install Mingo: `bun add mingo`
+2. Create `src/query/mingo-fallback.ts`
+   ```typescript
+   import { Query } from "mingo/query";
+   
+   export function evaluateWithMingo<T>(docs: T[], selector: any): T[] {
+     const query = new Query(selector);
+     return docs.filter(doc => query.test(doc));
+   }
+   ```
+3. Update query builder to use Mingo when SQL translation returns null
+4. Test all operators with Mingo fallback
+5. Commit: `feat: add Mingo fallback for complex queries`
+
+**Effort:** 3 hours
+
+---
+
+#### **Day 7: Benchmark Mingo vs Sift.js**
+
+**Steps:**
+1. Create `benchmarks/evaluator-benchmark.ts`
+2. Test both libraries with 10k docs, 8 query types
+3. Measure: execution time, memory usage
+4. Document results in `docs/evaluator-comparison.md`
+5. Choose winner (likely Mingo based on research)
+6. Commit: `docs: add query evaluator benchmark results`
+
+**Effort:** 2 hours
+
+---
+
+#### **Day 8-9: RxDB Official Test Suite**
+
+**Steps:**
+1. Clone RxDB test suite setup
+2. Run 70+ official tests against our adapter
+3. Fix any failures (TDD approach)
+4. Document compatibility in README
+5. Commit: `test: pass RxDB official test suite`
+
+**Effort:** 8 hours
+
+---
+
+#### **Day 10: Final Benchmark vs pe-sqlite-for-rxdb**
+
+**Steps:**
+1. Create `benchmarks/vs-reference.ts`
+2. Test with 3000 docs, 40 runs (official methodology)
+3. Measure: insert, query, update, delete performance
+4. Document results in README
+5. Target: 3-6x speedup
+6. Commit: `docs: add performance comparison vs reference implementation`
+
+**Effort:** 4 hours
+
+---
+
+**Total Effort:** 2 weeks (10 days)  
+**Status:** Ready to start Day 1
 
 ---
 
