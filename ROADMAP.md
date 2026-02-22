@@ -306,18 +306,204 @@ private queryBuilders = new Map<string, QueryBuilder>();
 
 **Phase 3 (Complete ✅):**
 - ✅ Advanced Query Operators: $in, $nin, $or, $and
-- ✅ 44/44 tests passing
+- ✅ 51/51 tests passing (44 → 51 tests)
 - ✅ NULL handling for array operators
-- ✅ Recursive query builder with logicalDepth
-- ✅ Complex nested queries supported
+- ✅ Recursive query builder with logicalDepth tracking
+- ✅ Complex nested queries (4-level nesting tested)
 - ✅ Benchmarked: 27.39ms average (10k docs)
 - ✅ DRY architecture: Pure functions, no god objects
+- ✅ WAL performance verified: 2.39x speedup (in-memory), 3-6x (file-based)
+- ✅ Nested query tests: 7 comprehensive tests
+- ✅ Architectural patterns documented (10 patterns)
+- ✅ RxDB API alignment verified (partial success pattern)
 
-**Phase 4 (Future):**
-- [ ] RxDB test suite passing
+**Phase 4 (IN PROGRESS 🚧):**
+- [ ] Fix critical `findDocumentsById` bug (withDeleted semantics)
+- [ ] Add missing operators: $exists, $regex, $elemMatch, $not, $nor, $type, $size, $mod
+- [ ] Run RxDB official test suite (70+ tests)
 - [ ] Benchmarks show 3-6x speedup vs pe-sqlite
+- [ ] Optional: Replication methods (conflictResultionTasks, resolveConflictResultionTask)
+- [ ] Optional: Attachments support (getAttachmentData implementation)
 - [ ] Documentation complete
 - [ ] Ready for npm publish
+
+---
+
+## 🔥 Phase 4: Production Readiness (CURRENT)
+
+**Goal:** Fix bugs, complete operator coverage, pass RxDB test suite
+
+### **4.1 Critical Bug Fix (IMMEDIATE)**
+
+**Problem:** `findDocumentsById` has wrong semantics
+```typescript
+// ❌ Current (WRONG):
+findDocumentsById(ids, deleted: boolean)
+// deleted=true → returns ONLY deleted docs
+
+// ✅ Expected (CORRECT):
+findDocumentsById(ids, withDeleted: boolean)
+// withDeleted=true → returns ALL docs (deleted + non-deleted)
+// withDeleted=false → returns ONLY non-deleted docs
+```
+
+**Fix:**
+```typescript
+const whereClause = withDeleted 
+  ? `WHERE id IN (${placeholders})`
+  : `WHERE id IN (${placeholders}) AND deleted = 0`;
+```
+
+**Effort:** 30 minutes (write test, fix, verify)  
+**Status:** Not started
+
+---
+
+### **4.2 Missing Operators (TDD Approach)**
+
+**Research Findings:**
+- Reference implementation: 10 operators (same as ours)
+- RxDB supports: 18 operators total
+- We're missing: 8 operators
+
+**Priority 1 (Critical - High Usage):**
+1. **$exists** — Field existence check (VERY HIGH usage in production)
+   ```typescript
+   { email: { $exists: true } }  // Has email field
+   { deletedAt: { $exists: false } }  // Not deleted
+   ```
+   **SQL:** `field IS NOT NULL` / `field IS NULL`  
+   **Effort:** 2 hours  
+   **Tests:** 4-5 test cases
+
+2. **$regex** — Pattern matching (HIGH usage for search)
+   ```typescript
+   { name: { $regex: '.*foo.*' } }
+   { email: { $regex: '^user@', $options: 'i' } }
+   ```
+   **SQL:** `field REGEXP ?` or `field LIKE ?`  
+   **Effort:** 3 hours (regex → SQL translation)  
+   **Tests:** 6-8 test cases
+
+3. **$elemMatch** — Array element matching (HIGH usage)
+   ```typescript
+   { skills: { $elemMatch: { name: 'JS', level: { $gte: 5 } } } }
+   ```
+   **SQL:** Complex (may need JSON functions)  
+   **Effort:** 4 hours  
+   **Tests:** 5-7 test cases
+
+**Priority 2 (High - Common Patterns):**
+4. **$not** — Negation operator
+   ```typescript
+   { age: { $not: { $lt: 18 } } }  // NOT (age < 18)
+   ```
+   **SQL:** `NOT (condition)`  
+   **Effort:** 2 hours  
+   **Tests:** 4-5 test cases
+
+5. **$nor** — Logical NOR
+   ```typescript
+   { $nor: [{ status: 'archived' }, { deleted: true }] }
+   ```
+   **SQL:** `NOT (cond1 OR cond2)`  
+   **Effort:** 2 hours  
+   **Tests:** 3-4 test cases
+
+**Priority 3 (Medium - Nice to Have):**
+6. **$type** — Type checking
+7. **$size** — Array size matching
+
+**Priority 4 (Low - Rare Use):**
+8. **$mod** — Modulo operations
+
+**Total Effort:** 2-3 days (with TDD)  
+**Status:** Not started
+
+---
+
+### **4.3 RxDB Official Test Suite**
+
+**Goal:** Pass 70+ official RxDB storage tests
+
+**Setup:**
+1. Implement `RxTestStorage` interface
+2. Configure test harness in RxDB repo
+3. Run: `npm run test:performance:custom:node`
+
+**Test Coverage:**
+- Core operations (bulkWrite, query, count, findById)
+- Change streams and events
+- Attachments (if implemented)
+- Multi-instance (if implemented)
+- Query correctness (all operators)
+- Edge cases (umlauts, concurrent writes, etc.)
+
+**Expected Pass Rate:** 100% (for production readiness)
+
+**Effort:** 1 day (setup + fix failures)  
+**Status:** Not started
+
+---
+
+### **4.4 Benchmarking vs pe-sqlite-for-rxdb**
+
+**Goal:** Prove 3-6x speedup claim with rigorous methodology
+
+**Methodology:**
+- Use RxDB's official performance test suite
+- Standard dataset: 3,000 docs, 4 collections
+- 40 runs with statistical stripping (remove top 5%)
+- Measure: insert, query, count, find-by-id
+
+**Key Metrics:**
+```
+| Metric | pe-sqlite | bun-sqlite | Speedup |
+|--------|-----------|------------|---------|
+| Bulk Insert (500) | ~45ms | ~15ms | 3.0x |
+| Bulk Read (3000) | ~120ms | ~20ms | 6.0x |
+| Query with Sort | ~82ms | ~27ms | 3.0x |
+```
+
+**Effort:** 4 hours (setup, run, document)  
+**Status:** Not started
+
+---
+
+### **4.5 Optional Features**
+
+**Replication Methods (OPTIONAL):**
+- `conflictResultionTasks()` — Returns Observable for conflicts
+- `resolveConflictResultionTask()` — Resolves conflicts
+- **Required:** Only if using RxDB replication with conflicts
+- **Effort:** 4-8 hours
+
+**Attachments Support (OPTIONAL):**
+- `getAttachmentData()` — Retrieve base64 attachment data
+- Separate attachments table
+- **Required:** Only if schema uses attachments
+- **Effort:** 4-6 hours
+
+**Status:** Deferred (implement when needed)
+
+---
+
+## 📋 Phase 4 Execution Plan (Linus Style)
+
+### **Week 1: Bug Fix + Critical Operators**
+1. **Day 1:** Fix `findDocumentsById` bug (TDD)
+2. **Day 2:** Implement $exists operator (TDD)
+3. **Day 3:** Implement $regex operator (TDD)
+4. **Day 4:** Implement $elemMatch operator (TDD)
+5. **Day 5:** Implement $not + $nor operators (TDD)
+
+### **Week 2: Testing + Benchmarking**
+6. **Day 6-7:** Run RxDB test suite, fix failures
+7. **Day 8-9:** Benchmark vs pe-sqlite-for-rxdb
+8. **Day 10:** Documentation + npm publish prep
+
+**Total Effort:** 2 weeks  
+**Status:** Ready to start
 
 ---
 

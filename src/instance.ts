@@ -140,16 +140,21 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		return { error };
 	}
 
-	async findDocumentsById(ids: string[], deleted: boolean): Promise<RxDocumentData<RxDocType>[]> {
+	async findDocumentsById(ids: string[], withDeleted: boolean): Promise<RxDocumentData<RxDocType>[]> {
 		if (ids.length === 0) return [];
 
 		const placeholders = ids.map(() => '?').join(',');
+		
+		const whereClause = withDeleted
+			? `WHERE id IN (${placeholders})`
+			: `WHERE id IN (${placeholders}) AND deleted = 0`;
+		
 		const stmt = this.db.prepare(`
 			SELECT data FROM "${this.collectionName}"
-			WHERE id IN (${placeholders}) AND deleted = ?
+			${whereClause}
 		`);
 
-		const rows = stmt.all(...ids, deleted ? 1 : 0) as Array<{ data: string }>;
+		const rows = stmt.all(...ids) as Array<{ data: string }>;
 		return rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 	}
 
