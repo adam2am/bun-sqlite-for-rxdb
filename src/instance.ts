@@ -20,9 +20,11 @@ import type {
 import type { BunSQLiteStorageSettings, BunSQLiteInternals } from './types';
 import { buildWhereClause } from './query/builder';
 import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from './rxdb-helpers';
+import { StatementManager } from './statement-manager';
 
 export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<RxDocType, BunSQLiteInternals, BunSQLiteStorageSettings> {
 	private db: Database;
+	private stmtManager: StatementManager;
 	private changeStream$ = new Subject<EventBulk<RxStorageChangeEvent<RxDocumentData<RxDocType>>, RxStorageDefaultCheckpoint>>();
 	public readonly databaseName: string;
 	public readonly collectionName: string;
@@ -46,6 +48,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 		const filename = settings.filename || ':memory:';
 		this.db = new Database(filename);
+		this.stmtManager = new StatementManager(this.db);
 
 		this.internals = {
 			db: this.db,
@@ -100,22 +103,14 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			context
 		);
 
-		const insertStmt = this.db.prepare(`
-			INSERT INTO "${this.collectionName}" (id, data, deleted, rev, mtime_ms)
-			VALUES (?, jsonb(?), ?, ?, ?)
-		`);
-
-		const updateStmt = this.db.prepare(`
-			UPDATE "${this.collectionName}"
-			SET data = jsonb(?), deleted = ?, rev = ?, mtime_ms = ?
-			WHERE id = ?
-		`);
+		const insertQuery = `INSERT INTO "${this.collectionName}" (id, data, deleted, rev, mtime_ms) VALUES (?, jsonb(?), ?, ?, ?)`;
+		const updateQuery = `UPDATE "${this.collectionName}" SET data = jsonb(?), deleted = ?, rev = ?, mtime_ms = ? WHERE id = ?`;
 
 		for (const row of categorized.bulkInsertDocs) {
 			const doc = row.document;
 			const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
 			try {
-				insertStmt.run(id, JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt);
+				this.stmtManager.run({ query: insertQuery, params: [id, JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt] });
 			} catch (err: any) {
 				if (err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
 					const documentInDb = docsInDbMap.get(id);
@@ -135,7 +130,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		for (const row of categorized.bulkUpdateDocs) {
 			const doc = row.document;
 			const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
-			updateStmt.run(JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt, id);
+			this.stmtManager.run({ query: updateQuery, params: [JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt, id] });
 		}
 
 		const failedDocIds = new Set(categorized.errors.map(e => e.documentId));
@@ -164,12 +159,8 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			? `WHERE id IN (${placeholders})`
 			: `WHERE id IN (${placeholders}) AND deleted = 0`;
 		
-		const stmt = this.db.prepare(`
-			SELECT json(data) as data FROM "${this.collectionName}"
-			${whereClause}
-		`);
-
-		const rows = stmt.all(...ids) as Array<{ data: string }>;
+		const query = `SELECT json(data) as data FROM "${this.collectionName}" ${whereClause}`;
+		const rows = this.stmtManager.all({ query, params: ids }) as Array<{ data: string }>;
 		return rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 	}
 
@@ -183,7 +174,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 				ORDER BY id
 			`;
 
-			const rows = this.db.prepare(sql).all(...args) as Array<{ data: string }>;
+			const rows = this.stmtManager.all({ query: sql, params: args }) as Array<{ data: string }>;
 			let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 
 			if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
@@ -200,8 +191,8 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 			return { documents };
 		} catch (err) {
-			const allStmt = this.db.prepare(`SELECT json(data) as data FROM "${this.collectionName}"`);
-			const rows = allStmt.all() as Array<{ data: string }>;
+			const query = `SELECT json(data) as data FROM "${this.collectionName}"`;
+			const rows = this.stmtManager.all({ query, params: [] }) as Array<{ data: string }>;
 			let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 
 			documents = documents.filter(doc => this.matchesSelector(doc, preparedQuery.query.selector));
@@ -273,18 +264,16 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	}
 
 	async cleanup(minimumDeletedTime: number): Promise<boolean> {
-		const stmt = this.db.prepare(`
-			DELETE FROM "${this.collectionName}"
-			WHERE deleted = 1 AND mtime_ms < ?
-		`);
-		const result = stmt.run(minimumDeletedTime);
-		return result.changes > 0;
+		const query = `DELETE FROM "${this.collectionName}" WHERE deleted = 1 AND mtime_ms < ?`;
+		this.stmtManager.run({ query, params: [minimumDeletedTime] });
+		return true;
 	}
 
 	async close(): Promise<void> {
 		if (this.closed) return this.closed;
 		this.closed = (async () => {
 			this.changeStream$.complete();
+			this.stmtManager.close();
 			this.db.close();
 		})();
 		return this.closed;
@@ -313,7 +302,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			LIMIT ?
 		`;
 
-		const rows = this.db.prepare(sql).all(checkpointLwt, checkpointLwt, checkpointId, limit) as Array<{ data: string }>;
+		const rows = this.stmtManager.all({ query: sql, params: [checkpointLwt, checkpointLwt, checkpointId, limit] }) as Array<{ data: string }>;
 		const documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 
 		const lastDoc = documents[documents.length - 1];
