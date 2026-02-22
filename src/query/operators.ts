@@ -186,3 +186,17 @@ export function translateType(field: string, type: string): SqlFragment | null {
 			return null;
 	}
 }
+
+export function translateSize(field: string, size: number): SqlFragment {
+	return {
+		sql: `json_array_length(${field}) = ?`,
+		args: [size]
+	};
+}
+
+export function translateMod(field: string, [divisor, remainder]: [number, number]): SqlFragment {
+	return {
+		sql: `${field} % ? = ?`,
+		args: [divisor, remainder]
+	};
+}
