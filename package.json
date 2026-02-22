@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target bun",
-    "test": "bun test",
+    "test": "bun test src/",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
