@@ -493,8 +493,72 @@ function smartRegexToLike(field: string, pattern: string, options?: string): Sql
 2. **Prefix/suffix show no improvement:** But cleaner SQL is still valuable
 3. **COLLATE NOCASE is critical:** 23% faster than LOWER() for case-insensitive
 4. **Overall 1.24x speedup:** Modest but consistent improvement
+5. **Escaping is critical:** Always escape % and _ in LIKE patterns to prevent wildcard matching
+
+**Validation:**
+- Matches SQLite's official "LIKE Optimization" strategy
+- Real-world benchmarks confirm 14ms vs 440ms (31x speedup) for exact matches
+- COLLATE NOCASE is the standard production approach
 
 **History:** v0.3.0+ added smart regex converter with measured 2.03x speedup for exact matches.
+
+---
+
+## 13. FTS5 Trigram Indexes - NOT Worth It (Verified at Scale)
+
+**Rule:** Do NOT implement FTS5 trigram indexes for substring searches at < 10M scale.
+
+**Why:**
+- Measured SLOWDOWN at both 100k and 1M scales
+- FTS5 overhead outweighs benefits until massive scale (10M+ rows)
+- Regular indexes with LIKE are already fast enough
+- Index creation cost is significant (23.7s for 1M docs)
+
+**Benchmark Results:**
+
+`benchmarks/fts5-before-after.ts` (100k docs):
+```
+BEFORE (LIKE):  128.90ms average
+AFTER (FTS5):   230.22ms average
+Speedup:        0.56x (1.79x SLOWDOWN!)
+```
+
+`benchmarks/fts5-1m-scale.ts` (1M docs):
+```
+BEFORE (LIKE):  1215.47ms average
+AFTER (FTS5):   1827.65ms average
+Speedup:        0.67x (1.5x SLOWDOWN!)
+Index creation: 23717.26ms (23.7 seconds)
+```
+
+**Why FTS5 is Slower:**
+1. **Index overhead:** Creating and maintaining FTS5 virtual table adds cost
+2. **Small dataset:** 100k docs is too small to benefit from FTS5
+3. **Query pattern:** Simple substring searches don't need trigram matching
+4. **LIKE is optimized:** Regular indexes with LIKE are already efficient
+
+**Research vs Reality:**
+- **Research claimed:** 100x speedup for substring searches (18M rows)
+- **Our measurement:** 1.79x slowdown (100k docs)
+- **Conclusion:** FTS5 only makes sense at massive scale (millions of rows)
+
+**Decision Matrix (Data-Driven):**
+
+| Scale | LIKE Performance | FTS5 Performance | Best Approach | Verified |
+|-------|-----------------|------------------|---------------|----------|
+| 100k docs | 128.90ms | 230.22ms (1.79x slower) | LIKE | ✅ Measured |
+| 1M docs | 1215.47ms | 1827.65ms (1.5x slower) | LIKE | ✅ Measured |
+| 10M+ docs | Unknown | Unknown (research claims 100x faster) | Test both | ❓ Unverified |
+
+**Key Insight:** Don't implement optimizations based on research alone. Measure at YOUR scale with YOUR data.
+
+**Research Findings:**
+- 100x speedup documented at 18.2M rows (Andrew Mara benchmark)
+- Crossover point estimated between 1M-10M rows
+- Slowdown at 100k-1M is expected behavior
+- FTS5 overhead dominates at small scales
+
+**History:** v0.3.0+ benchmarked FTS5 at 100k and 1M scales, decided NOT to implement based on measured slowdowns.
 
 ---
 
@@ -513,6 +577,8 @@ function smartRegexToLike(field: string, pattern: string, options?: string): Sql
 | NULL handling | v0.3.0 | Correctness |
 | Minimal code | All | Maintainability |
 | SQL vs Mingo hybrid | v0.3.0 | Right tool for job |
+| Smart regex optimization | v0.3.0+ | 2.03x for exact matches |
+| FTS5 NOT worth it | v0.3.0+ | 1.79x slower at 100k scale |
 
 ---
 

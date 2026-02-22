@@ -13,9 +13,11 @@ export function smartRegexToLike(field: string, pattern: string, options?: strin
 	
 	if (startsWithAnchor && endsWithAnchor && !/[*+?()[\]{}|]/.test(cleanPattern)) {
 		const exact = cleanPattern.replace(/\\\./g, '.');
-		return caseInsensitive
-			? { sql: `${field} LIKE ? COLLATE NOCASE ESCAPE '\\'`, args: [exact] }
-			: { sql: `${field} = ?`, args: [exact] };
+		if (caseInsensitive) {
+			const escaped = exact.replace(/%/g, '\\%').replace(/_/g, '\\_');
+			return { sql: `${field} LIKE ? COLLATE NOCASE ESCAPE '\\'`, args: [escaped] };
+		}
+		return { sql: `${field} = ?`, args: [exact] };
 	}
 	
 	if (startsWithAnchor) {
