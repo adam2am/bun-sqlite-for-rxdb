@@ -166,3 +166,23 @@ function processOperatorValue(field: string, value: any): SqlFragment {
 	
 	return translateEq(field, value);
 }
+
+export function translateType(field: string, type: string): SqlFragment | null {
+	switch (type) {
+		case 'number':
+			return { 
+				sql: `(typeof(${field}) = 'integer' OR typeof(${field}) = 'real')`, 
+				args: [] 
+			};
+		case 'string':
+			return { sql: `typeof(${field}) = 'text'`, args: [] };
+		case 'null':
+			return { sql: `typeof(${field}) = 'null'`, args: [] };
+		case 'boolean':
+		case 'array':
+		case 'object':
+		case 'date':
+		default:
+			return null;
+	}
+}
