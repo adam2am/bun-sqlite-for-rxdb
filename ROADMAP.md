@@ -145,49 +145,45 @@ status: 409,  // Proper RxDB conflict handling
 
 ---
 
-## 📊 Phase 3: Validation & Benchmarking (COMPLETE ✅)
+## 📊 Phase 3: Validation & Benchmarking (IN PROGRESS 🚧)
 
 **Goal:** Prove correctness with official tests, then measure performance
 
 **Philosophy:** Trust the official test suite. Don't reinvent the wheel.
 
-### **Phase 3.1: RxDB Official Test Suite (COMPLETE ✅)**
+### **Phase 3.1: RxDB Official Test Suite (IN PROGRESS 🚧)**
 
 **Why:** Official validation proves our adapter works correctly. Period.
 
 **What We Did:**
 1. ✅ Ran official test suite: `DEFAULT_STORAGE=custom bun test test_tmp/unit/rx-storage-implementations.test.js`
-2. ✅ Fixed 7 failures using TDD approach:
-   - Plugin validation (UT5/UT6) - Call `ensureRxStorageInstanceParamsAreCorrect`
-   - Remove deleted filtering - Storage returns ALL documents (RxDB filters)
-   - Implement getChangedDocumentsSince - $or pattern for same-timestamp
-   - UNIQUE constraint handling - Catch and convert to 409 errors
-   - changeStream event filtering - Filter out failed operations
-   - EventBulk.id generation - Use timestamp + random (not empty string)
-3. ✅ Researched Bun console.log issue (Bun Issue #22790) - Use console.error instead
-4. ✅ All tests passing (100% pass rate)
-
-**Key Findings:**
-- RxDB's official adapters (Dexie, storage-sqlite) have performance bugs (full table scans)
-- Storage layer should NOT filter deleted documents (RxDB's responsibility)
-- EventBulk.id must be truthy for flattenEvents() to work
-- Bun test has console.log quirks (Issue #22790)
+2. ✅ Fixed statement lifecycle issues:
+   - Switched from db.prepare() to db.query() for static SQL (caching)
+   - Used db.prepare() + finalize() for dynamic SQL (no cache pollution)
+   - Created StatementManager abstraction layer for automatic cleanup
+3. ✅ Researched Bun SQLite statement lifecycle (Librarian investigation)
+4. 🚧 Current status: **52/56 tests pass (4 fail)**
 
 **Test Results:**
 ```
-[TEST] After INSERT bulkWrite, emitted.length: 1
-[TEST] After UPDATE bulkWrite, emitted.length: 2
-[TEST] After DELETE bulkWrite, emitted.length: 3
-[TEST] waitUntil check: flattenEvents(emitted).length = 3
-[TEST] After waitUntil - test passed!
+52 pass
+4 fail
+Ran 56 tests across 1 file. [12.91s]
 
- 1 pass
- 0 fail
+Failures:
+1. cleanup() test - Returns true always (known issue)
+2-4. Multi-instance tests - Need connection pooling (next step)
 ```
 
-**Effort:** 8 hours (TDD + research)
+**Key Findings:**
+- db.query() caches statements (max 20) - good for static SQL
+- db.prepare() requires manual finalize() - good for dynamic SQL
+- StatementManager abstraction eliminates manual try-finally boilerplate
+- Connection pooling is REQUIRED for multi-instance support (not optional)
 
-**Status:** ✅ COMPLETE (2026-02-22)
+**Effort:** 12 hours (investigation + implementation + debugging)
+
+**Status:** 🚧 IN PROGRESS (2026-02-23)
 
 ---
 
@@ -321,11 +317,11 @@ import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from
 2. ✅ Phase 2 complete (Query Builder + WAL + Conflict Detection + JSONB)
    - ⏸️ Phase 2.5 deferred (prepared statement caching - optimize later if needed)
 3. ✅ Phase 4.5 complete (Smart regex optimization + FTS5 investigation)
-4. 🚧 **Phase 3.1: RxDB Official Test Suite (NEXT - 4-6 hours)**
-   - Implement RxTestStorage interface
-   - Run official validation
-   - Fix any failures
-   - **BLOCKER for Phase 4**
+4. 🚧 **Phase 3.1: RxDB Official Test Suite (IN PROGRESS - 52/56 pass)**
+   - ✅ StatementManager abstraction implemented
+   - ✅ Statement lifecycle fixed (no more leaks)
+   - 🚧 Connection pooling needed for multi-instance tests
+   - **Next:** Implement DATABASE_STATE_BY_NAME pooling pattern
 
 ### **Short-term (Next Week):**
 5. Phase 3.2: Performance benchmarks (measure gains)
