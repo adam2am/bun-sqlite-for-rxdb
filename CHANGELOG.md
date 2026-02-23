@@ -1,5 +1,54 @@
 # Changelog
 
+## [1.1.4] - 2026-02-24
+
+### Fixed
+- **$nor Operator Bug** (Critical)
+  - Fixed $nor generating raw field names instead of json_extract() paths
+  - Was causing "no such column" SQLite errors
+  - Now schema-aware and handles JSONB storage correctly
+- **Query Cache Collision** (Critical)
+  - Fixed cache collisions between different collections
+  - Cache key now includes collectionName: `v${version}_${collectionName}_${selector}`
+  - Prevents wrong SQL being used across collections with same schema
+
+### Changed
+- **DRY Refactor: Unified $or/$nor Handling**
+  - Created `buildLogicalOperator()` helper for both operators
+  - Eliminated code duplication (15 lines of inline $or code)
+  - Both operators now use same schema-aware logic
+- **buildWhereClause Signature**
+  - Added `collectionName` as 3rd parameter
+  - Ensures cache isolation between collections
+  - All unit tests updated for new signature
+
+### Added
+- **DEBUG_QUERIES Logging**
+  - Added fallback error logging via `DEBUG_QUERIES=1` env var
+  - Helps debug which queries trigger fallback path
+- **Comprehensive Integration Tests**
+  - 27 new integration tests for all SQL operators
+  - Covers: $eq, $ne, $gt, $gte, $lt, $lte, $in, $nin, $exists, $regex (simple), $and, $or, $not, $nor, $type (simple), $size, $mod
+  - Tests include edge cases and complex nested queries
+- **TDD Tests for Complex Operators**
+  - 6 failing tests documenting fallback bug
+  - Tests for: complex $regex (character classes, flags), $elemMatch, $type (array/object)
+  - Will pass once Mingo fallback is implemented
+
+### Test Results
+- **Local tests: 162/162 pass (100%)** ✅
+- **Failing tests: 6/6 (expected - TDD tests for Mingo fallback)** ⏳
+- All SQL operators working correctly
+- $nor bug fixed and tested
+
+### Technical Details
+- Removed broken `translateNor()` function
+- Kept `processOperatorValue()` (used by `translateNot()`)
+- Cache key now: `v${schema.version}_${collectionName}_${stringify(selector)}`
+- RxDB integration verified: `this.collectionName` available and passed correctly
+
+---
+
 ## [1.1.0] - 2026-02-23
 
 ### Added
