@@ -247,7 +247,7 @@ Total: 232/232 tests pass (100%) 🎉
 
 **Current Status:** Production-ready adapter with 246/246 tests passing (100%)
 
-**Optional Features (for v1.1.0+):**
+**Features needed before 1.0:**
 - Missing operators ($exists, $regex, $elemMatch, $not, $nor, $type, $size, $mod)
 - Attachments (base64 storage)
 - Advanced replication methods (conflictResolutionTasks)
@@ -255,7 +255,7 @@ Total: 232/232 tests pass (100%) 🎉
 - Query plan hints (EXPLAIN QUERY PLAN)
 - Custom indexes (beyond default deleted/mtime_ms)
 
-**Status:** ✅ READY (Phase 3 complete, adapter is production-ready)
+**Status:** ✅ READY (Phase 3 complete, ready for Phase 4 implementation)
 
 ---
 
@@ -352,11 +352,11 @@ import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from
 - Official RxDB: 112/112 ✅
 
 ### **Next Steps:**
-1. **npm publish v1.0.0** - Adapter is production-ready
-2. **Phase 4 (Optional)** - Advanced features for v1.1.0+
+1. **Phase 4 Implementation** - Complete features needed for 1.0
    - Missing operators ($exists, $regex, etc.)
    - Attachments support
    - Advanced replication methods
+2. **npm publish v1.0.0** - After Phase 4 complete
 3. **Community adoption** - Gather feedback, iterate
 
 ---
