@@ -880,3 +880,122 @@ console.error('[TEST] emitted.length:', JSON.stringify(emitted.length));
 
 **Last updated:** Phase 3.1 COMPLETE (2026-02-22)
 
+
+## 17. Connection Pooling for Multi-Instance Support
+
+**[Rule]:** Pool Database objects by `databaseName`, use reference counting for cleanup.
+
+**Why:**
+- Multiple storage instances can share the same database
+- Prevents "database is locked" errors
+- Proper resource cleanup when last instance closes
+- Required for RxDB's multi-instance support
+
+**Implementation:**
+```typescript
+type DatabaseState = {
+  db: Database;
+  filename: string;
+  openConnections: number;
+};
+
+const DATABASE_POOL = new Map<string, DatabaseState>();
+
+export function getDatabase(databaseName: string, filename: string): Database {
+  let state = DATABASE_POOL.get(databaseName);
+  if (!state) {
+    state = { db: new Database(filename), filename, openConnections: 1 };
+    DATABASE_POOL.set(databaseName, state);
+  } else {
+    if (state.filename !== filename) {
+      throw new Error(`Database already opened with different filename`);
+    }
+    state.openConnections++;
+  }
+  return state.db;
+}
+```
+
+**History:** Iteration 13 (2026-02-23) - Added connection pooling. 52/56 → 56/56 tests pass.
+
+---
+
+## 18. Official Multi-Instance Support (RxDB's Implementation)
+
+**[Rule]:** Use RxDB's `addRxStorageMultiInstanceSupport()`, don't implement BroadcastChannel yourself.
+
+**Why:**
+- RxDB provides battle-tested multi-instance coordination
+- Handles BroadcastChannel setup, filtering, and cleanup
+- Filters events by storageName/databaseName/collectionName/version
+- We don't own this implementation - don't test it
+
+**Implementation:**
+```typescript
+import { addRxStorageMultiInstanceSupport } from 'rxdb';
+
+async createStorageInstance(params) {
+  const instance = new BunSQLiteStorageInstance(params);
+  addRxStorageMultiInstanceSupport('bun-sqlite', params, instance);
+  return instance;
+}
+```
+
+**History:** Iteration 14 (2026-02-23) - Switched to RxDB's official implementation. Fixed collection isolation bug. 56/56 official + 120/120 local tests pass.
+
+---
+
+## 19. Composite Primary Key Support
+
+**[Rule]:** Handle both string and object primary keys from RxDB schemas.
+
+**Implementation:**
+```typescript
+const primaryKey = params.schema.primaryKey;
+this.primaryPath = typeof primaryKey === 'string' ? primaryKey : primaryKey.key;
+```
+
+**History:** Iteration 14 (2026-02-23) - Fixed composite primary key handling.
+
+---
+
+## 20. Test at the Right Level
+
+**[Rule]:** Test the interface you expose, not implementation details.
+
+**Decision Matrix:**
+- Multi-instance event propagation → RxDatabase (high-level integration)
+- bulkWrite → changeStream emission → Storage instance (low-level, OUR code)
+- BroadcastChannel cross-instance → DON'T TEST (RxDB's code)
+
+**History:** Iteration 14 (2026-02-23) - Rewrote multi-instance tests to use RxDatabase. Added low-level changeStream tests for OUR code only.
+
+---
+
+## 21. Bun Test Suite Compatibility
+
+**[Rule]:** Run RxDB tests with Mocha through Bun, not native `bun test`.
+
+**Why:**
+- RxDB test suite designed for Mocha
+- Mocha through Bun: 112/112 tests pass (100%)
+- Native bun test: 55/56 tests pass (98.2%)
+
+**Fixes Applied:**
+1. Skip `node:sqlite` import in Bun (early return in sqlite-trial case)
+2. Conditional Bun test globals (only when describe undefined)
+
+**Running Tests:**
+```bash
+# Recommended: Mocha through Bun (100%)
+DEFAULT_STORAGE=custom bun run ./node_modules/mocha/bin/mocha test_tmp/unit/rx-storage-implementations.test.js
+
+# Alternative: Native bun test (98.2%)
+DEFAULT_STORAGE=custom bun test test_tmp/unit/rx-storage-implementations.test.js
+```
+
+**History:** Iteration 14 (2026-02-23) - Added Bun compatibility fixes. 112/112 tests pass with Mocha through Bun.
+
+---
+
+**Last updated:** Iteration 14 (2026-02-23) - Multi-instance support + Bun test compatibility
