@@ -2,6 +2,43 @@
 
 Key design patterns and decisions for `bun-sqlite-for-rxdb` development.
 
+
+## Quick Reference
+
+| Pattern | Version | Key Benefit |
+|---------|---------|-------------|
+| Zero `any` types | v0.1.1 | Type safety |
+| Pure functions | v0.3.0 | Testability |
+| Benchmark-driven | v0.2.0 | Performance |
+| Incremental tests | v0.3.0 | Isolation |
+| WAL mode | v0.1.2 | 3-6x speedup |
+| 409 conflicts | v0.2.0 | Replication |
+| RxDB API alignment | v0.3.0 | Partial success |
+| Recursive builder | v0.3.0 | Nested queries |
+| NULL handling | v0.3.0 | Correctness |
+| Minimal code | All | Maintainability |
+| SQL vs Mingo hybrid | v0.3.0 | Right tool for job |
+| Smart regex optimization | v0.3.0+ | 2.03x for exact matches |
+| FTS5 NOT worth it | v0.3.0+ | 1.79x slower at 100k scale |
+| JSONB storage | v0.3.0+ | 1.57x faster complex queries |
+| Storage layer architecture | v0.3.0+ | Return ALL documents |
+| Bun console.log issue | v0.3.0+ | Use console.error |
+| Connection pooling | v0.3.0+ | Multi-instance support |
+| Official multi-instance | v0.3.0+ | Use RxDB's implementation |
+| Composite primary key | v0.3.0+ | Handle both formats |
+| Test at right level | v0.3.0+ | Interface not implementation |
+| Bun test compatibility | v0.3.0+ | Mocha through Bun |
+| Query builder cache | v0.3.0+ | 5.2-57.9x speedup |
+| Performance timing | v0.3.0+ | hrtime.bigint() |
+| Cache lifecycle | v0.3.0+ | Global with LRU |
+| **Attachments support** | **v1.0.0** | **Separate table + digest validation** |
+| **RxDB helper functions** | **v1.0.0** | **Battle-tested conflict detection** |
+| **bulkWrite refactoring** | **v1.0.0** | **Cleaner architecture** |
+
+---
+
+**Last updated:** v1.0.0 (2026-02-23)
+
 ---
 
 ## 1. Zero `any` Types Policy
@@ -378,9 +415,6 @@ CREATE INDEX idx_users_email ON users(json_extract(data, '$.email'));
 3. **Hybrid is validated:** 1.65x speedup justifies SQL translation effort
 4. **Scale matters:** Gap will widen at 1M+ docs (Mingo loads all into memory)
 
-**Senior Engineer Review (2026-02-22):**
-> "This is one of the cleanest, most pragmatic hybrid strategies I've seen for a Mongo → SQLite translator. You're correctly pushing the high-impact, index-friendly, easy-to-generate stuff to native SQL (where SQLite crushes it), and only falling back to Mingo where it would be painful or incomplete."
-
 **Key Validations:**
 - ✅ $elemMatch → Mingo is correct (json_each() hell for complex cases)
 - ✅ $regex complex → Mingo is correct (bun:sqlite lacks custom functions)
@@ -610,31 +644,6 @@ SELECT * FROM users WHERE json_extract(data, '$.age') > 30;
 
 ---
 
-## Quick Reference
-
-| Pattern | Version | Key Benefit |
-|---------|---------|-------------|
-| Zero `any` types | v0.1.1 | Type safety |
-| Pure functions | v0.3.0 | Testability |
-| Benchmark-driven | v0.2.0 | Performance |
-| Incremental tests | v0.3.0 | Isolation |
-| WAL mode | v0.1.2 | 3-6x speedup |
-| 409 conflicts | v0.2.0 | Replication |
-| RxDB API alignment | v0.3.0 | Partial success |
-| Recursive builder | v0.3.0 | Nested queries |
-| NULL handling | v0.3.0 | Correctness |
-| Minimal code | All | Maintainability |
-| SQL vs Mingo hybrid | v0.3.0 | Right tool for job |
-| Smart regex optimization | v0.3.0+ | 2.03x for exact matches |
-| FTS5 NOT worth it | v0.3.0+ | 1.79x slower at 100k scale |
-| JSONB storage | v0.3.0+ | 1.57x faster complex queries |
-
----
-
-**Last updated:** v0.3.0 (2026-02-22)
-
----
-
 ## 15. Phase 3: RxDB Official Test Suite - Storage Layer Architecture
 
 **[Rule]:** Storage layer returns ALL documents (including deleted). RxDB layer filters them.
@@ -743,7 +752,7 @@ categorized.eventBulk.checkpoint = lastEvent ? {
 } : null;
 ```
 
-**Why This Fix is Proper Infrastructure (Not Bandaid):**
+**Why This Fix is Proper Infrastructure:**
 - Root cause: `categorizeBulkWriteRows` adds events BEFORE DB operations
 - We can't modify RxDB helpers (battle-tested code)
 - Our fix is the adaptation layer between RxDB's assumptions and SQLite's reality
@@ -1151,4 +1160,177 @@ test('Cache is BOUNDED at 500 entries (no exponential growth)', () => {
 
 ---
 
-**Last updated:** Phase 2.5 (2026-02-23) - Query builder caching + performance timing patterns
+## 25. Attachments Support (Phase 4 - v1.0)
+
+**[Rule]:** Store attachments in separate table with composite keys, validate digests on retrieval.
+
+**Why:**
+- Separates attachment data from document data (cleaner schema)
+- Composite key (documentId||attachmentId) enables efficient lookups
+- Digest validation prevents data corruption
+- Matches RxDB's attachment API contract
+
+**Implementation:**
+```typescript
+// Table schema
+CREATE TABLE attachments (
+  id TEXT PRIMARY KEY,      -- documentId||attachmentId
+  data TEXT NOT NULL,       -- base64 attachment data
+  digest TEXT NOT NULL      -- content hash for validation
+);
+
+// Composite key helper
+function attachmentMapKey(documentId: string, attachmentId: string): string {
+  return documentId + '||' + attachmentId;
+}
+
+// Retrieval with digest validation
+async getAttachmentData(documentId: string, attachmentId: string, digest: string): Promise<string> {
+  const key = attachmentMapKey(documentId, attachmentId);
+  const row = this.db.query('SELECT data, digest FROM attachments WHERE id = ?').get(key);
+  
+  if (!row || row.digest !== digest) {
+    throw new Error('attachment does not exist');
+  }
+  
+  return row.data;
+}
+```
+
+**Test Coverage:**
+- 4 comprehensive tests in `src/storage.test.ts`
+- getAttachmentData() returns base64 strings
+- bulkWrite() preserves _attachments metadata
+- Error handling (missing attachment, digest mismatch)
+
+**Official RxDB Tests:**
+- 122/122 passing (includes 5 attachment tests)
+- Full integration validation
+
+**History:** v1.0.0 (2026-02-23) - Attachments support complete with storage-level implementation.
+
+---
+
+## 26. RxDB Helper Functions (Phase 4 - v1.0)
+
+**[Rule]:** Use RxDB's battle-tested helper functions for conflict detection and attachment handling.
+
+**Why:**
+- Used by ALL official adapters (Dexie, MongoDB, SQLite)
+- Handles edge cases we haven't thought of
+- Automatic attachment extraction
+- Proper conflict detection with 409 errors
+
+**Key Functions:**
+
+1. **`categorizeBulkWriteRows()`** - Conflict detection + attachment extraction
+   - Returns: `{ bulkInsertDocs, bulkUpdateDocs, errors, eventBulk, attachmentsAdd/Remove/Update }`
+   - Handles all edge cases (conflicts, attachments, events)
+
+2. **`stripAttachmentsDataFromDocument()`** - Remove .data field, keep metadata
+   - Before storing documents with attachments
+   - Prevents storing large base64 strings in document table
+
+3. **`stripAttachmentsDataFromRow()`** - Strip attachments from bulk write rows
+   - Processing bulkWrite with attachments
+
+4. **`attachmentWriteDataToNormalData()`** - Convert write format to storage format
+   - Transforms RxDB's write format to our storage format
+
+5. **`getAttachmentSize()`** - Calculate size from base64
+   - Used for attachment metadata
+
+**Implementation:**
+```typescript
+// Custom implementations in src/rxdb-helpers.ts (263 lines)
+// Not imported from RxDB - we own these implementations
+export function categorizeBulkWriteRows(...) { ... }
+export function stripAttachmentsDataFromDocument(...) { ... }
+export function stripAttachmentsDataFromRow(...) { ... }
+export function attachmentWriteDataToNormalData(...) { ... }
+export function getAttachmentSize(...) { ... }
+```
+
+**History:** v1.0.0 (2026-02-23) - All 5 helper functions implemented in src/rxdb-helpers.ts.
+
+---
+
+## 27. bulkWrite Refactoring with categorizeBulkWriteRows (Phase 4 - v1.0)
+
+**[Rule]:** Use `categorizeBulkWriteRows()` instead of manual conflict detection.
+
+**Why:**
+- Cleaner architecture (50 lines → 20 lines)
+- Battle-tested logic from official adapters
+- Automatic attachment extraction
+- Proper conflict detection
+- EventBulk generation
+
+**Before (Manual Conflict Detection):**
+```typescript
+async bulkWrite(documentWrites, context) {
+  const errors = [];
+  
+  for (const writeRow of documentWrites) {
+    const docId = writeRow.document[this.primaryPath];
+    const documentInDb = docsInDbMap.get(docId);
+    
+    if (!documentInDb) {
+      // Insert logic
+    } else {
+      // Manual conflict check
+      if (!writeRow.previous || documentInDb._rev !== writeRow.previous._rev) {
+        errors.push({ status: 409, documentId: docId, writeRow, documentInDb });
+        continue;
+      }
+      // Update logic
+    }
+  }
+  
+  return { error: errors };
+}
+```
+
+**After (Using Helper):**
+```typescript
+async bulkWrite(documentWrites, context) {
+  const categorized = categorizeBulkWriteRows(
+    this,
+    this.primaryPath,
+    docsInDbMap,
+    documentWrites,
+    context
+  );
+  
+  // Execute categorized operations
+  for (const row of categorized.bulkInsertDocs) {
+    insertStmt.run(...);
+  }
+  
+  for (const row of categorized.bulkUpdateDocs) {
+    updateStmt.run(...);
+  }
+  
+  // Handle attachments automatically
+  [...categorized.attachmentsAdd, ...categorized.attachmentsUpdate].forEach(att => {
+    insertAttStmt.run(attachmentMapKey(att.documentId, att.attachmentId), att.attachmentData.data, att.digest);
+  });
+  
+  categorized.attachmentsRemove.forEach(att => {
+    deleteAttStmt.run(attachmentMapKey(att.documentId, att.attachmentId));
+  });
+  
+  return { error: categorized.errors };
+}
+```
+
+**Benefits:**
+- ✅ Cleaner code (less manual logic)
+- ✅ Automatic attachment handling
+- ✅ Proper conflict detection
+- ✅ EventBulk generation
+- ✅ Matches official adapter patterns
+
+**History:** v1.0.0 (2026-02-23) - Refactored bulkWrite to use categorizeBulkWriteRows() helper.
+
+---

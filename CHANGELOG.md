@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.0.0] - 2026-02-23
+
+### Added
+- **Attachments Support** (Phase 4)
+  - Storage-level implementation with 4 comprehensive tests
+  - `getAttachmentData()` returns base64 strings with digest validation
+  - Preserves `_attachments` metadata in documents
+  - Attachments table with composite keys (documentId||attachmentId)
+  - 122/122 official RxDB tests passing (includes 5 attachment tests)
+- **RxDB Helper Functions** (Phase 4)
+  - `categorizeBulkWriteRows()` - Battle-tested conflict detection + attachment extraction
+  - `stripAttachmentsDataFromDocument()` - Remove attachment .data field, keep metadata
+  - `stripAttachmentsDataFromRow()` - Strip attachments from bulk write rows
+  - `attachmentWriteDataToNormalData()` - Convert attachment write format to storage format
+  - `getAttachmentSize()` - Calculate attachment size from base64
+
+### Changed
+- **bulkWrite Refactored** - Now uses `categorizeBulkWriteRows()` helper
+  - Cleaner architecture with proper conflict handling
+  - Automatic attachment extraction
+  - Matches official adapter patterns (Dexie, MongoDB, SQLite)
+
+### Test Results
+- **Local tests: 138/138 pass (100%)** ✅
+- **Official RxDB tests: 122/122 pass (100%)** ✅
+- **Total: 260/260 tests pass (100%)** 🎉
+
+### Performance
+- Database operations: 1.06-1.68x faster than better-sqlite3
+- Query builder cache: 5.2-57.9x speedup for cached queries
+- All optimizations from v0.4.0 included
+
+### Documentation
+- Updated ROADMAP.md - Phase 4 marked COMPLETE
+- Removed redundant Phase 4 TDD implementation details
+- All helper functions documented with line numbers
+
+---
+
 ## [0.4.0] - 2026-02-23
 
 ### Added

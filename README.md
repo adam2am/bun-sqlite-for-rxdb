@@ -7,8 +7,9 @@
 ## Features
 
 - ✅ Uses Bun's native SQLite
-- ✅ **246/246 tests passing** (134 local + 112 official RxDB tests)
+- ✅ **260/260 tests passing** (138 local + 122 official RxDB tests)
 - ✅ Full RxDB storage interface implementation
+- ✅ **Attachments support** (base64 storage with digest validation)
 - ✅ **Query builder LRU cache** (5.2-57.9x speedup for repeated queries)
 - ✅ **18 Mango operators** ($eq, $ne, $gt, $gte, $lt, $lte, $in, $nin, $or, $and, $exists, $regex, $elemMatch, $not, $nor, $type, $size, $mod)
 - ✅ **Multi-instance support** with connection pooling

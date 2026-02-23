@@ -239,28 +239,32 @@ Total: 232/232 tests pass (100%) 🎉
 
 ---
 
-## 🔮 Phase 4: v1.0 Release Preparation (IN PROGRESS 🚧)
+## 🔮 Phase 4: v1.0 Release Preparation (COMPLETE ✅)
 
 **Goal:** Ship production-ready v1.0 with attachments support
 
 **Prerequisites:** ✅ Phase 3 complete (246/246 tests passing)
 
-**Current Status:** Production-ready adapter, only missing attachments
+**Current Status:** Production-ready adapter with full attachments support
 
-**v1.0 Blockers (MUST HAVE):**
-1. ✅ **Operators** - DONE in v0.4.0 (18 operators: $eq, $ne, $gt, $gte, $lt, $lte, $in, $nin, $and, $or, $exists, $regex, $elemMatch, $not, $nor, $type, $size, $mod)
-2. 🚧 **Attachments** - Separate table storage with RxDB helpers (4-6 hours)
-3. 🚧 **Refactor bulkWrite** - Use `categorizeBulkWriteRows()` helper (2-3 hours)
+**Research Complete (2026-02-23):**
+- ✅ 4 Lisa agents examined: Dexie, Memory, SQLite/MongoDB official storages
+- ✅ 1 Vivian agent researched: Industry patterns (PostgreSQL, IndexedDB, PouchDB)
+- ✅ Synthesis complete: Minimal correct implementation identified
 
-**v1.0 Nice-to-Have (OPTIONAL):**
-- Query normalization helpers (`normalizeMangoQuery`, `prepareQuery`) for better cache hit rate
+**v1.0 Requirements (ALL COMPLETE):**
+1. ✅ **Operators** - DONE in v0.4.0 (18 operators)
+2. ✅ **Attachments** - DONE (4 tests passing, getAttachmentData implemented)
+3. ✅ **Refactor bulkWrite** - DONE (uses categorizeBulkWriteRows() helper)
 
 **Post-v1.0 (Future Enhancements):**
+- Query normalization helpers (`normalizeMangoQuery`, `prepareQuery`) for better cache hit rate
 - Schema migrations (user_version pragma) - needs design, not storage-level
 - Query plan hints (EXPLAIN QUERY PLAN) - optimization, not critical
 - Custom indexes - advanced feature, defer until requested
+- Attachment deduplication by hash - industry pattern, adds complexity
 
-**Status:** 🚧 IN PROGRESS (Attachments + bulkWrite refactor remaining)
+**Status:** ✅ COMPLETE (2026-02-23)
 
 ---
 
@@ -274,27 +278,27 @@ Total: 232/232 tests pass (100%) 🎉
    - **Purpose:** Battle-tested conflict detection + attachment extraction
    - **Why:** Used by ALL official adapters (Dexie, MongoDB, SQLite)
    - **Returns:** `{ bulkInsertDocs, bulkUpdateDocs, errors, eventBulk, attachmentsAdd/Remove/Update }`
-   - **Status:** 🚧 TODO - Refactor bulkWrite to use this
+   - **Status:** ✅ DONE - Implemented in src/rxdb-helpers.ts (lines 69-251)
 
 2. **`stripAttachmentsDataFromDocument()`** ⭐⭐
    - **Purpose:** Remove attachment .data field, keep metadata
    - **When:** Before storing documents with attachments
-   - **Status:** 🚧 TODO - Attachments implementation
+   - **Status:** ✅ DONE - Implemented in src/rxdb-helpers.ts (lines 50-60)
 
 3. **`stripAttachmentsDataFromRow()`** ⭐⭐
    - **Purpose:** Strip attachments from bulk write rows
    - **When:** Processing bulkWrite with attachments
-   - **Status:** 🚧 TODO - Attachments implementation
+   - **Status:** ✅ DONE - Implemented in src/rxdb-helpers.ts (lines 62-67)
 
 4. **`attachmentWriteDataToNormalData()`** ⭐⭐
    - **Purpose:** Convert attachment write format to storage format
    - **When:** Processing attachment writes
-   - **Status:** 🚧 TODO - Attachments implementation
+   - **Status:** ✅ DONE - Implemented in src/rxdb-helpers.ts (lines 38-48)
 
 5. **`getAttachmentSize()`** ⭐⭐
    - **Purpose:** Calculate attachment size from base64
    - **When:** Attachment metadata
-   - **Status:** 🚧 TODO - Attachments implementation
+   - **Status:** ✅ DONE - Implemented in src/rxdb-helpers.ts (lines 34-36)
 
 **ALREADY USING:**
 - ✅ `ensureRxStorageInstanceParamsAreCorrect()` - Constructor validation
@@ -309,16 +313,8 @@ Total: 232/232 tests pass (100%) 🎉
 - ❌ `flatCloneDocWithMeta()` - RxDB internal
 - ❌ `getWrittenDocumentsFromBulkWriteResponse()` - RxDB internal
 
-**Import Pattern:**
-```typescript
-import {
-  categorizeBulkWriteRows,
-  stripAttachmentsDataFromDocument,
-  stripAttachmentsDataFromRow,
-  attachmentWriteDataToNormalData,
-  getAttachmentSize
-} from 'rxdb/plugins/core';
-```
+**Implementation:**
+All helper functions implemented in `src/rxdb-helpers.ts` (custom implementations, not imported from RxDB)
 
 ---
 
@@ -336,22 +332,22 @@ import {
    - ✅ Phase 3.1: RxDB Official Test Suite (112/112 passing)
    - ✅ Phase 3.2: Performance Benchmarks (1.06-1.68x faster than better-sqlite3)
 
-**Test Results:** 246/246 tests passing (100%)
-- Our tests: 134/134 ✅
-- Official RxDB: 112/112 ✅
+**Test Results:** 260/260 tests passing (100%)
+- Our tests: 138/138 ✅
+- Official RxDB: 122/122 ✅
 
-### **Next Steps (v1.0 Release):**
-1. 🚧 **Implement Attachments** (4-6 hours)
-   - Create attachments table (documentId||attachmentId key)
-   - Implement `getAttachmentData()` method
-   - Use 5 RxDB helpers for attachment handling
-   - Write 5-7 test cases
-2. 🚧 **Refactor bulkWrite** (2-3 hours)
-   - Switch to `categorizeBulkWriteRows()` helper
-   - Cleaner architecture, better conflict handling
+### **v1.0 Release Ready:**
+1. ✅ **Attachments Implemented**
+   - Attachments table with composite keys (documentId||attachmentId)
+   - `getAttachmentData()` method with digest validation
+   - All 5 RxDB helpers implemented
+   - 4 comprehensive test cases
+2. ✅ **bulkWrite Refactored**
+   - Uses `categorizeBulkWriteRows()` helper
+   - Clean architecture with proper conflict handling
    - Automatic attachment extraction
-3. ✅ **Run full test suite** - Verify 246/246 still passing
-4. 📦 **npm publish v1.0.0** - Production-ready release
+3. ✅ **Full test suite passing** - 260/260 tests (100%)
+4. 📦 **Ready for npm publish v1.0.0**
 5. 🎉 **Community adoption** - Gather feedback, iterate
 
 ---
@@ -390,7 +386,8 @@ import {
 - 🚧 Phase 2: Focus on the bottleneck (query builder)
 - ⏳ Phase 3: Measure before claiming victory
 
-> "Don't over-engineer. Build what you need, when you need it."
+> "Don't over-engineer. Build what you need, when you need it.
+>  Bad programmers worry about the code. Good programmers worry about data structures and their relationships first."
 
 **Applied:**
 - ✅ Phase 1: In-memory filtering (simple, works)
@@ -436,143 +433,15 @@ import {
 - ✅ Architectural patterns documented (10 patterns)
 - ✅ RxDB API alignment verified (partial success pattern)
 
-**Phase 4 (v1.0 Preparation - IN PROGRESS 🚧):**
+**Phase 4 (v1.0 Preparation - COMPLETE ✅):**
 - ✅ Operators: DONE in v0.4.0 (18 operators implemented)
-- ✅ RxDB official test suite: DONE (112/112 passing)
+- ✅ RxDB official test suite: DONE (122/122 passing)
 - ✅ Benchmarks: DONE (1.06-1.68x faster than better-sqlite3)
 - ✅ Conflict handling: DONE (409 errors with documentInDb)
-- [ ] Attachments support (getAttachmentData implementation) - 4-6 hours
-- [ ] Refactor bulkWrite to use categorizeBulkWriteRows() - 2-3 hours
-- [ ] Documentation polish
-- [ ] Ready for npm publish v1.0.0
-
----
-
-## 🔥 Phase 4: v1.0 Implementation Plan (CURRENT)
-
-**Goal:** Ship v1.0 with attachments support
-
-**Estimated Effort:** 6-9 hours total
-
----
-
-### **4.1 Attachments Implementation (PRIORITY 1)**
-
-**Goal:** Implement `getAttachmentData()` with separate table storage
-
-**Pattern:** Follow Dexie adapter (battle-tested)
-
-**Steps:**
-
-1. **Create attachments table** (30 min)
-   ```typescript
-   CREATE TABLE IF NOT EXISTS attachments (
-     id TEXT PRIMARY KEY,  -- documentId||attachmentId
-     data TEXT NOT NULL    -- base64 attachment data
-   );
-   ```
-
-2. **Implement getAttachmentData()** (1 hour)
-   ```typescript
-   async getAttachmentData(documentId: string, attachmentId: string): Promise<string> {
-     const key = documentId + '||' + attachmentId;
-     const result = this.db.query('SELECT data FROM attachments WHERE id = ?').get(key);
-     if (!result) throw new Error('Attachment not found');
-     return result.data;
-   }
-   ```
-
-3. **Update bulkWrite for attachments** (2-3 hours)
-   - Use `categorizeBulkWriteRows()` helper
-   - Process `attachmentsAdd`, `attachmentsUpdate`, `attachmentsRemove`
-   - Store attachments in separate table
-
-4. **Write tests** (1-2 hours)
-   - Test: Store attachment with document
-   - Test: Retrieve attachment data
-   - Test: Update attachment
-   - Test: Delete attachment
-   - Test: Multiple attachments per document
-   - Test: Attachment not found error
-   - Test: Large attachment (>1MB base64)
-
-**Effort:** 4-6 hours  
-**Status:** 🚧 TODO
-
----
-
-### **4.2 Refactor bulkWrite (PRIORITY 2)**
-
-**Goal:** Use `categorizeBulkWriteRows()` for cleaner architecture
-
-**Why:**
-- Battle-tested logic from RxDB
-- Automatic conflict detection
-- Automatic attachment extraction
-- Cleaner code (less manual logic)
-
-**Steps:**
-
-1. **Fetch existing documents** (current code)
-   ```typescript
-   const docsInDb = new Map();
-   // ... populate from DB
-   ```
-
-2. **Call categorizeBulkWriteRows()** (new)
-   ```typescript
-   const categorized = categorizeBulkWriteRows(
-     this,
-     this.primaryPath,
-     docsInDb,
-     documentWrites,
-     context
-   );
-   ```
-
-3. **Execute categorized operations** (simplified)
-   ```typescript
-   // Inserts
-   for (const doc of categorized.bulkInsertDocs) {
-     insertStmt.run(...);
-   }
-   
-   // Updates
-   for (const doc of categorized.bulkUpdateDocs) {
-     updateStmt.run(...);
-   }
-   
-   // Attachments
-   for (const att of categorized.attachmentsAdd) {
-     attachmentStmt.run(att.documentId + '||' + att.attachmentId, att.attachmentData.data);
-   }
-   ```
-
-4. **Return errors + eventBulk** (simplified)
-   ```typescript
-   return {
-     error: categorized.errors
-   };
-   ```
-
-**Effort:** 2-3 hours  
-**Status:** 🚧 TODO
-
----
-
-### **4.3 Verification & Release**
-
-**Steps:**
-1. ✅ Run full test suite (246/246 should still pass)
-2. ✅ Run official RxDB tests (112/112 should still pass)
-3. ✅ Update README with attachment support
-4. ✅ Update CHANGELOG for v1.0.0
-5. 📦 npm publish v1.0.0
-
-**Effort:** 1-2 hours  
-**Status:** 🚧 TODO after attachments + refactor complete
-
----
+- ✅ Attachments support (getAttachmentData + 4 tests passing)
+- ✅ Refactor bulkWrite (uses categorizeBulkWriteRows helper)
+- ✅ All 5 RxDB helper functions implemented
+- ✅ Test Results: 260/260 tests passing (138 local + 122 official)
 
 ---
 
@@ -580,26 +449,12 @@ import {
 
 **These are NOT blockers for v1.0. Implement when users request them.**
 
-### **Query Optimization (Nice-to-Have)**
-- `normalizeMangoQuery()` - Better cache hit rate
-- `prepareQuery()` - Query plan hints
-- **Effort:** 2-3 hours
-- **Benefit:** Marginal (cache already 5.2-57.9x faster)
-
-### **Schema Migrations (Complex)**
-- user_version pragma for in-place migrations
-- **Why defer:** Not implemented in RxDB yet, needs design
-- **Effort:** 8-12 hours (design + implementation)
-
-### **Custom Indexes (Advanced)**
-- Beyond default deleted/mtime_ms indexes
-- **Why defer:** Advanced feature, niche use case
+### **Custom Indexes from schema.indexes (Optional)**
+- Implement `CREATE INDEX` based on `schema.indexes` definitions
+- **Why defer:** Not required by RxStorageInstance interface, optional optimization
+- **How Dexie does it:** Uses `dexieDb.version(1).stores()` with schema.indexes
 - **Effort:** 4-6 hours
-
-### **Query Plan Hints (Optimization)**
-- EXPLAIN QUERY PLAN for index selection
-- **Why defer:** Optimization, not critical
-- **Effort:** 2-3 hours
+- **Benefit:** Faster queries on indexed fields (currently only deleted/mtime_ms indexed)
 
 ---
 
@@ -613,552 +468,35 @@ import {
 - **What we have:** 409 error handling (correct approach)
 - **Conflict resolution:** Happens at replication level, NOT storage level
 
-### ✅ Missing Operators
+### ✅ Operators
 - **Status:** DONE in v0.4.0
 - **Implemented:** 18 operators ($eq, $ne, $gt, $gte, $lt, $lte, $in, $nin, $and, $or, $exists, $regex, $elemMatch, $not, $nor, $type, $size, $mod)
 
----
+### ❌ normalizeMangoQuery() / prepareQuery()
+- **Status:** OUT OF SCOPE - RxDB core responsibility
+- **Evidence:** Implemented in `rx-query-helper.ts` (lines 35, 269)
+- **What storage receives:** `PreparedQuery` objects (already normalized with query plans)
+- **Interface comment:** "User provided mango queries will be filled up by RxDB via normalizeMangoQuery()"
+- **Conclusion:** Storage adapters do NOT implement these
 
-## 📋 Phase 4 Execution Plan (v1.0 Release)
+### ❌ user_version pragma for Schema Migrations
+- **Status:** OUT OF SCOPE - RxDB handles migrations at collection level
+- **Evidence:** No storage plugin uses `user_version`, migrations in `plugins/migration-schema/`
+- **How RxDB handles it:** Schema version in `schema.version`, migrations via plugins
+- **Conclusion:** Storage adapters are version-agnostic, only store data for specific schema version
 
-### **Day 1-2: Attachments Implementation**
-
-**SQL Pattern:** `field IS NULL` / `field IS NOT NULL`
-
-**Steps:**
-1. Create `src/query/exists-operator.test.ts`
-   - Test: `{ age: { $exists: true } }` → finds docs with age field
-   - Test: `{ age: { $exists: false } }` → finds docs without age field
-   - Test: Edge case with null values
-   - Test: Nested field `{ "address.city": { $exists: true } }`
-   - **Expected:** All tests FAIL initially
-
-2. Implement `translateExists()` in `src/query/operators.ts`
-   ```typescript
-   export function translateExists(field: string, exists: boolean): SqlFragment {
-     return {
-       sql: exists ? `${field} IS NOT NULL` : `${field} IS NULL`,
-       args: []
-     };
-   }
-   ```
-
-3. Update `buildWhereClause()` in `src/query/builder.ts`
-   - Add case for `$exists` operator
-   - Call `translateExists(field, value)`
-
-4. Run tests: `bun test src/query/exists-operator.test.ts`
-   - **Expected:** All tests PASS
-
-5. Run full suite: `bun test`
-   - **Expected:** 58/58 tests passing (54 + 4 new)
-
-6. Commit: `feat: add $exists operator with SQL translation`
-
-**Effort:** 2 hours  
-**Complexity:** Low (simple IS NULL check)
+### ❌ EXPLAIN QUERY PLAN
+- **Status:** OUT OF SCOPE - RxDB provides query plans
+- **Evidence:** No storage plugin uses EXPLAIN QUERY PLAN
+- **What RxDB provides:** `PreparedQuery.queryPlan` with index hints from `query-planner.ts`
+- **Interface comment:** "queryPlan is a hint... not required to use it"
+- **Conclusion:** Storage adapters receive query plans, don't need to generate them
 
 ---
 
-#### **Day 2: $regex Operator**
+## 🔬 Future Research Topics
 
-**SQL Pattern:** `field REGEXP ?` or `field LIKE ?` (fallback)
-
-**Steps:**
-1. Create `src/query/regex-operator.test.ts`
-   - Test: `{ name: { $regex: "^John" } }` → starts with "John"
-   - Test: `{ email: { $regex: "@gmail\\.com$" } }` → ends with "@gmail.com"
-   - Test: Case-insensitive: `{ name: { $regex: "john", $options: "i" } }`
-   - Test: Complex pattern: `{ phone: { $regex: "\\d{3}-\\d{4}" } }`
-   - Test: LIKE fallback for simple patterns
-   - Test: Edge case with special chars
-   - **Expected:** All tests FAIL initially
-
-2. Check SQLite REGEXP support
-   - SQLite doesn't have REGEXP by default
-   - Options: Load extension OR use LIKE for simple patterns OR use Mingo fallback
-
-3. Implement `translateRegex()` in `src/query/operators.ts`
-   ```typescript
-   export function translateRegex(field: string, pattern: string, options?: string): SqlFragment {
-     // Strategy: Use LIKE for simple patterns, Mingo for complex
-     const isSimple = /^[\w\s]+$/.test(pattern);
-     if (isSimple) {
-       const likePattern = pattern.replace(/\^/g, '').replace(/\$/g, '');
-       return { sql: `${field} LIKE ?`, args: [`%${likePattern}%`] };
-     }
-     // Complex regex: return null to trigger Mingo fallback
-     return null;
-   }
-   ```
-
-4. Update `buildWhereClause()` to handle `$regex`
-
-5. Run tests: `bun test src/query/regex-operator.test.ts`
-
-6. Run full suite: `bun test`
-   - **Expected:** 64/64 tests passing (58 + 6 new)
-
-7. Commit: `feat: add $regex operator with LIKE translation and Mingo fallback`
-
-**Effort:** 3 hours  
-**Complexity:** Medium (regex → SQL translation tricky)
-
----
-
-#### **Day 3: $elemMatch Operator**
-
-**SQL Pattern:** `json_each()` for array queries
-
-**Steps:**
-1. Create `src/query/elemMatch-operator.test.ts`
-   - Test: `{ tags: { $elemMatch: { $eq: "urgent" } } }` → array contains "urgent"
-   - Test: `{ items: { $elemMatch: { price: { $gt: 100 } } } }` → array has item with price > 100
-   - Test: Nested conditions: `{ $elemMatch: { $and: [...] } }`
-   - Test: Multiple criteria in $elemMatch
-   - Test: Edge case: empty array
-   - **Expected:** All tests FAIL initially
-
-2. Research SQLite JSON functions
-   - `json_each(field)` extracts array elements
-   - `json_extract(value, '$.price')` for nested fields
-
-3. Implement `translateElemMatch()` in `src/query/operators.ts`
-   ```typescript
-   export function translateElemMatch(field: string, criteria: any): SqlFragment {
-     // Complex: requires subquery with json_each
-     // For MVP: return null to use Mingo fallback
-     // Future: Implement full SQL translation
-     return null; // Mingo fallback for now
-   }
-   ```
-
-4. Add Mingo fallback in query builder
-   - If `translateElemMatch()` returns null, use Mingo for in-memory filtering
-
-5. Run tests: `bun test src/query/elemMatch-operator.test.ts`
-
-6. Run full suite: `bun test`
-   - **Expected:** 69/69 tests passing (64 + 5 new)
-
-7. Commit: `feat: add $elemMatch operator with Mingo fallback`
-
-**Effort:** 4 hours  
-**Complexity:** High (array queries in SQL are complex)
-
----
-
-#### **Day 4: $not + $nor Operators**
-
-**SQL Pattern:** `NOT(...)` and `NOT(... OR ...)`
-
-**Steps:**
-1. Create `src/query/not-operators.test.ts`
-   - Test: `{ age: { $not: { $gt: 25 } } }` → age <= 25 OR age IS NULL
-   - Test: `{ $nor: [{ age: { $lt: 18 } }, { age: { $gt: 65 } }] }` → age between 18-65
-   - Test: Nested $not with $and
-   - Test: $nor with multiple conditions
-   - **Expected:** All tests FAIL initially
-
-2. Implement `translateNot()` in `src/query/operators.ts`
-   ```typescript
-   export function translateNot(field: string, criteria: any): SqlFragment {
-     const inner = processSelector(criteria);
-     return {
-       sql: `NOT(${inner.sql})`,
-       args: inner.args
-     };
-   }
-   ```
-
-3. Implement `translateNor()` in `src/query/operators.ts`
-   ```typescript
-   export function translateNor(conditions: any[]): SqlFragment {
-     const fragments = conditions.map(c => processSelector(c));
-     const sql = fragments.map(f => f.sql).join(' OR ');
-     return {
-       sql: `NOT(${sql})`,
-       args: fragments.flatMap(f => f.args)
-     };
-   }
-   ```
-
-4. Update query builder for `$not` and `$nor`
-
-5. Run tests: `bun test src/query/not-operators.test.ts`
-
-6. Run full suite: `bun test`
-   - **Expected:** 73/73 tests passing (69 + 4 new)
-
-7. Commit: `feat: add $not and $nor operators`
-
-**Effort:** 2 hours each (4 hours total)  
-**Complexity:** Medium (negation logic)
-
----
-
-#### **Day 5: $type + $size + $mod Operators**
-
-**SQL Patterns:** `typeof()`, `json_array_length()`, `field % divisor = remainder`
-
-**Steps:**
-1. Create `src/query/advanced-operators.test.ts`
-   - Test: `{ age: { $type: "number" } }` → field is number
-   - Test: `{ tags: { $size: 3 } }` → array has exactly 3 elements
-   - Test: `{ count: { $mod: [5, 0] } }` → count divisible by 5
-   - Test: Edge cases for each
-   - **Expected:** All tests FAIL initially
-
-2. Implement `translateType()` in `src/query/operators.ts`
-   ```typescript
-   export function translateType(field: string, type: string): SqlFragment {
-     // SQLite doesn't have native typeof
-     // Use Mingo fallback for now
-     return null;
-   }
-   ```
-
-3. Implement `translateSize()` in `src/query/operators.ts`
-   ```typescript
-   export function translateSize(field: string, size: number): SqlFragment {
-     return {
-       sql: `json_array_length(${field}) = ?`,
-       args: [size]
-     };
-   }
-   ```
-
-4. Implement `translateMod()` in `src/query/operators.ts`
-   ```typescript
-   export function translateMod(field: string, [divisor, remainder]: [number, number]): SqlFragment {
-     return {
-       sql: `${field} % ? = ?`,
-       args: [divisor, remainder]
-     };
-   }
-   ```
-
-5. Update query builder for all three operators
-
-6. Run tests: `bun test src/query/advanced-operators.test.ts`
-
-7. Run full suite: `bun test`
-   - **Expected:** 79/79 tests passing (73 + 6 new)
-
-8. Commit: `feat: add $type, $size, and $mod operators`
-
-**Effort:** 2 hours  
-**Complexity:** Low-Medium
-
----
-
-### **Week 2: Integration + Benchmarking**
-
-#### **Day 6: Install Mingo + Fallback Integration**
-
-**Steps:**
-1. Install Mingo: `bun add mingo`
-2. Create `src/query/mingo-fallback.ts`
-   ```typescript
-   import { Query } from "mingo/query";
-   
-   export function evaluateWithMingo<T>(docs: T[], selector: any): T[] {
-     const query = new Query(selector);
-     return docs.filter(doc => query.test(doc));
-   }
-   ```
-3. Update query builder to use Mingo when SQL translation returns null
-4. Test all operators with Mingo fallback
-5. Commit: `feat: add Mingo fallback for complex queries`
-
-**Effort:** 3 hours
-
----
-
-#### **Day 7: Benchmark Mingo vs Sift.js**
-
-**Steps:**
-1. Create `benchmarks/evaluator-benchmark.ts`
-2. Test both libraries with 10k docs, 8 query types
-3. Measure: execution time, memory usage
-4. Document results in `docs/evaluator-comparison.md`
-5. Choose winner (likely Mingo based on research)
-6. Commit: `docs: add query evaluator benchmark results`
-
-**Effort:** 2 hours
-
----
-
-#### **Day 8-9: RxDB Official Test Suite**
-
-**Steps:**
-1. Clone RxDB test suite setup
-2. Run 70+ official tests against our adapter
-3. Fix any failures (TDD approach)
-4. Document compatibility in README
-5. Commit: `test: pass RxDB official test suite`
-
-**Effort:** 8 hours
-
----
-
-#### **Day 10: Final Benchmark vs pe-sqlite-for-rxdb**
-
-**Steps:**
-1. Create `benchmarks/vs-reference.ts`
-2. Test with 3000 docs, 40 runs (official methodology)
-3. Measure: insert, query, update, delete performance
-4. Document results in README
-5. Target: 3-6x speedup
-6. Commit: `docs: add performance comparison vs reference implementation`
-
-**Effort:** 4 hours
-
----
-
-**Total Effort:** 2 weeks (10 days)  
-**Status:** Week 1 COMPLETE ✅ | Week 2 Research Complete ✅
-
----
-
-## 📊 Phase 4.5: Research Findings & Optimizations (2026-02-22)
-
-### **Smart Regex → LIKE Optimization (IMPLEMENTED ✅)**
-
-**Status:** ✅ Implemented, tested, and crew-verified
-
-**Implementation:** `src/query/smart-regex.ts`
-
-**Benchmark Results:**
-```
-100k documents, 10 runs each:
-- Exact match (^gmail.com$):  2.03x speedup (= operator vs LIKE)
-- Prefix (^User 1):           0.99x (no improvement)
-- Suffix (@gmail.com$):       1.00x (no improvement)
-- Case-insensitive:           1.23x speedup (COLLATE NOCASE vs LOWER())
-- Overall average:            1.24x speedup
-```
-
-**Crew Verification (2026-02-22):**
-- ✅ Validated against SQLite's official "LIKE Optimization" strategy
-- ✅ Real-world benchmark: 14ms vs 440ms (31x speedup) on Stack Overflow
-- ✅ COLLATE NOCASE is standard production approach
-- ✅ Found and fixed critical escaping bug (% and _ characters)
-- ✅ Regression test added to prevent future issues
-- ✅ All 91 tests passing
-
-**Key Optimization:**
-```typescript
-// Exact match: ^text$ → field = ? (2.03x faster)
-// Case-insensitive: Use COLLATE NOCASE, not LOWER() (1.23x faster)
-```
-
-**Decision:** ✅ KEEP - Validated optimization with measurable benefits
-
----
-
-### **FTS5 Trigram Indexes Investigation (REJECTED ❌)**
-
-**Status:** ❌ Benchmarked at 100k and 1M scales, decided NOT to implement
-
-**Benchmark Results:**
-
-100k documents (`benchmarks/fts5-before-after.ts`):
-```
-BEFORE (LIKE):  128.90ms average
-AFTER (FTS5):   230.22ms average
-Speedup:        0.56x (1.79x SLOWDOWN!)
-```
-
-1M documents (`benchmarks/fts5-1m-scale.ts`):
-```
-BEFORE (LIKE):  1215.47ms average
-AFTER (FTS5):   1827.65ms average
-Speedup:        0.67x (1.5x SLOWDOWN!)
-Index creation: 23717.26ms (23.7 seconds)
-```
-
-**Crew Verification (2026-02-22):**
-- ✅ Confirmed 100x speedup at 18.2M rows (Andrew Mara benchmark)
-- ✅ Crossover point estimated between 1M-10M rows
-- ✅ Slowdown at 100k-1M is expected behavior
-- ✅ FTS5 overhead dominates at small scales
-
-**Decision:** ❌ REJECT - FTS5 is slower at our scale (< 10M docs). Only beneficial at massive scale.
-
----
-
-### **Research Summary: Hybrid SQL+Mingo Pattern**
-
-**Finding:** The hybrid SQL pre-filter + Mingo post-filter pattern suggested by senior engineer **does NOT exist in production**.
-
-**Evidence:**
-- ❌ RxDB's official SQLite storage: Pure Mingo post-filter (fetches ALL docs, filters in JS)
-- ❌ pe-sqlite-for-rxdb: Pure SQL translation (no Mingo at all)
-- ❌ NO production examples found in GitHub
-- ❌ NO benchmarks proving the hybrid approach works
-
-**Conclusion:** Hybrid pattern is **unproven**. Current pure SQL approach matches production patterns (pe-sqlite-for-rxdb).
-
-**Status:** ❓ **QUESTION MARK** - Ask senior for source of recommendation before implementing.
-
----
-
-### **Research Summary: Smart Regex → LIKE Optimization**
-
-**Finding:** Regex → LIKE conversion is **PROVEN** in production with **100x speedup**.
-
-**Evidence:**
-- ✅ FTS5 trigram benchmark: **1.75s → 14ms (100x speedup)** on 18M rows
-- ✅ Production usage: Dify, Tortoise ORM, ComfyUI all use `escape_like` patterns
-- ✅ Simple patterns (`^prefix`, `suffix$`) can use indexes
-
-**Patterns that CAN be optimized:**
-| Regex | LIKE | Index Usage | Speedup |
-|-------|------|-------------|---------|
-| `^prefix` | `prefix%` | ✅ Yes | High |
-| `suffix$` | `%suffix` | ❌ No | Medium |
-| `^exact$` | `exact` (use `=`) | ✅ Yes | Very High |
-| `.*contains.*` | `%contains%` | ❌ No | Low (use FTS5) |
-
-**Status:** ✅ **VALIDATED** - Implement with benchmarks.
-
----
-
-### **Research Summary: FTS5 Trigram Indexes**
-
-**Finding:** FTS5 trigram indexes provide **100x speedup** for substring searches.
-
-**Evidence:**
-- ✅ Benchmark: 1.75s → 14ms on 18M rows for `LIKE '%google%'`
-- ✅ Index overhead: 1.5GB for 18M rows (acceptable)
-- ✅ Index creation: ~144 seconds (one-time cost)
-
-**Use case:** Substring searches (`%contains%`) that can't use regular indexes.
-
-**Status:** ✅ **VALIDATED** - Implement with benchmarks.
-
----
-
-### **Week 3: Proven Optimizations (NEXT)**
-
-#### **Day 11: Smart Regex → LIKE Converter**
-
-**Goal:** Extend simple regex patterns to use LIKE/GLOB for index usage.
-
-**Steps:**
-1. Create `src/query/smart-regex.ts`
-   ```typescript
-   export function smartRegexToLike(pattern: string, options?: string): SqlFragment | null {
-     const caseInsensitive = options?.includes('i');
-     
-     // Exact match: ^hello$
-     if (pattern.startsWith('^') && pattern.endsWith('$') && !/[.*+?()[\]{}|]/.test(pattern.slice(1, -1))) {
-       const exact = pattern.slice(1, -1).replace(/\\\./g, '.');
-       return caseInsensitive
-         ? { sql: `LOWER(field) = LOWER(?)`, args: [exact] }
-         : { sql: `field = ?`, args: [exact] };
-     }
-     
-     // Prefix: ^hello
-     if (pattern.startsWith('^')) {
-       const prefix = pattern.slice(1).replace(/\\\./g, '.');
-       const escaped = prefix.replace(/%/g, '\\%').replace(/_/g, '\\_');
-       return caseInsensitive
-         ? { sql: `LOWER(field) LIKE LOWER(?) ESCAPE '\\'`, args: [escaped + '%'] }
-         : { sql: `field LIKE ? ESCAPE '\\'`, args: [escaped + '%'] };
-     }
-     
-     // Suffix: hello$
-     if (pattern.endsWith('$')) {
-       const suffix = pattern.slice(0, -1).replace(/\\\./g, '.');
-       const escaped = suffix.replace(/%/g, '\\%').replace(/_/g, '\\_');
-       return caseInsensitive
-         ? { sql: `LOWER(field) LIKE LOWER(?) ESCAPE '\\'`, args: ['%' + escaped] }
-         : { sql: `field LIKE ? ESCAPE '\\'`, args: ['%' + escaped] };
-     }
-     
-     // Contains (simple)
-     if (!/[.*+?()[\]{}|^$]/.test(pattern)) {
-       const escaped = pattern.replace(/%/g, '\\%').replace(/_/g, '\\_');
-       return caseInsensitive
-         ? { sql: `LOWER(field) LIKE LOWER(?) ESCAPE '\\'`, args: ['%' + escaped + '%'] }
-         : { sql: `field LIKE ? ESCAPE '\\'`, args: ['%' + escaped + '%'] };
-     }
-     
-     // Complex pattern → return null for Mingo fallback
-     return null;
-   }
-   ```
-
-2. Update `translateRegex()` to use smart converter
-3. Create `benchmarks/smart-regex-benchmark.ts`
-4. Run benchmark comparing old vs new approach
-5. Document results
-6. Commit: `feat: add smart regex → LIKE converter with benchmarks`
-
-**Expected Results:**
-- Prefix patterns: 2-5x faster (index usage)
-- Exact matches: 10x faster (use `=` instead of LIKE)
-- Complex patterns: No change (Mingo fallback)
-
-**Effort:** 1 hour  
-**Status:** ✅ Validated by research
-
----
-
-#### **Day 12: FTS5 Trigram Indexes**
-
-**Goal:** Add FTS5 trigram indexes for fast substring searches.
-
-**Steps:**
-1. Update `src/instance.ts` to create FTS5 trigram table
-   ```typescript
-   // Create FTS5 trigram index for fast substring searches
-   this.db.run(`
-     CREATE VIRTUAL TABLE IF NOT EXISTS "${tableName}_fts" 
-     USING fts5(
-       id UNINDEXED,
-       data,
-       tokenize='trigram',
-       detail='none'
-     )
-   `);
-   
-   // Populate FTS5 table
-   this.db.run(`
-     INSERT INTO "${tableName}_fts"(id, data)
-     SELECT id, data FROM "${tableName}"
-   `);
-   ```
-
-2. Update query builder to use FTS5 for substring searches
-   ```typescript
-   // For patterns like %contains%
-   if (pattern.includes('%') && !pattern.startsWith('%')) {
-     return {
-       sql: `id IN (SELECT id FROM ${tableName}_fts WHERE data MATCH ?)`,
-       args: [cleanPattern]
-     };
-   }
-   ```
-
-3. Create `benchmarks/fts5-trigram-benchmark.ts`
-4. Run benchmark: LIKE vs FTS5 on 100k docs
-5. Document results
-6. Commit: `feat: add FTS5 trigram indexes for substring searches`
-
-**Expected Results:**
-- Substring searches: 50-100x faster
-- Index overhead: ~1.5x data size
-- One-time index creation cost
-
-**Effort:** 1 hour  
-**Status:** ✅ Validated by research
-
----
-
-#### **Day 13: Hybrid SQL+Mingo Pattern (QUESTION MARK)**
+#### **Hybrid SQL+Mingo Pattern (QUESTION MARK)**
 
 **Goal:** Implement SQL pre-filter + Mingo post-filter IF senior provides evidence.
 
@@ -1191,4 +529,4 @@ This is a community project! Contributions welcome.
 
 **Not affiliated with RxDB or Bun. Community-maintained adapter.**
 
-_Last updated: 2026-02-22 by adam2am_
+_Last updated: 2026-02-23 by adam2am_
