@@ -1,4 +1,4 @@
-import type { Database, Statement } from 'bun:sqlite';
+import type { Database, Statement, Changes } from 'bun:sqlite';
 
 export type QueryWithParams = {
 	query: string;
@@ -33,7 +33,7 @@ export class StatementManager {
 		}
 	}
 
-	run(queryWithParams: QueryWithParams): void {
+	run(queryWithParams: QueryWithParams): Changes {
 		const { query, params } = queryWithParams;
 
 		if (this.isStaticSQL(query)) {
@@ -42,11 +42,11 @@ export class StatementManager {
 				stmt = this.db.query(query);
 				this.staticStatements.set(query, stmt);
 			}
-			stmt.run(...params);
+			return stmt.run(...params);
 		} else {
 			const stmt = this.db.prepare(query);
 			try {
-				stmt.run(...params);
+				return stmt.run(...params);
 			} finally {
 				stmt.finalize();
 			}

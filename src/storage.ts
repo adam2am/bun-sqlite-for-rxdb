@@ -1,4 +1,5 @@
 import type { RxStorage, RxStorageInstanceCreationParams } from 'rxdb';
+import { addRxStorageMultiInstanceSupport } from 'rxdb';
 import type { BunSQLiteStorageSettings, BunSQLiteInternals } from './types';
 import { BunSQLiteStorageInstance } from './instance';
 
@@ -12,7 +13,9 @@ export function getRxStorageBunSQLite(
 		async createStorageInstance<RxDocType>(
 			params: RxStorageInstanceCreationParams<RxDocType, BunSQLiteStorageSettings>
 		) {
-			return new BunSQLiteStorageInstance(params, settings);
+			const instance = new BunSQLiteStorageInstance(params, settings);
+			addRxStorageMultiInstanceSupport('bun-sqlite', params, instance);
+			return instance;
 		}
 	};
 }

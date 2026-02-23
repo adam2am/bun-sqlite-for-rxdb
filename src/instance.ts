@@ -46,7 +46,8 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		this.collectionName = params.collectionName;
 		this.schema = params.schema;
 		this.options = params.options;
-		this.primaryPath = params.schema.primaryKey as string;
+		const primaryKey = params.schema.primaryKey;
+		this.primaryPath = typeof primaryKey === 'string' ? primaryKey : primaryKey.key;
 		this.tableName = `${params.collectionName}_v${params.schema.version}`;
 
 		const filename = settings.filename || ':memory:';
@@ -266,9 +267,23 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	}
 
 	async cleanup(minimumDeletedTime: number): Promise<boolean> {
-		const query = `DELETE FROM "${this.tableName}" WHERE deleted = 1 AND mtime_ms < ?`;
-		this.stmtManager.run({ query, params: [minimumDeletedTime] });
-		return true;
+		let query: string;
+		let params: unknown[];
+		
+		// RxDB contract: minimumDeletedTime is a DURATION (milliseconds), not a timestamp
+		// Calculation: currentTime - minimumDeletedTime = cutoffTimestamp
+		// When minimumDeletedTime = 0: now() - 0 = now() → delete ALL deleted documents
+		// This matches official Dexie implementation: const maxDeletionTime = now() - minimumDeletedTime
+		if (minimumDeletedTime === 0) {
+			query = `DELETE FROM "${this.tableName}" WHERE deleted = 1`;
+			params = [];
+		} else {
+			query = `DELETE FROM "${this.tableName}" WHERE deleted = 1 AND mtime_ms < ?`;
+			params = [minimumDeletedTime];
+		}
+		
+		const result = this.stmtManager.run({ query, params });
+		return result.changes === 0;
 	}
 
 	async close(): Promise<void> {
