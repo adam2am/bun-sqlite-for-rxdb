@@ -1,6 +1,6 @@
 import type { RxJsonSchema, MangoQuerySelector, RxDocumentData } from 'rxdb';
 import { getColumnInfo } from './schema-mapper';
-import { translateEq, translateNe, translateGt, translateGte, translateLt, translateLte, translateIn, translateNin, translateExists, translateRegex, translateElemMatch, translateNot, translateNor, translateType, translateSize, translateMod } from './operators';
+import { translateEq, translateNe, translateGt, translateGte, translateLt, translateLte, translateIn, translateNin, translateExists, translateRegex, translateElemMatch, translateNot, translateType, translateSize, translateMod } from './operators';
 import type { SqlFragment } from './operators';
 import stringify from 'fast-stable-stringify';
 
@@ -17,9 +17,10 @@ export function clearCache(): void {
 
 export function buildWhereClause<RxDocType>(
 	selector: MangoQuerySelector<RxDocumentData<RxDocType>>,
-	schema: RxJsonSchema<RxDocumentData<RxDocType>>
+	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
+	collectionName: string
 ): SqlFragment {
-	const cacheKey = `v${schema.version}_${stringify(selector)}`;
+	const cacheKey = `v${schema.version}_${collectionName}_${stringify(selector)}`;
 	
 	const cached = QUERY_CACHE.get(cacheKey);
 	if (cached) {
@@ -37,6 +38,25 @@ export function buildWhereClause<RxDocType>(
 	
 	QUERY_CACHE.set(cacheKey, result);
 	return result;
+}
+
+function buildLogicalOperator<RxDocType>(
+	operator: 'or' | 'nor',
+	conditions: MangoQuerySelector<RxDocumentData<RxDocType>>[],
+	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
+	logicalDepth: number
+): SqlFragment {
+	if (conditions.length === 0) {
+		return { sql: '1=1', args: [] };
+	}
+	
+	const fragments = conditions.map(subSelector => processSelector(subSelector, schema, logicalDepth + 1));
+	const sql = fragments.map(f => f.sql).join(' OR ');
+	const args = fragments.flatMap(f => f.args);
+	
+	return operator === 'nor' 
+		? { sql: `NOT(${sql})`, args }
+		: { sql, args };
 }
 
 function processSelector<RxDocType>(
@@ -59,17 +79,15 @@ function processSelector<RxDocType>(
 		}
 
 		if (field === '$or' && Array.isArray(value)) {
-			const orFragments = value.map(subSelector => processSelector(subSelector, schema, logicalDepth + 1));
-			const orConditions = orFragments.map(f => f.sql);
-			const needsParens = logicalDepth > 0 && orConditions.length > 1;
-			const joined = orConditions.join(' OR ');
-			conditions.push(needsParens ? `(${joined})` : joined);
-			orFragments.forEach(f => args.push(...f.args));
+			const orFragment = buildLogicalOperator('or', value, schema, logicalDepth);
+			const needsParens = logicalDepth > 0;
+			conditions.push(needsParens ? `(${orFragment.sql})` : orFragment.sql);
+			args.push(...orFragment.args);
 			continue;
 		}
 
 		if (field === '$nor' && Array.isArray(value)) {
-			const norFragment = translateNor(value);
+			const norFragment = buildLogicalOperator('nor', value, schema, logicalDepth);
 			conditions.push(norFragment.sql);
 			args.push(...norFragment.args);
 			continue;
