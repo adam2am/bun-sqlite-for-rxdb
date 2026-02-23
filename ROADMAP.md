@@ -239,96 +239,85 @@ Total: 232/232 tests pass (100%) 🎉
 
 ---
 
-## 🔮 Phase 4: Advanced Features (READY - Phase 3 Complete ✅)
+## 🔮 Phase 4: v1.0 Release Preparation (IN PROGRESS 🚧)
 
-**Goal:** Feature parity with premium RxDB storages
+**Goal:** Ship production-ready v1.0 with attachments support
 
-**Prerequisites:** ✅ Phase 3.1 passed (112/112 official RxDB tests passing)
+**Prerequisites:** ✅ Phase 3 complete (246/246 tests passing)
 
-**Current Status:** Production-ready adapter with 246/246 tests passing (100%)
+**Current Status:** Production-ready adapter, only missing attachments
 
-**Features needed before 1.0:**
-- Missing operators ($exists, $regex, $elemMatch, $not, $nor, $type, $size, $mod)
-- Attachments (base64 storage)
-- Advanced replication methods (conflictResolutionTasks)
-- Schema migrations (user_version pragma)
-- Query plan hints (EXPLAIN QUERY PLAN)
-- Custom indexes (beyond default deleted/mtime_ms)
+**v1.0 Blockers (MUST HAVE):**
+1. ✅ **Operators** - DONE in v0.4.0 (18 operators: $eq, $ne, $gt, $gte, $lt, $lte, $in, $nin, $and, $or, $exists, $regex, $elemMatch, $not, $nor, $type, $size, $mod)
+2. 🚧 **Attachments** - Separate table storage with RxDB helpers (4-6 hours)
+3. 🚧 **Refactor bulkWrite** - Use `categorizeBulkWriteRows()` helper (2-3 hours)
 
-**Status:** ✅ READY (Phase 3 complete, ready for Phase 4 implementation)
+**v1.0 Nice-to-Have (OPTIONAL):**
+- Query normalization helpers (`normalizeMangoQuery`, `prepareQuery`) for better cache hit rate
+
+**Post-v1.0 (Future Enhancements):**
+- Schema migrations (user_version pragma) - needs design, not storage-level
+- Query plan hints (EXPLAIN QUERY PLAN) - optimization, not critical
+- Custom indexes - advanced feature, defer until requested
+
+**Status:** 🚧 IN PROGRESS (Attachments + bulkWrite refactor remaining)
 
 ---
 
-### **RxDB Helper Functions Reference**
+### **RxDB Helper Functions (v1.0 Implementation)**
 
-**Source:** `rxdb/dist/esm/rx-storage-helper.js` (from Vivian's research 2026-02-22)
+**Source:** Research from 6 Lisa agents (2026-02-23)
 
-**Critical Helpers (MUST USE):**
-1. **`categorizeBulkWriteRows`** ⭐
-   - **Purpose:** Categorizes INSERT/UPDATE/DELETE operations with conflict detection
-   - **When:** bulkWrite implementation
-   - **Why:** Battle-tested logic used by ALL official adapters (Dexie, MongoDB, SQLite)
+**MUST USE for v1.0:**
+
+1. **`categorizeBulkWriteRows()`** ⭐⭐⭐
+   - **Purpose:** Battle-tested conflict detection + attachment extraction
+   - **Why:** Used by ALL official adapters (Dexie, MongoDB, SQLite)
    - **Returns:** `{ bulkInsertDocs, bulkUpdateDocs, errors, eventBulk, attachmentsAdd/Remove/Update }`
+   - **Status:** 🚧 TODO - Refactor bulkWrite to use this
 
-2. **`ensureRxStorageInstanceParamsAreCorrect`** ⭐
-   - **Purpose:** Validates storage params, throws UT5/UT6 errors for missing plugins
-   - **When:** Constructor, before initialization
-   - **Why:** Required for keyCompression/encryption plugin validation
+2. **`stripAttachmentsDataFromDocument()`** ⭐⭐
+   - **Purpose:** Remove attachment .data field, keep metadata
+   - **When:** Before storing documents with attachments
+   - **Status:** 🚧 TODO - Attachments implementation
 
-**Attachment Helpers (for Phase 4):**
-3. **`stripAttachmentsDataFromDocument`**
-   - **Purpose:** Remove attachment data from document before storage
-   - **When:** Implementing attachment support
-   
-4. **`attachmentWriteDataToNormalData`**
-   - **Purpose:** Convert attachment write data to normal data format
-   - **When:** Processing attachment writes
-
-5. **`stripAttachmentsDataFromRow`**
+3. **`stripAttachmentsDataFromRow()`** ⭐⭐
    - **Purpose:** Strip attachments from bulk write rows
-   - **When:** bulkWrite with attachments
+   - **When:** Processing bulkWrite with attachments
+   - **Status:** 🚧 TODO - Attachments implementation
 
-6. **`getAttachmentSize`**
-   - **Purpose:** Calculate attachment size
-   - **When:** Attachment storage operations
+4. **`attachmentWriteDataToNormalData()`** ⭐⭐
+   - **Purpose:** Convert attachment write format to storage format
+   - **When:** Processing attachment writes
+   - **Status:** 🚧 TODO - Attachments implementation
 
-**Replication Helpers (for Phase 4):**
-7. **`getChangedDocumentsSince`**
-   - **Purpose:** Get documents changed after checkpoint
-   - **When:** Implementing replication methods
-   
-8. **`stackCheckpoints`**
-   - **Purpose:** Merge multiple checkpoints
-   - **When:** Complex replication scenarios
+5. **`getAttachmentSize()`** ⭐⭐
+   - **Purpose:** Calculate attachment size from base64
+   - **When:** Attachment metadata
+   - **Status:** 🚧 TODO - Attachments implementation
 
-**Utility Helpers (optional):**
-9. **`flatCloneDocWithMeta`**
-   - **Purpose:** Clone document with _meta field
-   - **When:** Document manipulation (alternative to JSON.stringify/parse)
+**ALREADY USING:**
+- ✅ `ensureRxStorageInstanceParamsAreCorrect()` - Constructor validation
 
-10. **`getWrittenDocumentsFromBulkWriteResponse`**
-    - **Purpose:** Extract successful writes from bulkWrite response
-    - **When:** Post-processing bulkWrite results
+**OPTIONAL (Post-v1.0):**
+- `normalizeMangoQuery()` - Query normalization for better cache hit rate
+- `prepareQuery()` - Query plan hints for optimization
 
-11. **`getSingleDocument`**
-    - **Purpose:** Fetch single document by ID
-    - **When:** Wrapper around findDocumentsById for single doc
+**NOT NEEDED (RxDB Internal):**
+- ❌ `getSingleDocument()`, `writeSingle()`, `observeSingle()` - Convenience wrappers
+- ❌ `getWrappedStorageInstance()` - RxDB wraps OUR storage
+- ❌ `flatCloneDocWithMeta()` - RxDB internal
+- ❌ `getWrittenDocumentsFromBulkWriteResponse()` - RxDB internal
 
-12. **`writeSingle`**
-    - **Purpose:** Write single document with error handling
-    - **When:** Wrapper around bulkWrite for single doc
-
-13. **`observeSingle`**
-    - **Purpose:** Observable for single document changes
-    - **When:** Filtered changeStream for single doc
-
-**Import Pattern (TBD):**
+**Import Pattern:**
 ```typescript
-// Pattern from official adapters (Dexie, MongoDB, SQLite):
-import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from '../../rx-storage-helper.ts';
-
-// For external packages (our case):
-// TBD - waiting for Dexie repo analysis
+import {
+  categorizeBulkWriteRows,
+  stripAttachmentsDataFromDocument,
+  stripAttachmentsDataFromRow,
+  attachmentWriteDataToNormalData,
+  getAttachmentSize
+} from 'rxdb/plugins/core';
 ```
 
 ---
@@ -351,13 +340,19 @@ import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from
 - Our tests: 134/134 ✅
 - Official RxDB: 112/112 ✅
 
-### **Next Steps:**
-1. **Phase 4 Implementation** - Complete features needed for 1.0
-   - Missing operators ($exists, $regex, etc.)
-   - Attachments support
-   - Advanced replication methods
-2. **npm publish v1.0.0** - After Phase 4 complete
-3. **Community adoption** - Gather feedback, iterate
+### **Next Steps (v1.0 Release):**
+1. 🚧 **Implement Attachments** (4-6 hours)
+   - Create attachments table (documentId||attachmentId key)
+   - Implement `getAttachmentData()` method
+   - Use 5 RxDB helpers for attachment handling
+   - Write 5-7 test cases
+2. 🚧 **Refactor bulkWrite** (2-3 hours)
+   - Switch to `categorizeBulkWriteRows()` helper
+   - Cleaner architecture, better conflict handling
+   - Automatic attachment extraction
+3. ✅ **Run full test suite** - Verify 246/246 still passing
+4. 📦 **npm publish v1.0.0** - Production-ready release
+5. 🎉 **Community adoption** - Gather feedback, iterate
 
 ---
 
@@ -441,184 +436,192 @@ import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from
 - ✅ Architectural patterns documented (10 patterns)
 - ✅ RxDB API alignment verified (partial success pattern)
 
-**Phase 4 (IN PROGRESS 🚧):**
-- [ ] Fix critical `findDocumentsById` bug (withDeleted semantics)
-- [ ] Add missing operators: $exists, $regex, $elemMatch, $not, $nor, $type, $size, $mod
-- [ ] Run RxDB official test suite (70+ tests)
-- [ ] Benchmarks show 3-6x speedup vs pe-sqlite
-- [ ] Optional: Replication methods (conflictResultionTasks, resolveConflictResultionTask)
-- [ ] Optional: Attachments support (getAttachmentData implementation)
-- [ ] Documentation complete
-- [ ] Ready for npm publish
+**Phase 4 (v1.0 Preparation - IN PROGRESS 🚧):**
+- ✅ Operators: DONE in v0.4.0 (18 operators implemented)
+- ✅ RxDB official test suite: DONE (112/112 passing)
+- ✅ Benchmarks: DONE (1.06-1.68x faster than better-sqlite3)
+- ✅ Conflict handling: DONE (409 errors with documentInDb)
+- [ ] Attachments support (getAttachmentData implementation) - 4-6 hours
+- [ ] Refactor bulkWrite to use categorizeBulkWriteRows() - 2-3 hours
+- [ ] Documentation polish
+- [ ] Ready for npm publish v1.0.0
 
 ---
 
-## 🔥 Phase 4: Production Readiness (CURRENT)
+## 🔥 Phase 4: v1.0 Implementation Plan (CURRENT)
 
-**Goal:** Fix bugs, complete operator coverage, pass RxDB test suite
+**Goal:** Ship v1.0 with attachments support
 
-### **4.1 Critical Bug Fix (IMMEDIATE)**
-
-**Problem:** `findDocumentsById` has wrong semantics
-```typescript
-// ❌ Current (WRONG):
-findDocumentsById(ids, deleted: boolean)
-// deleted=true → returns ONLY deleted docs
-
-// ✅ Expected (CORRECT):
-findDocumentsById(ids, withDeleted: boolean)
-// withDeleted=true → returns ALL docs (deleted + non-deleted)
-// withDeleted=false → returns ONLY non-deleted docs
-```
-
-**Fix:**
-```typescript
-const whereClause = withDeleted 
-  ? `WHERE id IN (${placeholders})`
-  : `WHERE id IN (${placeholders}) AND deleted = 0`;
-```
-
-**Effort:** 30 minutes (write test, fix, verify)  
-**Status:** Not started
+**Estimated Effort:** 6-9 hours total
 
 ---
 
-### **4.2 Missing Operators (TDD Approach)**
+### **4.1 Attachments Implementation (PRIORITY 1)**
 
-**Research Findings:**
-- Reference implementation: 10 operators (same as ours)
-- RxDB supports: 18 operators total
-- We're missing: 8 operators
+**Goal:** Implement `getAttachmentData()` with separate table storage
 
-**Priority 1 (Critical - High Usage):**
-1. **$exists** — Field existence check (VERY HIGH usage in production)
+**Pattern:** Follow Dexie adapter (battle-tested)
+
+**Steps:**
+
+1. **Create attachments table** (30 min)
    ```typescript
-   { email: { $exists: true } }  // Has email field
-   { deletedAt: { $exists: false } }  // Not deleted
+   CREATE TABLE IF NOT EXISTS attachments (
+     id TEXT PRIMARY KEY,  -- documentId||attachmentId
+     data TEXT NOT NULL    -- base64 attachment data
+   );
    ```
-   **SQL:** `field IS NOT NULL` / `field IS NULL`  
-   **Effort:** 2 hours  
-   **Tests:** 4-5 test cases
 
-2. **$regex** — Pattern matching (HIGH usage for search)
+2. **Implement getAttachmentData()** (1 hour)
    ```typescript
-   { name: { $regex: '.*foo.*' } }
-   { email: { $regex: '^user@', $options: 'i' } }
+   async getAttachmentData(documentId: string, attachmentId: string): Promise<string> {
+     const key = documentId + '||' + attachmentId;
+     const result = this.db.query('SELECT data FROM attachments WHERE id = ?').get(key);
+     if (!result) throw new Error('Attachment not found');
+     return result.data;
+   }
    ```
-   **SQL:** `field REGEXP ?` or `field LIKE ?`  
-   **Effort:** 3 hours (regex → SQL translation)  
-   **Tests:** 6-8 test cases
 
-3. **$elemMatch** — Array element matching (HIGH usage)
-   ```typescript
-   { skills: { $elemMatch: { name: 'JS', level: { $gte: 5 } } } }
-   ```
-   **SQL:** Complex (may need JSON functions)  
-   **Effort:** 4 hours  
-   **Tests:** 5-7 test cases
+3. **Update bulkWrite for attachments** (2-3 hours)
+   - Use `categorizeBulkWriteRows()` helper
+   - Process `attachmentsAdd`, `attachmentsUpdate`, `attachmentsRemove`
+   - Store attachments in separate table
 
-**Priority 2 (High - Common Patterns):**
-4. **$not** — Negation operator
-   ```typescript
-   { age: { $not: { $lt: 18 } } }  // NOT (age < 18)
-   ```
-   **SQL:** `NOT (condition)`  
-   **Effort:** 2 hours  
-   **Tests:** 4-5 test cases
+4. **Write tests** (1-2 hours)
+   - Test: Store attachment with document
+   - Test: Retrieve attachment data
+   - Test: Update attachment
+   - Test: Delete attachment
+   - Test: Multiple attachments per document
+   - Test: Attachment not found error
+   - Test: Large attachment (>1MB base64)
 
-5. **$nor** — Logical NOR
-   ```typescript
-   { $nor: [{ status: 'archived' }, { deleted: true }] }
-   ```
-   **SQL:** `NOT (cond1 OR cond2)`  
-   **Effort:** 2 hours  
-   **Tests:** 3-4 test cases
-
-**Priority 3 (Medium - Nice to Have):**
-6. **$type** — Type checking
-7. **$size** — Array size matching
-
-**Priority 4 (Low - Rare Use):**
-8. **$mod** — Modulo operations
-
-**Total Effort:** 2-3 days (with TDD)  
-**Status:** Not started
+**Effort:** 4-6 hours  
+**Status:** 🚧 TODO
 
 ---
 
-### **4.3 RxDB Official Test Suite**
+### **4.2 Refactor bulkWrite (PRIORITY 2)**
 
-**Goal:** Pass 70+ official RxDB storage tests
+**Goal:** Use `categorizeBulkWriteRows()` for cleaner architecture
 
-**Setup:**
-1. Implement `RxTestStorage` interface
-2. Configure test harness in RxDB repo
-3. Run: `npm run test:performance:custom:node`
+**Why:**
+- Battle-tested logic from RxDB
+- Automatic conflict detection
+- Automatic attachment extraction
+- Cleaner code (less manual logic)
 
-**Test Coverage:**
-- Core operations (bulkWrite, query, count, findById)
-- Change streams and events
-- Attachments (if implemented)
-- Multi-instance (if implemented)
-- Query correctness (all operators)
-- Edge cases (umlauts, concurrent writes, etc.)
+**Steps:**
 
-**Expected Pass Rate:** 100% (for production readiness)
+1. **Fetch existing documents** (current code)
+   ```typescript
+   const docsInDb = new Map();
+   // ... populate from DB
+   ```
 
-**Effort:** 1 day (setup + fix failures)  
-**Status:** Not started
+2. **Call categorizeBulkWriteRows()** (new)
+   ```typescript
+   const categorized = categorizeBulkWriteRows(
+     this,
+     this.primaryPath,
+     docsInDb,
+     documentWrites,
+     context
+   );
+   ```
+
+3. **Execute categorized operations** (simplified)
+   ```typescript
+   // Inserts
+   for (const doc of categorized.bulkInsertDocs) {
+     insertStmt.run(...);
+   }
+   
+   // Updates
+   for (const doc of categorized.bulkUpdateDocs) {
+     updateStmt.run(...);
+   }
+   
+   // Attachments
+   for (const att of categorized.attachmentsAdd) {
+     attachmentStmt.run(att.documentId + '||' + att.attachmentId, att.attachmentData.data);
+   }
+   ```
+
+4. **Return errors + eventBulk** (simplified)
+   ```typescript
+   return {
+     error: categorized.errors
+   };
+   ```
+
+**Effort:** 2-3 hours  
+**Status:** 🚧 TODO
 
 ---
 
-### **4.4 Benchmarking vs pe-sqlite-for-rxdb**
+### **4.3 Verification & Release**
 
-**Goal:** Prove 3-6x speedup claim with rigorous methodology
+**Steps:**
+1. ✅ Run full test suite (246/246 should still pass)
+2. ✅ Run official RxDB tests (112/112 should still pass)
+3. ✅ Update README with attachment support
+4. ✅ Update CHANGELOG for v1.0.0
+5. 📦 npm publish v1.0.0
 
-**Methodology:**
-- Use RxDB's official performance test suite
-- Standard dataset: 3,000 docs, 4 collections
-- 40 runs with statistical stripping (remove top 5%)
-- Measure: insert, query, count, find-by-id
-
-**Key Metrics:**
-```
-| Metric | pe-sqlite | bun-sqlite | Speedup |
-|--------|-----------|------------|---------|
-| Bulk Insert (500) | ~45ms | ~15ms | 3.0x |
-| Bulk Read (3000) | ~120ms | ~20ms | 6.0x |
-| Query with Sort | ~82ms | ~27ms | 3.0x |
-```
-
-**Effort:** 4 hours (setup, run, document)  
-**Status:** Not started
+**Effort:** 1-2 hours  
+**Status:** 🚧 TODO after attachments + refactor complete
 
 ---
 
-### **4.5 Optional Features**
+---
 
-**Replication Methods (OPTIONAL):**
-- `conflictResultionTasks()` — Returns Observable for conflicts
-- `resolveConflictResultionTask()` — Resolves conflicts
-- **Required:** Only if using RxDB replication with conflicts
-- **Effort:** 4-8 hours
+## 🚀 Post-v1.0 Enhancements (Future)
 
-**Attachments Support (OPTIONAL):**
-- `getAttachmentData()` — Retrieve base64 attachment data
-- Separate attachments table
-- **Required:** Only if schema uses attachments
+**These are NOT blockers for v1.0. Implement when users request them.**
+
+### **Query Optimization (Nice-to-Have)**
+- `normalizeMangoQuery()` - Better cache hit rate
+- `prepareQuery()` - Query plan hints
+- **Effort:** 2-3 hours
+- **Benefit:** Marginal (cache already 5.2-57.9x faster)
+
+### **Schema Migrations (Complex)**
+- user_version pragma for in-place migrations
+- **Why defer:** Not implemented in RxDB yet, needs design
+- **Effort:** 8-12 hours (design + implementation)
+
+### **Custom Indexes (Advanced)**
+- Beyond default deleted/mtime_ms indexes
+- **Why defer:** Advanced feature, niche use case
 - **Effort:** 4-6 hours
 
-**Status:** Deferred (implement when needed)
+### **Query Plan Hints (Optimization)**
+- EXPLAIN QUERY PLAN for index selection
+- **Why defer:** Optimization, not critical
+- **Effort:** 2-3 hours
 
 ---
 
-## 📋 Phase 4 Execution Plan (Linus Style)
+## 📋 REMOVED from Roadmap (Research Findings)
 
-### **Week 1: Operators (TDD Approach)**
+**These features DON'T EXIST in RxDB or are already complete:**
+
+### ❌ conflictResolutionTasks() / resolveConflictResultionTask()
+- **Status:** REMOVED in RxDB 16.0.0
+- **Evidence:** Release notes explicitly state removal
+- **What we have:** 409 error handling (correct approach)
+- **Conflict resolution:** Happens at replication level, NOT storage level
+
+### ✅ Missing Operators
+- **Status:** DONE in v0.4.0
+- **Implemented:** 18 operators ($eq, $ne, $gt, $gte, $lt, $lte, $in, $nin, $and, $or, $exists, $regex, $elemMatch, $not, $nor, $type, $size, $mod)
 
 ---
 
-#### **Day 1: $exists Operator**
+## 📋 Phase 4 Execution Plan (v1.0 Release)
+
+### **Day 1-2: Attachments Implementation**
 
 **SQL Pattern:** `field IS NULL` / `field IS NOT NULL`
 
