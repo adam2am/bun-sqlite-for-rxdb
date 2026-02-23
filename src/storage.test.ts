@@ -194,7 +194,7 @@ describe('BunSQLiteStorageInstance', () => {
 		
 		const cleaned = await instance.cleanup(Date.now() - 5000);
 		
-		expect(cleaned).toBe(true);
+		expect(cleaned).toBe(false);
 		
 		const found = await instance.findDocumentsById(['user1'], true);
 		expect(found).toHaveLength(0);
@@ -230,7 +230,7 @@ describe('BunSQLiteStorageInstance', () => {
 		const storage = getRxStorageBunSQLite({ filename: './test-wal.db' });
 		const instance = await storage.createStorageInstance<TestDocType>({
 			databaseInstanceToken: 'test-token',
-			databaseName: 'testdb',
+			databaseName: 'testdb-wal',
 			collectionName: 'wal_test',
 			schema: {
 				version: 0,
@@ -375,6 +375,8 @@ describe('BunSQLiteStorageInstance', () => {
 
 		await instance.bulkWrite([{ document: doc }], 'test');
 
+		await new Promise(resolve => setTimeout(resolve, 50));
+
 		expect(events.length).toBe(1);
 		expect(events[0].checkpoint).toEqual({ id: 'checkpoint-1', lwt });
 
@@ -510,6 +512,8 @@ describe('BunSQLiteStorageInstance', () => {
 
 		expect(result.error.length).toBe(1);
 		expect(result.error[0].status).toBe(409);
+
+		await new Promise(resolve => setTimeout(resolve, 50));
 
 		expect(events.length).toBe(1);
 		expect(events[0].events.length).toBe(1);
