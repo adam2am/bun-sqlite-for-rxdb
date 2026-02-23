@@ -203,7 +203,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 	async query(preparedQuery: PreparedQuery<RxDocType>): Promise<RxStorageQueryResult<RxDocType>> {
 		try {
-			const { sql: whereClause, args } = buildWhereClause(preparedQuery.query.selector, this.schema);
+			const { sql: whereClause, args } = buildWhereClause(preparedQuery.query.selector, this.schema, this.collectionName);
 
 		const sql = `
 		SELECT json(data) as data FROM "${this.tableName}"
@@ -235,6 +235,10 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 			return { documents };
 		} catch (err) {
+			if (process.env.DEBUG_QUERIES) {
+				console.log('[DEBUG_QUERIES] SQL query failed, using fallback');
+				console.log('[DEBUG_QUERIES] Error:', err);
+			}
 			const query = `SELECT json(data) as data FROM "${this.tableName}"`;
 			const rows = this.stmtManager.all({ query, params: [] }) as Array<{ data: string }>;
 			let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
