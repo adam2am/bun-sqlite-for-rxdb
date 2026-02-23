@@ -200,13 +200,21 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		try {
 			const { sql: whereClause, args } = buildWhereClause(preparedQuery.query.selector, this.schema);
 
-			const sql = `
-			SELECT json(data) as data FROM "${this.tableName}"
-				WHERE (${whereClause})
-				ORDER BY id
-			`;
+		const sql = `
+		SELECT json(data) as data FROM "${this.tableName}"
+			WHERE (${whereClause})
+			ORDER BY id
+		`;
 
-			const rows = this.stmtManager.all({ query: sql, params: args }) as Array<{ data: string }>;
+		if (process.env.DEBUG_QUERIES) {
+			const explainSql = `EXPLAIN QUERY PLAN ${sql}`;
+			const plan = this.stmtManager.all({ query: explainSql, params: args });
+			console.log('[DEBUG_QUERIES] Query plan:', JSON.stringify(plan, null, 2));
+			console.log('[DEBUG_QUERIES] SQL:', sql);
+			console.log('[DEBUG_QUERIES] Args:', args);
+		}
+
+		const rows = this.stmtManager.all({ query: sql, params: args }) as Array<{ data: string }>;
 			let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 
 			if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
