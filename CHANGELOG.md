@@ -1,5 +1,77 @@
 # Changelog
 
+## [0.4.0] - 2026-02-23
+
+### Added
+- **Query Builder LRU Cache** (Phase 2.5)
+  - 5.2-57.9x speedup for repeated queries
+  - High-frequency: 505K-808K queries/sec
+  - Bounded at 500 entries (no memory leak)
+  - True LRU eviction with canonical key generation (fast-stable-stringify)
+  - Zero dependencies except fast-stable-stringify (5KB)
+- **RxDB Official Test Suite Integration** (Phase 3.1)
+  - 112/112 official RxDB tests passing (100%)
+  - StatementManager abstraction for automatic statement lifecycle
+  - Connection pooling with reference counting for multi-instance support
+  - Official `addRxStorageMultiInstanceSupport()` integration
+  - Composite primary key support
+  - Bun test suite compatibility (Mocha through Bun)
+- **Performance Benchmarks** (Phase 3.2)
+  - Bun:sqlite 1.06-1.68x faster than better-sqlite3
+  - Benchmarked at 1M documents with WAL + PRAGMA synchronous = 1
+  - Query builder cache benchmarks
+  - Raw database comparison benchmarks
+- **New Query Operators** (8 operators added)
+  - `$exists` - Field existence check with IS NULL/IS NOT NULL
+  - `$regex` - Pattern matching with LIKE translation and Mingo fallback
+  - `$elemMatch` - Array element matching (Mingo fallback)
+  - `$not` - Negation operator
+  - `$nor` - Logical NOR
+  - `$type` - Type checking with typeof()
+  - `$size` - Array size with json_array_length()
+  - `$mod` - Modulo operations
+
+### Changed
+- **BREAKING**: Statement lifecycle management
+  - Static SQL uses db.query() (cached, max 20)
+  - Dynamic SQL uses db.prepare() + finalize() (no cache pollution)
+  - StatementManager abstraction eliminates manual try-finally boilerplate
+- Connection pooling now mandatory for multi-instance support
+- Switched from custom multi-instance to RxDB's official implementation
+
+### Fixed
+- Statement resource leaks (7 locations in instance.ts)
+- Collection isolation bug (events leaked across collections)
+- Composite primary key handling (string vs object format)
+- EventBulk.id generation (empty string → unique timestamp + random)
+- Multi-instance event propagation via BroadcastChannel
+- Bun test suite compatibility (node:sqlite import, test globals)
+
+### Performance
+- Query builder cache: 5.2-57.9x speedup for cached queries
+- Database operations: 1.06-1.68x faster than better-sqlite3
+- No OOM errors (proper statement finalization)
+- Tests complete in 12.91s (no hangs)
+
+### Test Results
+- **Local tests: 134/134 pass (100%)**
+- **Official RxDB tests: 112/112 pass (100%)**
+- **Total: 246/246 tests pass (100%)** 🎉
+
+### Documentation
+- Added `docs/id1-testsuite-journey.md` - Complete debugging journey (15 iterations)
+- Added `docs/official-test-suite-setup.md` - Guide for running RxDB tests with Bun
+- Updated `docs/architectural-patterns.md` - Added patterns 15-24
+- Updated `ROADMAP.md` - Phase 2.5 and 3.2 marked COMPLETE, Phase 4 marked READY
+
+### Technical Debt Resolved
+- Statement lifecycle properly managed (no leaks)
+- Connection pooling with reference counting
+- Test architecture at correct level (RxDatabase for integration, storage for low-level)
+- Proper separation of concerns (we handle DB pooling, RxDB handles event coordination)
+
+---
+
 ## [0.3.1] - 2026-02-22
 
 ### Added

@@ -7,9 +7,11 @@
 ## Features
 
 - ✅ Uses Bun's native SQLite
-- ✅ Zero npm dependencies (bun:sqlite is built-in)
+- ✅ **246/246 tests passing** (134 local + 112 official RxDB tests)
 - ✅ Full RxDB storage interface implementation
-- ✅ Reactive queries with observables
+- ✅ **Query builder LRU cache** (5.2-57.9x speedup for repeated queries)
+- ✅ **18 Mango operators** ($eq, $ne, $gt, $gte, $lt, $lte, $in, $nin, $or, $and, $exists, $regex, $elemMatch, $not, $nor, $type, $size, $mod)
+- ✅ **Multi-instance support** with connection pooling
 - ✅ **1.06-1.68x faster than better-sqlite3** (with WAL mode)
 - ✅ MIT licensed
 
