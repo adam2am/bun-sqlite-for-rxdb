@@ -1,12 +1,58 @@
 import { describe, test, expect } from 'bun:test';
 import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from './rxdb-helpers';
-import type { BulkWriteRow, RxDocumentData } from 'rxdb';
+import type { BulkWriteRow, RxDocumentData, RxStorageInstance, RxStorageInstanceCreationParams, RxStorageDefaultCheckpoint, RxStorageCountResult, EventBulk, RxStorageChangeEvent, RxJsonSchema } from 'rxdb';
+import { Subject } from 'rxjs';
 
 type TestDoc = {
 	id: string;
 	name: string;
 	age: number;
 };
+
+type TestInternals = Record<string, never>;
+type TestOptions = Record<string, never>;
+
+const createTestSchema = (overrides: Partial<RxJsonSchema<RxDocumentData<TestDoc>>> = {}): RxJsonSchema<RxDocumentData<TestDoc>> => ({
+	version: 0,
+	primaryKey: 'id',
+	type: 'object',
+	properties: {
+		id: { type: 'string', maxLength: 100 },
+		name: { type: 'string' },
+		age: { type: 'number' },
+		_deleted: { type: 'boolean' },
+		_attachments: { type: 'object' },
+		_rev: { type: 'string' },
+		_meta: { type: 'object' }
+	},
+	required: ['id'],
+	...overrides
+} as RxJsonSchema<RxDocumentData<TestDoc>>);
+
+function createMockStorageInstance<T>(): RxStorageInstance<T, TestInternals, TestOptions, RxStorageDefaultCheckpoint> {
+	const changeStreamSubject = new Subject<EventBulk<RxStorageChangeEvent<T>, RxStorageDefaultCheckpoint>>();
+	
+	return {
+		schema: createTestSchema() as Readonly<RxJsonSchema<RxDocumentData<T>>>,
+		collectionName: 'test',
+		databaseName: 'testdb',
+		options: {},
+		internals: {},
+		bulkWrite: async () => ({ error: [] }),
+		findDocumentsById: async () => [],
+		query: async () => ({ documents: [] }),
+		count: async (): Promise<RxStorageCountResult> => ({ count: 0, mode: 'fast' }),
+		getAttachmentData: async () => '',
+		getChangedDocumentsSince: async () => ({ 
+			documents: [], 
+			checkpoint: { id: '', lwt: 0 } 
+		}),
+		changeStream: () => changeStreamSubject.asObservable(),
+		cleanup: async () => true,
+		close: async () => {},
+		remove: async () => {}
+	};
+}
 
 describe('categorizeBulkWriteRows', () => {
 	test('INSERT: no previous, no doc in DB → bulkInsertDocs', () => {
@@ -24,7 +70,7 @@ describe('categorizeBulkWriteRows', () => {
 		}];
 
 		const result = categorizeBulkWriteRows(
-			{} as any,
+			createMockStorageInstance<TestDoc>(),
 			'id',
 			docsInDb,
 			writeRows,
@@ -62,7 +108,7 @@ describe('categorizeBulkWriteRows', () => {
 		}];
 
 		const result = categorizeBulkWriteRows(
-			{} as any,
+			createMockStorageInstance<TestDoc>(),
 			'id',
 			docsInDb,
 			writeRows,
@@ -105,7 +151,7 @@ describe('categorizeBulkWriteRows', () => {
 		}];
 
 		const result = categorizeBulkWriteRows(
-			{} as any,
+			createMockStorageInstance<TestDoc>(),
 			'id',
 			docsInDb,
 			writeRows,
@@ -152,7 +198,7 @@ describe('categorizeBulkWriteRows', () => {
 		}];
 
 		const result = categorizeBulkWriteRows(
-			{} as any,
+			createMockStorageInstance<TestDoc>(),
 			'id',
 			docsInDb,
 			writeRows,
@@ -195,7 +241,7 @@ describe('categorizeBulkWriteRows', () => {
 		}];
 
 		const result = categorizeBulkWriteRows(
-			{} as any,
+			createMockStorageInstance<TestDoc>(),
 			'id',
 			docsInDb,
 			writeRows,
@@ -234,7 +280,7 @@ describe('categorizeBulkWriteRows', () => {
 		];
 
 		const result = categorizeBulkWriteRows(
-			{} as any,
+			createMockStorageInstance<TestDoc>(),
 			'id',
 			docsInDb,
 			writeRows,
@@ -258,44 +304,45 @@ describe('categorizeBulkWriteRows', () => {
 
 describe('ensureRxStorageInstanceParamsAreCorrect', () => {
 	test('throws UT6 when schema uses encryption but no password', () => {
-		const params = {
-			schema: {
-				encrypted: ['field1'],
-				version: 0,
-				primaryKey: 'id',
-				type: 'object' as const,
-				properties: {}
-			},
-			password: undefined
+		const params: RxStorageInstanceCreationParams<TestDoc, TestOptions> = {
+			schema: createTestSchema({ encrypted: ['field1'] }),
+			password: undefined,
+			databaseInstanceToken: 'test-token',
+			databaseName: 'testdb',
+			collectionName: 'testcol',
+			options: {},
+			multiInstance: false,
+			devMode: false
 		};
 
-		expect(() => ensureRxStorageInstanceParamsAreCorrect(params as any)).toThrow('UT6');
+		expect(() => ensureRxStorageInstanceParamsAreCorrect(params)).toThrow('UT6');
 	});
 
 	test('does not throw when schema has no encryption', () => {
-		const params = {
-			schema: {
-				version: 0,
-				primaryKey: 'id',
-				type: 'object' as const,
-				properties: {}
-			}
+		const params: RxStorageInstanceCreationParams<TestDoc, TestOptions> = {
+			schema: createTestSchema(),
+			databaseInstanceToken: 'test-token',
+			databaseName: 'testdb',
+			collectionName: 'testcol',
+			options: {},
+			multiInstance: false,
+			devMode: false
 		};
 
-		expect(() => ensureRxStorageInstanceParamsAreCorrect(params as any)).not.toThrow();
+		expect(() => ensureRxStorageInstanceParamsAreCorrect(params)).not.toThrow();
 	});
 
 	test('throws UT5 when schema uses keyCompression', () => {
-		const params = {
-			schema: {
-				keyCompression: true,
-				version: 0,
-				primaryKey: 'id',
-				type: 'object' as const,
-				properties: {}
-			}
+		const params: RxStorageInstanceCreationParams<TestDoc, TestOptions> = {
+			schema: createTestSchema({ keyCompression: true }),
+			databaseInstanceToken: 'test-token',
+			databaseName: 'testdb',
+			collectionName: 'testcol',
+			options: {},
+			multiInstance: false,
+			devMode: false
 		};
 
-		expect(() => ensureRxStorageInstanceParamsAreCorrect(params as any)).toThrow('UT5');
+		expect(() => ensureRxStorageInstanceParamsAreCorrect(params)).toThrow('UT5');
 	});
 });
