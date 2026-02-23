@@ -21,6 +21,7 @@ import type { BunSQLiteStorageSettings, BunSQLiteInternals } from './types';
 import { buildWhereClause } from './query/builder';
 import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from './rxdb-helpers';
 import { StatementManager } from './statement-manager';
+import { getDatabase, releaseDatabase } from './connection-pool';
 
 export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<RxDocType, BunSQLiteInternals, BunSQLiteStorageSettings> {
 	private db: Database;
@@ -32,6 +33,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	public readonly internals: Readonly<BunSQLiteInternals>;
 	public readonly options: Readonly<BunSQLiteStorageSettings>;
 	private primaryPath: string;
+	private tableName: string;
 	public closed?: Promise<void>;
 
 	constructor(
@@ -45,9 +47,10 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		this.schema = params.schema;
 		this.options = params.options;
 		this.primaryPath = params.schema.primaryKey as string;
+		this.tableName = `${params.collectionName}_v${params.schema.version}`;
 
 		const filename = settings.filename || ':memory:';
-		this.db = new Database(filename);
+		this.db = getDatabase(this.databaseName, filename);
 		this.stmtManager = new StatementManager(this.db);
 
 		this.internals = {
@@ -64,9 +67,8 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			this.db.run("PRAGMA synchronous = NORMAL");
 		}
 
-		const tableName = this.collectionName;
 		this.db.run(`
-			CREATE TABLE IF NOT EXISTS "${tableName}" (
+			CREATE TABLE IF NOT EXISTS "${this.tableName}" (
 				id TEXT PRIMARY KEY NOT NULL,
 				data BLOB NOT NULL,
 				deleted INTEGER NOT NULL DEFAULT 0,
@@ -75,12 +77,12 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			)
 		`);
 
-		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${tableName}_deleted_id" ON "${tableName}"(deleted, id)`);
-		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${tableName}_mtime_ms_id" ON "${tableName}"(mtime_ms, id)`);
+		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${this.tableName}_deleted_id" ON "${this.tableName}"(deleted, id)`);
+		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${this.tableName}_mtime_ms_id" ON "${this.tableName}"(mtime_ms, id)`);
 		
-		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${tableName}_age" ON "${tableName}"(json_extract(data, '$.age'))`);
-		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${tableName}_status" ON "${tableName}"(json_extract(data, '$.status'))`);
-		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${tableName}_email" ON "${tableName}"(json_extract(data, '$.email'))`);
+		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${this.tableName}_age" ON "${this.tableName}"(json_extract(data, '$.age'))`);
+		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${this.tableName}_status" ON "${this.tableName}"(json_extract(data, '$.status'))`);
+		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${this.tableName}_email" ON "${this.tableName}"(json_extract(data, '$.email'))`);
 	}
 
 	async bulkWrite(
@@ -103,8 +105,8 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			context
 		);
 
-		const insertQuery = `INSERT INTO "${this.collectionName}" (id, data, deleted, rev, mtime_ms) VALUES (?, jsonb(?), ?, ?, ?)`;
-		const updateQuery = `UPDATE "${this.collectionName}" SET data = jsonb(?), deleted = ?, rev = ?, mtime_ms = ? WHERE id = ?`;
+		const insertQuery = `INSERT INTO "${this.tableName}" (id, data, deleted, rev, mtime_ms) VALUES (?, jsonb(?), ?, ?, ?)`;
+		const updateQuery = `UPDATE "${this.tableName}" SET data = jsonb(?), deleted = ?, rev = ?, mtime_ms = ? WHERE id = ?`;
 
 		for (const row of categorized.bulkInsertDocs) {
 			const doc = row.document;
@@ -159,7 +161,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			? `WHERE id IN (${placeholders})`
 			: `WHERE id IN (${placeholders}) AND deleted = 0`;
 		
-		const query = `SELECT json(data) as data FROM "${this.collectionName}" ${whereClause}`;
+		const query = `SELECT json(data) as data FROM "${this.tableName}" ${whereClause}`;
 		const rows = this.stmtManager.all({ query, params: ids }) as Array<{ data: string }>;
 		return rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 	}
@@ -169,7 +171,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			const { sql: whereClause, args } = buildWhereClause(preparedQuery.query.selector, this.schema);
 
 			const sql = `
-				SELECT json(data) as data FROM "${this.collectionName}"
+			SELECT json(data) as data FROM "${this.tableName}"
 				WHERE (${whereClause})
 				ORDER BY id
 			`;
@@ -191,7 +193,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 			return { documents };
 		} catch (err) {
-			const query = `SELECT json(data) as data FROM "${this.collectionName}"`;
+			const query = `SELECT json(data) as data FROM "${this.tableName}"`;
 			const rows = this.stmtManager.all({ query, params: [] }) as Array<{ data: string }>;
 			let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 
@@ -264,7 +266,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	}
 
 	async cleanup(minimumDeletedTime: number): Promise<boolean> {
-		const query = `DELETE FROM "${this.collectionName}" WHERE deleted = 1 AND mtime_ms < ?`;
+		const query = `DELETE FROM "${this.tableName}" WHERE deleted = 1 AND mtime_ms < ?`;
 		this.stmtManager.run({ query, params: [minimumDeletedTime] });
 		return true;
 	}
@@ -274,7 +276,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		this.closed = (async () => {
 			this.changeStream$.complete();
 			this.stmtManager.close();
-			this.db.close();
+			releaseDatabase(this.databaseName);
 		})();
 		return this.closed;
 	}
@@ -282,7 +284,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	async remove(): Promise<void> {
 		if (this.closed) throw new Error('already closed');
 		try {
-			this.db.run(`DROP TABLE IF EXISTS "${this.collectionName}"`);
+			this.db.run(`DROP TABLE IF EXISTS "${this.tableName}"`);
 		} catch {}
 		return this.close();
 	}
@@ -296,7 +298,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		const checkpointId = checkpoint?.id ?? '';
 
 		const sql = `
-			SELECT json(data) as data FROM "${this.collectionName}"
+			SELECT json(data) as data FROM "${this.tableName}"
 			WHERE (mtime_ms > ? OR (mtime_ms = ? AND id > ?))
 			ORDER BY mtime_ms ASC, id ASC
 			LIMIT ?
