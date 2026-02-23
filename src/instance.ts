@@ -81,9 +81,14 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${this.tableName}_deleted_id" ON "${this.tableName}"(deleted, id)`);
 		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${this.tableName}_mtime_ms_id" ON "${this.tableName}"(mtime_ms, id)`);
 		
-		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${this.tableName}_age" ON "${this.tableName}"(json_extract(data, '$.age'))`);
-		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${this.tableName}_status" ON "${this.tableName}"(json_extract(data, '$.status'))`);
-		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${this.tableName}_email" ON "${this.tableName}"(json_extract(data, '$.email'))`);
+		if (this.schema.indexes) {
+			for (const index of this.schema.indexes) {
+				const fields = Array.isArray(index) ? index : [index];
+				const indexName = `idx_${this.tableName}_${fields.join('_')}`;
+				const columns = fields.map(field => `json_extract(data, '$.${field}')`).join(', ');
+				this.db.run(`CREATE INDEX IF NOT EXISTS "${indexName}" ON "${this.tableName}"(${columns})`);
+			}
+		}
 		
 		this.db.run(`
 			CREATE TABLE IF NOT EXISTS "${this.tableName}_attachments" (
@@ -203,7 +208,6 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		const sql = `
 		SELECT json(data) as data FROM "${this.tableName}"
 			WHERE (${whereClause})
-			ORDER BY id
 		`;
 
 		if (process.env.DEBUG_QUERIES) {
