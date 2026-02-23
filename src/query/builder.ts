@@ -2,12 +2,41 @@ import type { RxJsonSchema, MangoQuerySelector, RxDocumentData } from 'rxdb';
 import { getColumnInfo } from './schema-mapper';
 import { translateEq, translateNe, translateGt, translateGte, translateLt, translateLte, translateIn, translateNin, translateExists, translateRegex, translateElemMatch, translateNot, translateNor, translateType, translateSize, translateMod } from './operators';
 import type { SqlFragment } from './operators';
+import stringify from 'fast-stable-stringify';
+
+const QUERY_CACHE = new Map<string, SqlFragment>();
+const MAX_CACHE_SIZE = 500;
+
+export function getCacheSize(): number {
+	return QUERY_CACHE.size;
+}
+
+export function clearCache(): void {
+	QUERY_CACHE.clear();
+}
 
 export function buildWhereClause<RxDocType>(
 	selector: MangoQuerySelector<RxDocumentData<RxDocType>>,
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>
 ): SqlFragment {
-	return processSelector(selector, schema, 0);
+	const cacheKey = `v${schema.version}_${stringify(selector)}`;
+	
+	const cached = QUERY_CACHE.get(cacheKey);
+	if (cached) {
+		QUERY_CACHE.delete(cacheKey);
+		QUERY_CACHE.set(cacheKey, cached);
+		return cached;
+	}
+	
+	const result = processSelector(selector, schema, 0);
+	
+	if (QUERY_CACHE.size >= MAX_CACHE_SIZE) {
+		const firstKey = QUERY_CACHE.keys().next().value;
+		if (firstKey) QUERY_CACHE.delete(firstKey);
+	}
+	
+	QUERY_CACHE.set(cacheKey, result);
+	return result;
 }
 
 function processSelector<RxDocType>(
