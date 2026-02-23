@@ -34,10 +34,12 @@ Key design patterns and decisions for `bun-sqlite-for-rxdb` development.
 | **Attachments support** | **v1.0.0** | **Separate table + digest validation** |
 | **RxDB helper functions** | **v1.0.0** | **Battle-tested conflict detection** |
 | **bulkWrite refactoring** | **v1.0.0** | **Cleaner architecture** |
+| **schema.indexes support** | **v1.1.0** | **Dynamic index creation** |
+| **ORDER BY optimization** | **v1.1.0** | **29.8% query speedup** |
 
 ---
 
-**Last updated:** v1.0.0 (2026-02-23)
+**Last updated:** v1.1.0 (2026-02-23)
 
 ---
 
@@ -677,7 +679,7 @@ it('must find deleted documents', async () => {
 - getChangedDocumentsSince: Not implemented
 - changeStream: Timeout (events not emitting correctly)
 
-### 2. Research Phase (Lisa Agents)
+### 2. Research Phase (Codebase Search Agents)
 **Inspected Dexie adapter:**
 - ❌ Query/count: NO `_deleted` filtering (broken - full table scan)
 - ✅ bulkWrite: Uses `categorizeBulkWriteRows` (prevention approach)
@@ -815,8 +817,8 @@ eventBulk: {
 - Fast to generate
 
 **Research Process:**
-- Lisa agents found the issue by comparing with official adapters
-- Vivian researched Bun test console.log issues (found Bun Issue #22790)
+- Codebase search agents found the issue by comparing with official adapters
+- Web search agent researched Bun test console.log issues (found Bun Issue #22790)
 - Proper investigation instead of assumptions
 
 ### 5. Current Status: ALL TESTS PASSING ✅
@@ -849,7 +851,7 @@ eventBulk: {
 2. **Read the test comments** - They explain the architecture better than the code
 3. **TDD works** - Write failing tests first, then fix
 4. **Linus approach** - Minimal code, fix root cause, no bandaids
-5. **Research over assumptions** - Use Lisa/Vivian agents to investigate properly
+5. **Research over assumptions** - Use research agents to investigate properly
 6. **Bun quirks exist** - console.log doesn't show values properly (Issue #22790), use console.error + JSON.stringify
 
 **History:** Phase 3.1 (2026-02-22) - TDD approach to pass RxDB official test suite. 7 failures → 0 failures. ✅ COMPLETE
@@ -877,13 +879,13 @@ console.error('[TEST] emitted.length:', JSON.stringify(emitted.length));
 // Output: [TEST] emitted.length: 3  ← value visible!
 ```
 
-**Research Findings (Vivian - 2026-02-22):**
+**Research Findings (web search agent - 2026-02-22):**
 - GitHub Issue #22790: console.log doesn't print custom properties on empty arrays
 - GitHub Issue #6044: happy-dom causes console.log() to not print during tests
 - GitHub Issue #10389: bun test writes stdout to stderr instead of stdout
 - Workarounds: Use `console.error`, `JSON.stringify()`, or `Bun.inspect()`
 
-**History:** Phase 3.1 (2026-02-22) - Discovered during changeStream debugging. Vivian researched and found root cause.
+**History:** Phase 3.1 (2026-02-22) - Discovered during changeStream debugging. Web search agent researched and found root cause.
 
 ---
 
@@ -1101,7 +1103,7 @@ After (process.hrtime.bigint() + 100K iterations):
 - Reliable on all platforms
 ```
 
-**Research Findings (Vivian):**
+**Research Findings (web search agent):**
 - Node.js uses `process.hrtime.bigint()` for all benchmarks
 - Node.js uses 1M iterations for microsecond operations
 - Benchmark.js uses statistical analysis with multiple cycles
@@ -1332,5 +1334,108 @@ async bulkWrite(documentWrites, context) {
 - ✅ Matches official adapter patterns
 
 **History:** v1.0.0 (2026-02-23) - Refactored bulkWrite to use categorizeBulkWriteRows() helper.
+
+---
+
+## 28. schema.indexes Support (v1.1.0)
+
+**[Rule]:** Parse schema.indexes and create SQLite indexes dynamically on table initialization.
+
+**Why:**
+- 4 out of 5 RxDB storage plugins implement this (Dexie, Memory, MongoDB, FoundationDB)
+- Query planner depends on it for optimization
+- Industry standard for production storage adapters
+- 1000x-1,000,000x speedup potential for selective queries
+
+**Implementation:**
+```typescript
+// src/instance.ts lines 84-91
+if (this.schema.indexes) {
+    for (const index of this.schema.indexes) {
+        const fields = Array.isArray(index) ? index : [index];
+        const indexName = `idx_${this.tableName}_${fields.join('_')}`;
+        const columns = fields.map(field => `json_extract(data, '$.${field}')`).join(', ');
+        this.db.run(`CREATE INDEX IF NOT EXISTS "${indexName}" ON "${this.tableName}"(${columns})`);
+    }
+}
+```
+
+**Features:**
+- ✅ Reads from `schema.indexes` definition
+- ✅ Supports single-field indexes: `['age']`
+- ✅ Supports compound indexes: `['age', 'status']`
+- ✅ Uses `json_extract()` for JSONB fields
+- ✅ Proper index naming: `idx_users_v0_age_status`
+
+**Research Findings (3 research agents: 2 codebase + 1 web):**
+- Official SQLite Trial plugin does NOT implement schema.indexes
+- Our implementation matches standard RxDB patterns
+- No other plugin creates covering indexes (standard behavior)
+- Implementation is correct and better than official trial version
+
+**History:** v1.1.0 (2026-02-23) - Implemented schema.indexes support with 9 lines of code.
+
+---
+
+## 29. ORDER BY Optimization - Remove Redundant SQL Sorting (v1.1.0)
+
+**[Rule]:** Don't use SQL ORDER BY when you already sort in-memory.
+
+**Why:**
+- We already sort in-memory (instance.ts line 226)
+- SQL ORDER BY causes "USE TEMP B-TREE FOR ORDER BY" overhead
+- Removing it eliminates temp B-tree creation
+- 29.8% performance improvement measured
+
+**Research Findings (codebase search agent):**
+- Reference implementation dynamically builds ORDER BY from mango query
+- Our implementation hardcoded ORDER BY id
+- Both create same covering indexes: (deleted, id) and (mtime_ms, id)
+- Temp B-tree happens because WHERE clause doesn't match index prefix
+- We already sort in-memory, so SQL ORDER BY is redundant
+
+**Before:**
+```typescript
+const sql = `
+  SELECT json(data) as data FROM "${this.tableName}"
+  WHERE (${whereClause})
+  ORDER BY id
+`;
+```
+
+**After:**
+```typescript
+const sql = `
+  SELECT json(data) as data FROM "${this.tableName}"
+  WHERE (${whereClause})
+`;
+// We sort in-memory at line 226 anyway
+```
+
+**Benchmark Results (100k documents):**
+```
+Baseline (NO indexes, WITH ORDER BY):  165.43ms avg
+With indexes + ORDER BY:                161.09ms avg (2.6% improvement)
+With indexes, NO ORDER BY:              116.09ms avg (29.8% improvement!)
+
+Individual tests:
+- Test 1 (age > 50):         149.86ms → 119.02ms (20.6% faster)
+- Test 2 (status = "active"): 176.52ms → 137.57ms (22.1% faster)
+- Test 3 (age > 30 AND status): 182.67ms → 133.77ms (26.8% faster)
+- Test 4 (age BETWEEN 25-35): 152.67ms → 74.01ms (51.5% faster!)
+```
+
+**Key Insights:**
+1. ORDER BY id was causing temp B-tree overhead
+2. We already sort in-memory (line 226), so SQL ORDER BY was redundant
+3. Removing it eliminated O(K log K) sorting overhead in SQLite
+4. Combined with schema.indexes: 29.8% total speedup
+
+**Validation:**
+- ✅ All tests passing: 260/260 (138 local + 122 official)
+- ✅ No regressions
+- ✅ RxDB contracts satisfied
+
+**History:** v1.1.0 (2026-02-23) - Removed redundant ORDER BY id, measured 29.8% performance improvement.
 
 ---
