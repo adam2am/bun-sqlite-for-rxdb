@@ -84,6 +84,14 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${this.tableName}_age" ON "${this.tableName}"(json_extract(data, '$.age'))`);
 		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${this.tableName}_status" ON "${this.tableName}"(json_extract(data, '$.status'))`);
 		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${this.tableName}_email" ON "${this.tableName}"(json_extract(data, '$.email'))`);
+		
+		this.db.run(`
+			CREATE TABLE IF NOT EXISTS "${this.tableName}_attachments" (
+				id TEXT PRIMARY KEY NOT NULL,
+				data TEXT NOT NULL,
+				digest TEXT NOT NULL
+			)
+		`);
 	}
 
 	async bulkWrite(
@@ -134,6 +142,27 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			const doc = row.document;
 			const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
 			this.stmtManager.run({ query: updateQuery, params: [JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt, id] });
+		}
+
+		const insertAttQuery = `INSERT OR REPLACE INTO "${this.tableName}_attachments" (id, data, digest) VALUES (?, ?, ?)`;
+		const deleteAttQuery = `DELETE FROM "${this.tableName}_attachments" WHERE id = ?`;
+
+		for (const att of [...categorized.attachmentsAdd, ...categorized.attachmentsUpdate]) {
+			this.stmtManager.run({
+				query: insertAttQuery,
+				params: [
+					this.attachmentMapKey(att.documentId, att.attachmentId),
+					att.attachmentData.data,
+					att.digest
+				]
+			});
+		}
+
+		for (const att of categorized.attachmentsRemove) {
+			this.stmtManager.run({
+				query: deleteAttQuery,
+				params: [this.attachmentMapKey(att.documentId, att.attachmentId)]
+			});
 		}
 
 		const failedDocIds = new Set(categorized.errors.map(e => e.documentId));
@@ -304,8 +333,23 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		return this.close();
 	}
 
+	// Gate 2: Helper function
+	private attachmentMapKey(documentId: string, attachmentId: string): string {
+		return documentId + '||' + attachmentId;
+	}
+
+	// Gate 3: getAttachmentData with digest validation
 	async getAttachmentData(documentId: string, attachmentId: string, digest: string): Promise<string> {
-		throw new Error('Attachments not yet implemented');
+		const key = this.attachmentMapKey(documentId, attachmentId);
+		const result = this.db.query(
+			`SELECT data, digest FROM "${this.tableName}_attachments" WHERE id = ?`
+		).get(key) as { data: string; digest: string } | undefined;
+		
+		if (!result || result.digest !== digest) {
+			throw new Error('attachment does not exist: ' + key);
+		}
+		
+		return result.data;
 	}
 
 	async getChangedDocumentsSince(limit: number, checkpoint?: { id: string; lwt: number }) {

@@ -523,4 +523,67 @@ describe('BunSQLiteStorageInstance', () => {
 		subscription.unsubscribe();
 		await instance.remove();
 	});
+
+	it('getAttachmentData returns base64 string', async () => {
+		// Manually insert attachment data to test OUR retrieval code
+		instance.internals.db.run(
+			`INSERT INTO "${instance.collectionName}_v0_attachments" (id, data, digest) VALUES (?, ?, ?)`,
+			['user1||file.txt', 'aGVsbG8=', 'md5-abc123']
+		);
+
+		const data = await instance.getAttachmentData('user1', 'file.txt', 'md5-abc123');
+		expect(data).toBe('aGVsbG8=');
+		await instance.remove();
+	});
+
+	it('bulkWrite preserves _attachments metadata in document', async () => {
+		const doc: RxDocumentData<TestDocType> = {
+			id: 'user2',
+			name: 'Bob',
+			age: 25,
+			_deleted: false,
+			_attachments: {
+				'photo.jpg': {
+					length: 1024,
+					type: 'image/jpeg',
+					digest: 'md5-xyz789'
+				}
+			},
+			_rev: '1-b',
+			_meta: { lwt: Date.now() }
+		};
+
+		await instance.bulkWrite([{ document: doc }], 'test');
+
+		const found = await instance.findDocumentsById(['user2'], false);
+		expect(found.length).toBe(1);
+		expect(found[0]._attachments).toEqual({
+			'photo.jpg': {
+				length: 1024,
+				type: 'image/jpeg',
+				digest: 'md5-xyz789'
+			}
+		});
+		await instance.remove();
+	});
+
+	it('getAttachmentData throws on missing attachment', async () => {
+		await expect(
+			instance.getAttachmentData('nonexistent', 'file.txt', 'digest')
+		).rejects.toThrow('attachment does not exist');
+		await instance.remove();
+	});
+
+	it('getAttachmentData throws on digest mismatch', async () => {
+		// Manually insert with correct digest
+		instance.internals.db.run(
+			`INSERT INTO "${instance.collectionName}_v0_attachments" (id, data, digest) VALUES (?, ?, ?)`,
+			['user3||file.txt', 'ZGF0YQ==', 'md5-correct']
+		);
+
+		await expect(
+			instance.getAttachmentData('user3', 'file.txt', 'md5-wrong')
+		).rejects.toThrow('attachment does not exist');
+		await instance.remove();
+	});
 });
