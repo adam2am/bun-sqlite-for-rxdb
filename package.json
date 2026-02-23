@@ -8,7 +8,10 @@
   },
   "main": "dist/index.js",
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/bun": "latest",
+    "@types/fast-stable-stringify": "^1.0.0",
+    "better-sqlite3": "^12.6.2",
     "rxdb": "^16.21.1",
     "typescript": "^5.0.0"
   },
@@ -35,6 +38,7 @@
   "type": "module",
   "types": "dist/index.d.ts",
   "dependencies": {
+    "fast-stable-stringify": "^1.0.0",
     "mingo": "^7.2.0"
   }
 }
