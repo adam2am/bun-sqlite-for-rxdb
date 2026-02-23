@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.1] - 2026-02-23
+
+### Added
+- **EXPLAIN QUERY PLAN Debug Mode** (Development Tool)
+  - Activated via `DEBUG_QUERIES=1` environment variable
+  - Logs query plans, SQL, and args to console
+  - Helps verify query builder generates optimal SQL
+  - Validates SQLite index usage
+  - Zero production overhead (env var check only)
+
+### Usage
+```bash
+DEBUG_QUERIES=1 bun test
+```
+
+---
+
 ## [1.0.0] - 2026-02-23
 
 ### Added
