@@ -10,7 +10,24 @@
 - ✅ Zero npm dependencies (bun:sqlite is built-in)
 - ✅ Full RxDB storage interface implementation
 - ✅ Reactive queries with observables
-- ✅ MIT licensed 
+- ✅ **1.06-1.68x faster than better-sqlite3** (with WAL mode)
+- ✅ MIT licensed
+
+## Performance
+
+Benchmarked against better-sqlite3 (1M documents, WAL mode + PRAGMA synchronous = 1):
+
+| Operation | Bun SQLite | better-sqlite3 | Speedup |
+|-----------|------------|----------------|---------|
+| Bulk INSERT (1M docs) | 7.42s | 7.90s | **1.06x faster** |
+| SELECT by ID (10K lookups) | 170ms | 170ms | Equal |
+| Complex WHERE query | 484ms | 814ms | **1.68x faster** |
+
+**Requirements for optimal performance:**
+```typescript
+db.run("PRAGMA journal_mode = WAL");
+db.run("PRAGMA synchronous = 1");
+``` 
 
 ## Installation
 

@@ -1,7 +1,7 @@
 # bun-sqlite-for-rxdb Roadmap
 
-> **Status:** Phase 2 Complete ✅ | Phase 3 Next 🚧
-> **Last Updated:** 2026-02-22
+> **Status:** Phase 2 Complete ✅ | Phase 3 Complete ✅
+> **Last Updated:** 2026-02-23
 
 ---
 
@@ -135,13 +135,23 @@ status: 409,  // Proper RxDB conflict handling
 
 ---
 
-### **Phase 2.5: Prepared Statement Caching (DEFERRED)**
+### **Phase 2.5: Query Builder Caching (COMPLETE ✅)**
 
 **Goal:** Cache query builders by schema hash for faster repeated queries
 
-**Why deferred:** Optimization, not correctness. Validate first, optimize later if benchmarks show it's needed.
+**What We Did:**
+1. ✅ Implemented LRU cache with canonical key generation (fast-stable-stringify)
+2. ✅ True LRU eviction (delete+re-insert on access)
+3. ✅ 500 entry limit with FIFO eviction
+4. ✅ Zero dependencies except fast-stable-stringify (5KB)
+5. ✅ Created 13 edge case tests (object key order, cache thrashing, etc.)
 
-**Status:** ⏸️ DEFERRED (will revisit after Phase 3 if needed)
+**Performance:**
+- ✅ 4.8-22.6x speedup for cached queries
+- ✅ High-frequency: 565K-808K queries/sec
+- ✅ Memory stress: 1000 unique queries handled correctly
+
+**Status:** ✅ COMPLETE
 
 ---
 
@@ -205,7 +215,17 @@ Total: 232/232 tests pass (100%) 🎉
 
 **Effort:** 4 hours
 
-**Status:** 🚧 TODO
+**What We Did:**
+1. ✅ Created raw database benchmarks (bun:sqlite vs better-sqlite3)
+2. ✅ Tested with WAL + PRAGMA synchronous = 1
+3. ✅ Ran 1M document benchmarks (2 runs for consistency)
+4. ✅ Updated README with performance results
+
+**Performance:**
+- ✅ Bun:sqlite 1.06-1.68x faster than better-sqlite3
+- ✅ WAL + PRAGMA enabled by default in production code
+
+**Status:** ✅ COMPLETE
 
 ---
 

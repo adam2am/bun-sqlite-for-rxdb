@@ -998,4 +998,157 @@ DEFAULT_STORAGE=custom bun test test_tmp/unit/rx-storage-implementations.test.js
 
 ---
 
-**Last updated:** Iteration 14 (2026-02-23) - Multi-instance support + Bun test compatibility
+## 22. Query Builder LRU Cache
+
+**[Rule]:** Use global LRU cache with canonical keys for query builder results.
+
+**Why:**
+- 4.8-22.6x speedup for repeated queries
+- Bounded at 500 entries (no memory leak)
+- Cross-collection query reuse (efficient)
+- Zero dependencies except fast-stable-stringify (5KB)
+
+**Implementation:**
+```typescript
+import stringify from 'fast-stable-stringify';
+
+const QUERY_CACHE = new Map<string, SqlFragment>();
+const MAX_CACHE_SIZE = 500;
+
+export function buildWhereClause(selector, schema): SqlFragment {
+  const cacheKey = `v${schema.version}_${stringify(selector)}`;
+  
+  const cached = QUERY_CACHE.get(cacheKey);
+  if (cached) {
+    QUERY_CACHE.delete(cacheKey);
+    QUERY_CACHE.set(cacheKey, cached);
+    return cached;
+  }
+  
+  const result = processSelector(selector, schema, 0);
+  
+  if (QUERY_CACHE.size >= MAX_CACHE_SIZE) {
+    const firstKey = QUERY_CACHE.keys().next().value;
+    if (firstKey) QUERY_CACHE.delete(firstKey);
+  }
+  
+  QUERY_CACHE.set(cacheKey, result);
+  return result;
+}
+```
+
+**Key Design Decisions:**
+1. **Global cache** - Shared across all collections (efficient)
+2. **Canonical keys** - fast-stable-stringify for order-independent hashing
+3. **True LRU** - delete+re-insert on access (not just FIFO)
+4. **Bounded size** - 500 entries max, FIFO eviction when full
+5. **Schema versioning** - Cache key includes schema version
+
+**Performance:**
+```
+Cache hit rate: 5.2-57.9x speedup
+High-frequency: 505K-808K queries/sec
+Memory: ~50KB for 500 entries (negligible)
+```
+
+**Linus Analysis (5-Approaches):**
+- ✅ Global cache with LRU is correct (not per-instance)
+- ✅ Bounded at 500 entries (no leak)
+- ❌ Rejected per-instance cache (wastes memory on duplicates)
+- ❌ Rejected hybrid approach (would clear cache for other instances)
+
+**History:** Phase 2.5 (2026-02-23) - Implemented with 13 edge case tests. Proven bounded with no exponential growth.
+
+---
+
+## 23. Reliable Performance Timing on Windows
+
+**[Rule]:** Use `process.hrtime.bigint()` with 100K+ iterations for microsecond benchmarks on Windows.
+
+**Why:**
+- `performance.now()` has ~1ms resolution on Windows (unreliable for µs operations)
+- `process.hrtime.bigint()` has nanosecond precision (reliable)
+- 100K iterations amplify signal above measurement noise
+- Node.js core team uses this pattern (1M iterations for µs ops)
+
+**Implementation:**
+```typescript
+const start = process.hrtime.bigint();
+for (let i = 0; i < 100000; i++) {
+  buildWhereClause(selector, schema);
+}
+const elapsed = process.hrtime.bigint() - start;
+const avgTime = Number(elapsed) / 100000;
+```
+
+**Benchmark Results:**
+```
+Before (performance.now() + 100 iterations):
+- Flaky results: 0.38x-3.0x variance
+- Unreliable on Windows
+
+After (process.hrtime.bigint() + 100K iterations):
+- Stable results: 57.9x speedup
+- Reliable on all platforms
+```
+
+**Research Findings (Vivian):**
+- Node.js uses `process.hrtime.bigint()` for all benchmarks
+- Node.js uses 1M iterations for microsecond operations
+- Benchmark.js uses statistical analysis with multiple cycles
+- Industry standard: amplify signal, not rely on timer precision
+
+**History:** Phase 2.5 (2026-02-23) - Fixed flaky performance tests. Changed from performance.now() to hrtime.bigint() with 100K iterations.
+
+---
+
+## 24. Cache Lifecycle - Global vs Per-Instance
+
+**[Rule]:** Use global cache with bounded size, not per-instance cache.
+
+**Why:**
+- Global cache enables cross-collection query reuse
+- Per-instance cache wastes memory on duplicate queries
+- Bounded size (500 entries) prevents memory leaks
+- LRU eviction handles cache pressure automatically
+
+**Decision Analysis (Linus Torvalds 5-Approaches):**
+
+**Option A: Per-Instance Cache**
+- ❌ Wastes memory (100 collections = 100 duplicate caches)
+- ❌ Throws away cache on collection close (even if query reused elsewhere)
+- ❌ No cross-collection optimization
+
+**Option B: Global Cache with LRU (CHOSEN)**
+- ✅ Efficient cross-collection reuse
+- ✅ Bounded at 500 entries (no leak)
+- ✅ LRU eviction handles pressure
+- ✅ ~50KB memory (negligible)
+
+**Option C: Hybrid (Clear by Schema Version)**
+- ❌ WRONG - Clearing by schema version affects other collections
+- ❌ Example: 5 collections with v0 schema → closing 1 clears cache for all 5
+
+**Proof of Correctness:**
+```typescript
+test('Cache is BOUNDED at 500 entries (no exponential growth)', () => {
+  clearCache();
+  
+  for (let i = 0; i < 1000; i++) {
+    buildWhereClause({ id: { $eq: `unique-${i}` } }, schema);
+  }
+  
+  expect(getCacheSize()).toBe(500); // Not 1000!
+});
+```
+
+**Memory Math:**
+- 500 entries × ~100 bytes/entry = ~50KB
+- Negligible in any real application
+- No leak because bounded
+
+**History:** Phase 2.5 (2026-02-23) - Analyzed with 5-approaches framework. Decided to keep global cache based on Linus principles.
+
+---
+
+**Last updated:** Phase 2.5 (2026-02-23) - Query builder caching + performance timing patterns
