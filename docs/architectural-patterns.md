@@ -1436,6 +1436,30 @@ Individual tests:
 - ✅ No regressions
 - ✅ RxDB contracts satisfied
 
-**History:** v1.1.0 (2026-02-23) - Removed redundant ORDER BY id, measured 29.8% performance improvement.
+**Safety Verification (4 Research Agents):**
+
+After removing ORDER BY, we questioned: "What if `preparedQuery.query.sort` is undefined?"
+
+**Key Findings:**
+1. **RxDB Query Normalization (rx-query-helper.ts:156-173):**
+   - If no sort → adds `[{ [primaryKey]: 'asc' }]` automatically
+   - If sort exists but no primaryKey → appends primaryKey
+   - `prepareQuery()` throws error if sort missing (Should Never Happen)
+   - **Conclusion:** Storage plugins ALWAYS receive a sort clause
+
+2. **All RxDB Storage Plugins:**
+   - Dexie, Memory, MongoDB, FoundationDB, SQLite Trial ALL use in-memory sorting
+   - NONE rely on SQL ORDER BY
+   - Official SQLite Trial doesn't use ORDER BY at all
+   - **Conclusion:** Our implementation matches official pattern
+
+3. **Test Patterns:**
+   - Tests without `.sort()` only check count/presence, not order
+   - Tests with `.skip()/.limit()` ALWAYS include explicit `.sort()`
+   - **Conclusion:** Tests pass because RxDB provides sort, not because of SQL ORDER BY
+
+**Final Verdict:** ORDER BY removal is safe. RxDB's architecture guarantees `preparedQuery.query.sort` always exists with primary key included.
+
+**History:** v1.1.0 (2026-02-23) - Removed redundant ORDER BY id, measured 29.8% performance improvement. Verified safety with 4 parallel research agents.
 
 ---
