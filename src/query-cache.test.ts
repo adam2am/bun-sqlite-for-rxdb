@@ -47,11 +47,11 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 		};
 		
 		const start = performance.now();
-		const result1 = buildWhereClause(hugeSelector, schema);
+		const result1 = buildWhereClause(hugeSelector, schema, 'test');
 		const time1 = performance.now() - start;
 		
 		const start2 = performance.now();
-		const result2 = buildWhereClause(hugeSelector, schema);
+		const result2 = buildWhereClause(hugeSelector, schema, 'test');
 		const time2 = performance.now() - start2;
 		
 	expect(result1.sql).toBe(result2.sql);
@@ -62,12 +62,12 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 	test('Edge Case 2: Cache eviction at 100 entries', () => {
 		for (let i = 0; i < 150; i++) {
 			const selector: MangoQuerySelector<RxDocumentData<TestDoc>> = { age: { $eq: i } };
-			buildWhereClause(selector, schema);
+			buildWhereClause(selector, schema, 'test');
 		}
 		
 		const firstSelector: MangoQuerySelector<RxDocumentData<TestDoc>> = { age: { $eq: 0 } };
 		const start = performance.now();
-		buildWhereClause(firstSelector, schema);
+		buildWhereClause(firstSelector, schema, 'test');
 		const time = performance.now() - start;
 		
 		expect(time).toBeGreaterThan(0);
@@ -78,10 +78,10 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 		const selector: MangoQuerySelector<RxDocumentData<TestDoc>> = { age: { $gt: 30 } };
 		
 		const schema1 = { ...schema, version: 0 };
-		const result1 = buildWhereClause(selector, schema1);
+		const result1 = buildWhereClause(selector, schema1, 'test');
 		
 		const schema2 = { ...schema, version: 1 };
-		const result2 = buildWhereClause(selector, schema2);
+		const result2 = buildWhereClause(selector, schema2, 'test');
 		
 		expect(result1.sql).toBe(result2.sql);
 		console.log(`  Schema version change: cache invalidated correctly`);
@@ -91,8 +91,8 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 		const selector1: MangoQuerySelector<RxDocumentData<TestDoc>> = { age: { $gt: 30 }, name: { $eq: 'test' } };
 		const selector2: MangoQuerySelector<RxDocumentData<TestDoc>> = { name: { $eq: 'test' }, age: { $gt: 30 } };
 		
-		const result1 = buildWhereClause(selector1, schema);
-		const result2 = buildWhereClause(selector2, schema);
+		const result1 = buildWhereClause(selector1, schema, 'test');
+		const result2 = buildWhereClause(selector2, schema, 'test');
 		
 		expect(result1.sql).toBe(result2.sql);
 		console.log(`  Different object order: produces same SQL`);
@@ -108,11 +108,11 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 		};
 		
 		const start = performance.now();
-		const result1 = buildWhereClause(deepSelector, schema);
+		const result1 = buildWhereClause(deepSelector, schema, 'test');
 		const time1 = performance.now() - start;
 		
 		const start2 = performance.now();
-		const result2 = buildWhereClause(deepSelector, schema);
+		const result2 = buildWhereClause(deepSelector, schema, 'test');
 		const time2 = performance.now() - start2;
 		
 		expect(result1.sql).toBe(result2.sql);
@@ -125,8 +125,8 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 			name: { $eq: 'test"with\'quotes\nand\ttabs' }
 		};
 		
-		const result1 = buildWhereClause(specialSelector, schema);
-		const result2 = buildWhereClause(specialSelector, schema);
+		const result1 = buildWhereClause(specialSelector, schema, 'test');
+		const result2 = buildWhereClause(specialSelector, schema, 'test');
 		
 		expect(result1.sql).toBe(result2.sql);
 		expect(result1.args).toEqual(result2.args);
@@ -138,7 +138,7 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 			name: { $eq: null as any }
 		};
 		
-		const result = buildWhereClause(nullSelector, schema);
+		const result = buildWhereClause(nullSelector, schema, 'test');
 		expect(result.sql).toContain('IS NULL');
 		console.log(`  Null values: handled correctly`);
 	});
@@ -146,7 +146,7 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 	test('Edge Case 8: Empty selector', () => {
 		const emptySelector: MangoQuerySelector<RxDocumentData<TestDoc>> = {};
 		
-		const result = buildWhereClause(emptySelector, schema);
+		const result = buildWhereClause(emptySelector, schema, 'test');
 		expect(result.sql).toBe('1=1');
 		console.log(`  Empty selector: returns 1=1 (match all)`);
 	});
@@ -160,14 +160,14 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 		
 		const start1 = process.hrtime.bigint();
 		for (let i = 0; i < 3; i++) {
-			buildWhereClause(selectors[i] as MangoQuerySelector<RxDocumentData<TestDoc>>, schema);
+			buildWhereClause(selectors[i] as MangoQuerySelector<RxDocumentData<TestDoc>>, schema, 'test');
 		}
 		const firstTime = process.hrtime.bigint() - start1;
 		
 		const start2 = process.hrtime.bigint();
 		for (let i = 0; i < 100000; i++) {
 			const selector = selectors[i % selectors.length];
-			buildWhereClause(selector as MangoQuerySelector<RxDocumentData<TestDoc>>, schema);
+			buildWhereClause(selector as MangoQuerySelector<RxDocumentData<TestDoc>>, schema, 'test');
 		}
 		const cachedTime = process.hrtime.bigint() - start2;
 		
@@ -188,7 +188,7 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 				age: { $eq: i },
 				name: { $eq: `user${i}` }
 			};
-			buildWhereClause(selector, schema);
+			buildWhereClause(selector, schema, 'test');
 		}
 		
 		const time = performance.now() - start;
@@ -205,9 +205,9 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 		
 		const selector: MangoQuerySelector<RxDocumentData<TestDoc>> = { age: { $gt: 30 } };
 		
-		const result1 = buildWhereClause(selector, schema1);
-		const result2 = buildWhereClause(selector, schema2);
-		const result3 = buildWhereClause(selector, schema3);
+		const result1 = buildWhereClause(selector, schema1, 'test');
+		const result2 = buildWhereClause(selector, schema2, 'test');
+		const result3 = buildWhereClause(selector, schema3, 'test');
 		
 		expect(result1.sql).toBe(result2.sql);
 		expect(result2.sql).toBe(result3.sql);
@@ -220,7 +220,7 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 		const start = performance.now();
 		for (let i = 0; i < 10000; i++) {
 			const selector = selectors[i % selectors.length];
-			buildWhereClause(selector as MangoQuerySelector<RxDocumentData<TestDoc>>, schema);
+			buildWhereClause(selector as MangoQuerySelector<RxDocumentData<TestDoc>>, schema, 'test');
 		}
 		const time = performance.now() - start;
 		
@@ -236,7 +236,7 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 			const start = performance.now();
 			for (let i = 0; i < 1000; i++) {
 				const selector: MangoQuerySelector<RxDocumentData<TestDoc>> = { age: { $eq: i % 50 } };
-				buildWhereClause(selector, schema);
+				buildWhereClause(selector, schema, 'test');
 			}
 			results.push(performance.now() - start);
 		}
@@ -257,7 +257,7 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 				id: { $eq: `unique-${i}` },
 				age: { $eq: i }
 			};
-			buildWhereClause(selector, schema);
+			buildWhereClause(selector, schema, 'test');
 		}
 		
 		expect(getCacheSize()).toBe(500);
@@ -273,11 +273,11 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 		};
 		
 		const start1 = performance.now();
-		buildWhereClause(firstQuery, schema);
+		buildWhereClause(firstQuery, schema, 'test');
 		const time1 = performance.now() - start1;
 		
 		const start2 = performance.now();
-		buildWhereClause(lastQuery, schema);
+		buildWhereClause(lastQuery, schema, 'test');
 		const time2 = performance.now() - start2;
 		
 		expect(time2).toBeLessThanOrEqual(time1 * 2);

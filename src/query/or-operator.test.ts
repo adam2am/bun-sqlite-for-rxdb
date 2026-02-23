@@ -21,7 +21,7 @@ describe('$or operator', () => {
 				{ age: 25 },
 				{ age: 30 }
 			]
-		}, testSchema);
+		}, testSchema, 'test');
 		
 		expect(result.sql).toBe('json_extract(data, \'$.age\') = ? OR json_extract(data, \'$.age\') = ?');
 		expect(result.args).toEqual([25, 30]);
@@ -33,7 +33,7 @@ describe('$or operator', () => {
 				{ age: { $gt: 50 } },
 				{ $and: [{ age: { $eq: 50 } }, { status: 'active' }] }
 			]
-		}, testSchema);
+		}, testSchema, 'test');
 		
 		expect(result.sql).toContain('json_extract(data, \'$.age\') > ?');
 		expect(result.sql).toContain('OR');
@@ -59,7 +59,7 @@ describe('$or operator', () => {
 					]
 				}
 			]
-		}, testSchema);
+		}, testSchema, 'test');
 		
 		expect(result.sql).toContain('OR');
 		expect(result.sql).toContain('(');

@@ -56,7 +56,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 			]
 		};
 
-		const result = buildWhereClause(selector, mockSchema);
+		const result = buildWhereClause(selector, mockSchema, 'test');
 
 		expect(result.sql).toBe(
 			"(json_extract(data, '$.age') >= ? AND (json_extract(data, '$.status') = ? OR json_extract(data, '$.status') = ?)) OR json_extract(data, '$.age') < ?"
@@ -82,7 +82,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 			]
 		};
 
-		const result = buildWhereClause(selector, mockSchema);
+		const result = buildWhereClause(selector, mockSchema, 'test');
 
 		expect(result.sql).toBe(
 			"json_extract(data, '$.name') IS NOT NULL AND (json_extract(data, '$.age') >= ? AND json_extract(data, '$.status') = ?) OR json_extract(data, '$.role') = ?"
@@ -103,7 +103,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 			]
 		};
 
-		const result = buildWhereClause(selector, mockSchema);
+		const result = buildWhereClause(selector, mockSchema, 'test');
 
 		expect(result.sql).toBe(
 			"json_extract(data, '$.age') IN (?, ?, ?) OR json_extract(data, '$.status') = ? AND json_extract(data, '$.verified') = ?"
@@ -134,7 +134,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 			]
 		};
 
-		const result = buildWhereClause(selector, mockSchema);
+		const result = buildWhereClause(selector, mockSchema, 'test');
 
 		expect(result.sql).toBe(
 			"(json_extract(data, '$.country') = ? AND ((json_extract(data, '$.age') >= ? AND json_extract(data, '$.age') <= ?) OR json_extract(data, '$.status') = ?)) OR json_extract(data, '$.role') = ?"
@@ -155,7 +155,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 			]
 		};
 
-		const result = buildWhereClause(selector, mockSchema);
+		const result = buildWhereClause(selector, mockSchema, 'test');
 
 		expect(result.sql).toBe(
 			"(json_extract(data, '$.status') NOT IN (?, ?) AND json_extract(data, '$.age') > ?) OR json_extract(data, '$.role') IN (?, ?)"
@@ -171,7 +171,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 			]
 		};
 
-		const result = buildWhereClause(selector, mockSchema);
+		const result = buildWhereClause(selector, mockSchema, 'test');
 
 		expect(result.sql).toBe("json_extract(data, '$.age') < ? OR json_extract(data, '$.age') > ?");
 		expect(result.args).toEqual([18, 65]);
@@ -190,7 +190,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 			]
 		};
 
-		const result = buildWhereClause(selector, mockSchema);
+		const result = buildWhereClause(selector, mockSchema, 'test');
 
 		expect(result.sql).toBe("json_extract(data, '$.verified') = ? AND json_extract(data, '$.status') = ? OR json_extract(data, '$.status') = ?");
 		expect(result.args).toEqual([true, 'active', 'trial']);

@@ -15,8 +15,8 @@ const testSchema: RxJsonSchema<any> = {
 
 describe('$and operator', () => {
 	it('explicit $and works same as implicit', () => {
-		const implicit = buildWhereClause({ age: 25, status: 'active' }, testSchema);
-		const explicit = buildWhereClause({ $and: [{ age: 25 }, { status: 'active' }] }, testSchema);
+		const implicit = buildWhereClause({ age: 25, status: 'active' }, testSchema, 'test');
+		const explicit = buildWhereClause({ $and: [{ age: 25 }, { status: 'active' }] }, testSchema, 'test');
 		
 		expect(explicit.sql).toBe('json_extract(data, \'$.age\') = ? AND json_extract(data, \'$.status\') = ?');
 		expect(explicit.args).toEqual([25, 'active']);
@@ -29,7 +29,7 @@ describe('$and operator', () => {
 				{ age: { $lt: 65 } },
 				{ status: 'active' }
 			]
-		}, testSchema);
+		}, testSchema, 'test');
 		
 		expect(result.sql).toContain('json_extract(data, \'$.age\') > ?');
 		expect(result.sql).toContain('json_extract(data, \'$.age\') < ?');
