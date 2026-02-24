@@ -1,5 +1,6 @@
 import { Database } from 'bun:sqlite';
 import { Subject, Observable } from 'rxjs';
+import { Query } from 'mingo';
 import type {
 	RxStorageInstance,
 	RxStorageInstanceCreationParams,
@@ -18,7 +19,7 @@ import type {
 	RxStorageDefaultCheckpoint
 } from 'rxdb';
 import type { BunSQLiteStorageSettings, BunSQLiteInternals } from './types';
-import { buildWhereClause } from './query/builder';
+import { buildWhereClause, canTranslateToSQL } from './query/builder';
 import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from './rxdb-helpers';
 import { StatementManager } from './statement-manager';
 import { getDatabase, releaseDatabase } from './connection-pool';
@@ -202,8 +203,34 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	}
 
 	async query(preparedQuery: PreparedQuery<RxDocType>): Promise<RxStorageQueryResult<RxDocType>> {
-		try {
-			const { sql: whereClause, args } = buildWhereClause(preparedQuery.query.selector, this.schema, this.collectionName);
+		if (!canTranslateToSQL(preparedQuery.query.selector)) {
+			if (process.env.DEBUG_QUERIES) {
+				console.log('[DEBUG_QUERIES] Query cannot be translated to SQL, using Mingo');
+			}
+			
+			const query = `SELECT json(data) as data FROM "${this.tableName}"`;
+			const rows = this.stmtManager.all({ query, params: [] }) as Array<{ data: string }>;
+			let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
+			
+			const mingoQuery = new Query(preparedQuery.query.selector);
+			documents = documents.filter(doc => mingoQuery.test(doc));
+
+			if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
+				documents = this.sortDocuments(documents, preparedQuery.query.sort);
+			}
+
+			if (preparedQuery.query.skip) {
+				documents = documents.slice(preparedQuery.query.skip);
+			}
+
+			if (preparedQuery.query.limit) {
+				documents = documents.slice(0, preparedQuery.query.limit);
+			}
+
+			return { documents };
+		}
+
+		const { sql: whereClause, args } = buildWhereClause(preparedQuery.query.selector, this.schema, this.collectionName);
 
 		const sql = `
 		SELECT json(data) as data FROM "${this.tableName}"
@@ -219,46 +246,21 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		}
 
 		const rows = this.stmtManager.all({ query: sql, params: args }) as Array<{ data: string }>;
-			let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
+		let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 
-			if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
-				documents = this.sortDocuments(documents, preparedQuery.query.sort);
-			}
-
-			if (preparedQuery.query.skip) {
-				documents = documents.slice(preparedQuery.query.skip);
-			}
-
-			if (preparedQuery.query.limit) {
-				documents = documents.slice(0, preparedQuery.query.limit);
-			}
-
-			return { documents };
-		} catch (err) {
-			if (process.env.DEBUG_QUERIES) {
-				console.log('[DEBUG_QUERIES] SQL query failed, using fallback');
-				console.log('[DEBUG_QUERIES] Error:', err);
-			}
-			const query = `SELECT json(data) as data FROM "${this.tableName}"`;
-			const rows = this.stmtManager.all({ query, params: [] }) as Array<{ data: string }>;
-			let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
-
-			documents = documents.filter(doc => this.matchesSelector(doc, preparedQuery.query.selector));
-
-			if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
-				documents = this.sortDocuments(documents, preparedQuery.query.sort);
-			}
-
-			if (preparedQuery.query.skip) {
-				documents = documents.slice(preparedQuery.query.skip);
-			}
-
-			if (preparedQuery.query.limit) {
-				documents = documents.slice(0, preparedQuery.query.limit);
-			}
-
-			return { documents };
+		if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
+			documents = this.sortDocuments(documents, preparedQuery.query.sort);
 		}
+
+		if (preparedQuery.query.skip) {
+			documents = documents.slice(preparedQuery.query.skip);
+		}
+
+		if (preparedQuery.query.limit) {
+			documents = documents.slice(0, preparedQuery.query.limit);
+		}
+
+		return { documents };
 	}
 
 	private matchesSelector(doc: RxDocumentData<RxDocType>, selector: MangoQuerySelector<RxDocumentData<RxDocType>>): boolean {

@@ -7,6 +7,41 @@ import stringify from 'fast-stable-stringify';
 const QUERY_CACHE = new Map<string, SqlFragment>();
 const MAX_CACHE_SIZE = 500;
 
+export function canTranslateToSQL<RxDocType>(
+	selector: MangoQuerySelector<RxDocumentData<RxDocType>>
+): boolean {
+	for (const [field, value] of Object.entries(selector)) {
+		if (field === '$and' || field === '$or' || field === '$nor') {
+			if (Array.isArray(value) && !value.every(sub => canTranslateToSQL(sub))) {
+				return false;
+			}
+			continue;
+		}
+		
+		if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+			for (const [op, opValue] of Object.entries(value)) {
+				if (op === '$regex') {
+					const options = (value as Record<string, unknown>).$options as string | undefined;
+					if (!translateRegex('_', opValue as string, options)) {
+						return false;
+					}
+				}
+				if (op === '$elemMatch') {
+					if (!translateElemMatch('_', opValue)) {
+						return false;
+					}
+				}
+				if (op === '$type') {
+					if (!translateType('_', opValue as string)) {
+						return false;
+					}
+				}
+			}
+		}
+	}
+	return true;
+}
+
 export function getCacheSize(): number {
 	return QUERY_CACHE.size;
 }
