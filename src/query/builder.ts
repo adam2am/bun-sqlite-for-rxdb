@@ -1,18 +1,19 @@
 import type { RxJsonSchema, MangoQuerySelector, RxDocumentData } from 'rxdb';
 import { getColumnInfo } from './schema-mapper';
 import { translateEq, translateNe, translateGt, translateGte, translateLt, translateLte, translateIn, translateNin, translateExists, translateRegex, translateElemMatch, translateNot, translateType, translateSize, translateMod } from './operators';
-import type { SqlFragment } from './operators';
+import type { SqlFragment, ElemMatchCriteria } from './operators';
 import stringify from 'fast-stable-stringify';
 
 const QUERY_CACHE = new Map<string, SqlFragment>();
 const MAX_CACHE_SIZE = 500;
 
 export function canTranslateToSQL<RxDocType>(
-	selector: MangoQuerySelector<RxDocumentData<RxDocType>>
+	selector: MangoQuerySelector<RxDocumentData<RxDocType>>,
+	schema?: RxJsonSchema<RxDocumentData<RxDocType>>
 ): boolean {
 	for (const [field, value] of Object.entries(selector)) {
 		if (field === '$and' || field === '$or' || field === '$nor') {
-			if (Array.isArray(value) && !value.every(sub => canTranslateToSQL(sub))) {
+			if (Array.isArray(value) && !value.every(sub => canTranslateToSQL(sub, schema))) {
 				return false;
 			}
 			continue;
@@ -22,12 +23,12 @@ export function canTranslateToSQL<RxDocType>(
 			for (const [op, opValue] of Object.entries(value)) {
 				if (op === '$regex') {
 					const options = (value as Record<string, unknown>).$options as string | undefined;
-					if (!translateRegex('_', opValue as string, options)) {
+					if (schema && !translateRegex(field, opValue as string, options, schema, field)) {
 						return false;
 					}
 				}
 				if (op === '$elemMatch') {
-					if (!translateElemMatch('_', opValue)) {
+					if (!translateElemMatch('_', opValue as ElemMatchCriteria)) {
 						return false;
 					}
 				}
@@ -130,6 +131,7 @@ function processSelector<RxDocType>(
 
 		const columnInfo = getColumnInfo(field, schema);
 		const fieldName = columnInfo.column || `json_extract(data, '${columnInfo.jsonPath}')`;
+		const actualFieldName = columnInfo.jsonPath?.replace(/^\$\./, '') || columnInfo.column || field;
 		
 		if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
 			for (const [op, opValue] of Object.entries(value)) {
@@ -163,17 +165,17 @@ function processSelector<RxDocType>(
 					case '$exists':
 						fragment = translateExists(fieldName, opValue as boolean);
 						break;
-					case '$regex':
-						const options = (value as Record<string, unknown>).$options as string | undefined;
-						const regexFragment = translateRegex(fieldName, opValue as string, options);
-						if (!regexFragment) continue;
-						fragment = regexFragment;
-						break;
-					case '$elemMatch':
-						const elemMatchFragment = translateElemMatch(fieldName, opValue);
-						if (!elemMatchFragment) continue;
-						fragment = elemMatchFragment;
-						break;
+				case '$regex':
+					const options = (value as Record<string, unknown>).$options as string | undefined;
+					const regexFragment = translateRegex(fieldName, opValue as string, options, schema, actualFieldName);
+					if (!regexFragment) continue;
+					fragment = regexFragment;
+					break;
+				case '$elemMatch':
+					const elemMatchFragment = translateElemMatch(fieldName, opValue as ElemMatchCriteria);
+					if (!elemMatchFragment) continue;
+					fragment = elemMatchFragment;
+					break;
 					case '$not':
 						fragment = translateNot(fieldName, opValue);
 						break;

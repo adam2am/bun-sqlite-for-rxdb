@@ -1,6 +1,7 @@
 import { Database } from 'bun:sqlite';
 import { Subject, Observable } from 'rxjs';
 import { Query } from 'mingo';
+import { matchesRegex } from './query/regex-matcher';
 import type {
 	RxStorageInstance,
 	RxStorageInstanceCreationParams,
@@ -46,6 +47,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		this.databaseName = params.databaseName;
 		this.collectionName = params.collectionName;
 		this.schema = params.schema;
+		
 		this.options = params.options;
 		const primaryKey = params.schema.primaryKey;
 		this.primaryPath = typeof primaryKey === 'string' ? primaryKey : primaryKey.key;
@@ -85,8 +87,16 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		if (this.schema.indexes) {
 			for (const index of this.schema.indexes) {
 				const fields = Array.isArray(index) ? index : [index];
-				const indexName = `idx_${this.tableName}_${fields.join('_')}`;
-				const columns = fields.map(field => `json_extract(data, '$.${field}')`).join(', ');
+				const indexName = `idx_${this.tableName}_${fields.join('_').replace(/[()]/g, '_')}`;
+				const columns = fields.map(field => {
+					if (typeof field !== 'string') return `json_extract(data, '$.${field}')`;
+					const funcMatch = field.match(/^(\w+)\((.+)\)$/);
+					if (funcMatch) {
+						const [, func, fieldName] = funcMatch;
+						return `${func}(json_extract(data, '$.${fieldName}'))`;
+					}
+					return `json_extract(data, '$.${field}')`;
+				}).join(', ');
 				this.db.run(`CREATE INDEX IF NOT EXISTS "${indexName}" ON "${this.tableName}"(${columns})`);
 			}
 		}
@@ -203,7 +213,11 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	}
 
 	async query(preparedQuery: PreparedQuery<RxDocType>): Promise<RxStorageQueryResult<RxDocType>> {
-		if (!canTranslateToSQL(preparedQuery.query.selector)) {
+		if (!canTranslateToSQL(preparedQuery.query.selector, this.schema)) {
+			if (isSimpleRegex(preparedQuery.query.selector)) {
+				return this.queryWithOurMemory(preparedQuery);
+			}
+			
 			if (process.env.DEBUG_QUERIES) {
 				console.log('[DEBUG_QUERIES] Query cannot be translated to SQL, using Mingo');
 			}
@@ -389,4 +403,57 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 		return { documents, checkpoint: newCheckpoint };
 	}
+
+	private queryWithOurMemory(preparedQuery: PreparedQuery<RxDocType>): RxStorageQueryResult<RxDocType> {
+		const query = `SELECT json(data) as data FROM "${this.tableName}"`;
+		const rows = this.stmtManager.all({ query, params: [] }) as Array<{ data: string }>;
+		let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
+
+		const selector = preparedQuery.query.selector as Record<string, { $regex: string; $options?: string }>;
+		const field = Object.keys(selector)[0];
+		const value = selector[field];
+		const pattern = value.$regex;
+		const options = value.$options;
+
+		documents = documents.filter(doc => {
+			const fieldValue = this.getNestedValue(doc, field);
+			return matchesRegex(fieldValue, pattern, options);
+		});
+
+		if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
+			documents = this.sortDocuments(documents, preparedQuery.query.sort);
+		}
+
+		if (preparedQuery.query.skip) {
+			documents = documents.slice(preparedQuery.query.skip);
+		}
+
+		if (preparedQuery.query.limit) {
+			documents = documents.slice(0, preparedQuery.query.limit);
+		}
+
+		return { documents };
+	}
+}
+
+function isSimpleRegex(selector: MangoQuerySelector<any>): boolean {
+	const fields = Object.keys(selector);
+	if (fields.length !== 1) return false;
+
+	const field = fields[0];
+	if (field.startsWith('$')) return false;
+
+	const selectorRecord = selector as Record<string, unknown>;
+	const value = selectorRecord[field];
+	if (typeof value !== 'object' || value === null) return false;
+
+	const ops = Object.keys(value);
+	if (!ops.includes('$regex')) return false;
+	if (ops.some(op => op !== '$regex' && op !== '$options')) return false;
+
+	const regexValue = value as { $regex?: unknown; $options?: unknown };
+	const options = regexValue.$options;
+	if (options && options !== 'i') return false;
+
+	return true;
 }

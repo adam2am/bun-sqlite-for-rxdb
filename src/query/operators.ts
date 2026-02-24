@@ -1,3 +1,5 @@
+import type { RxJsonSchema, RxDocumentData } from 'rxdb';
+
 export interface SqlFragment {
 	sql: string;
 	args: (string | number | boolean | null)[];
@@ -5,7 +7,7 @@ export interface SqlFragment {
 
 type QueryValue = string | number | boolean | null;
 type OperatorExpression = { [key: string]: unknown };
-type ElemMatchCriteria = QueryValue | OperatorExpression;
+export type ElemMatchCriteria = QueryValue | OperatorExpression;
 
 import { smartRegexToLike } from './smart-regex';
 
@@ -96,8 +98,14 @@ export function translateExists(field: string, exists: boolean): SqlFragment {
 	};
 }
 
-export function translateRegex(field: string, pattern: string, options?: string): SqlFragment | null {
-	const smartResult = smartRegexToLike(field, pattern, options);
+export function translateRegex<RxDocType>(
+	field: string,
+	pattern: string,
+	options: string | undefined,
+	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
+	fieldName: string
+): SqlFragment | null {
+	const smartResult = smartRegexToLike(field, pattern, options, schema, fieldName);
 	if (smartResult) return smartResult;
 	
 	return null;
