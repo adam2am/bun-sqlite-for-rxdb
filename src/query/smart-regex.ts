@@ -6,6 +6,10 @@ export interface SqlFragment {
 export function smartRegexToLike(field: string, pattern: string, options?: string): SqlFragment | null {
 	const caseInsensitive = options?.includes('i');
 	
+	if (caseInsensitive) {
+		return null;
+	}
+	
 	const startsWithAnchor = pattern.startsWith('^');
 	const endsWithAnchor = pattern.endsWith('$');
 	
