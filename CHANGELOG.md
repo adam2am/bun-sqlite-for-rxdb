@@ -1,5 +1,70 @@
 # Changelog
 
+## [1.2.1] - 2026-02-24
+
+### Added
+- **$elemMatch with $and/$or/$nor** (SQL Fast Path)
+  - Implemented nested logical operators inside $elemMatch queries
+  - Uses single EXISTS pattern with combined WHERE clause (SQLite best practice)
+  - Eliminates Mingo fallback for complex array matching
+  - 8 integration tests for $elemMatch with logical operators
+
+### Changed
+- **Architecture Simplification**
+  - Removed redundant $and/$or/$nor validation from canTranslateToSQL()
+  - Simplified routing logic (processSelector handles all cases)
+
+### Performance
+- $elemMatch with $and: ~24.44ms (SQL fast path)
+- $elemMatch with $or: ~25.23ms (SQL fast path)
+- $elemMatch with $nor: ~25.33ms (SQL fast path)
+
+### Test Results
+- 8/8 new integration tests passing
+- 180/183 total tests passing (3 pre-existing regex bugs)
+
+---
+
+## [1.2.0] - 2026-02-24
+
+### Added
+- **$elemMatch Operator** (SQL Translation)
+  - Implemented with EXISTS + json_each() pattern
+  - Supports simple field matching inside arrays
+  - Foundation for nested logical operators
+- **$type Array Operator**
+  - Added json_type check for 'array' type detection
+  - Completes $type operator support
+- **ourMemory Regex Matcher**
+  - Custom LRU-cached regex matcher (100 entries, 53 lines)
+  - Replaces Mingo for simple case-insensitive $regex queries
+  - Expression index support: LOWER(field) parsing
+  - 6.1% performance improvement (37.41ms → 35.11ms)
+- **Mingo Routing Architecture**
+  - Added canTranslateToSQL() for intelligent query routing
+  - SQL fast path for translatable queries
+  - Mingo fallback for complex patterns
+  - Schema-aware query builder
+
+### Changed
+- **Query Builder Schema-Aware**
+  - translateRegex() now accepts schema and fieldName parameters
+  - Enables expression index detection
+  - Better optimization decisions
+
+### Fixed
+- Disabled case-insensitive regex translation to SQL (correctness over performance)
+
+### Performance
+- ourMemory regex matcher: 6.1% faster than Mingo (37.41ms → 35.11ms)
+- $elemMatch: SQL fast path for simple queries
+
+### Test Results
+- Comprehensive array edge case tests added
+- All $type array tests passing
+
+---
+
 ## [1.1.4] - 2026-02-24
 
 ### Fixed
