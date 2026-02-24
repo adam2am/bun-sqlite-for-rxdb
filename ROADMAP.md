@@ -599,15 +599,18 @@ Improvement: 29.8% faster
 
 | Query Type | Avg | Min | Max | Median | StdDev | Route |
 |------------|-----|-----|-----|--------|--------|-------|
-| Complex $regex char class | 60.77ms | 45.31ms | 126.80ms | 52.96ms | 22.80ms | Mingo |
-| Complex $regex case-insensitive | 42.24ms | 33.14ms | 60.23ms | 41.37ms | 7.67ms | Mingo |
-| $elemMatch | 74.68ms | 67.32ms | 88.39ms | 73.08ms | 6.22ms | Mingo |
+| Complex $regex char class | 44.64ms | 37.14ms | 60.72ms | 45.48ms | 6.57ms | Mingo |
+| Complex $regex case-insensitive | 37.41ms | 33.51ms | 43.53ms | 37.31ms | 2.89ms | Mingo |
+| ~~$elemMatch~~ | ~~74.68ms~~ | ~~67.32ms~~ | ~~88.39ms~~ | ~~73.08ms~~ | ~~6.22ms~~ | ~~Mingo~~ |
+| **$elemMatch** ✅ | **24.75ms** | **21.72ms** | **28.87ms** | **24.77ms** | **2.16ms** | **SQL** |
 | ~~$type array~~ | ~~52.44ms~~ | ~~44.25ms~~ | ~~95.37ms~~ | ~~47.63ms~~ | ~~14.72ms~~ | ~~Mingo~~ |
-| **$type array** ✅ | **33.07ms** | **27.33ms** | **44.25ms** | **27.33ms** | **5.12ms** | **SQL** |
+| **$type array** ✅ | **22.86ms** | **20.18ms** | **24.32ms** | **23.54ms** | **1.29ms** | **SQL** |
 
 **SQL vs Mingo Performance Gap:** 5.69x slower for Mingo (avg 57.53ms vs 10.12ms)
 
-**$type array Optimization (v1.2.0):** 1.59x faster than Mingo (33.07ms vs 52.44ms) 🚀
+**$type array Optimization (v1.2.0):** 2.29x faster than Mingo (22.86ms vs 52.44ms) 🚀
+
+**$elemMatch Optimization (v1.2.0):** 3.02x faster than Mingo (24.75ms vs 74.68ms) 🚀🚀
 
 **Optimization Strategy:** Implement pure SQL for each operator one by one, measure improvements
 
@@ -628,8 +631,8 @@ Improvement: 29.8% faster
 
 | Operator | SQL Implementation | Effort | Speedup | Status |
 |----------|-------------------|--------|---------|--------|
-| ~~`$type` (array/object)~~ | ~~`json_type()` check~~ | ~~15 min~~ | ~~1.65x~~ | ✅ **DONE** (1.59x faster) |
-| `$elemMatch` | `EXISTS + json_each()` subquery | 1 hour | Unknown | 📋 Next |
+| ~~`$type` (array/object)~~ | ~~`json_type()` check~~ | ~~15 min~~ | ~~1.65x~~ | ✅ **DONE** (2.29x faster) |
+| ~~`$elemMatch`~~ | ~~`EXISTS + json_each()` subquery~~ | ~~1 hour~~ | ~~Unknown~~ | ✅ **DONE** (3.02x faster) |
 | `$regex` with flags | `LOWER() + LIKE` for case-insensitive | 30 min | 1.65x | 📋 Next |
 | `$regex` (complex) | Register custom SQLite function | 1 hour | Same as Mingo | 📋 Future |
 
