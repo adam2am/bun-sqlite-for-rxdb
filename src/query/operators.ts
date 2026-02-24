@@ -57,9 +57,9 @@ export function translateIn(field: string, values: unknown[]): SqlFragment {
 	const inClause = `${field} IN (${placeholders})`;
 
 	if (hasNull) {
-		return { 
-			sql: `(${inClause} OR ${field} IS NULL)`, 
-			args: nonNullValues 
+		return {
+			sql: `(${inClause} OR ${field} IS NULL)`,
+			args: nonNullValues
 		};
 	}
 
@@ -82,9 +82,9 @@ export function translateNin(field: string, values: unknown[]): SqlFragment {
 	const ninClause = `${field} NOT IN (${placeholders})`;
 
 	if (hasNull) {
-		return { 
-			sql: `(${ninClause} AND ${field} IS NOT NULL)`, 
-			args: nonNullValues 
+		return {
+			sql: `(${ninClause} AND ${field} IS NOT NULL)`,
+			args: nonNullValues
 		};
 	}
 
@@ -107,14 +107,14 @@ export function translateRegex<RxDocType>(
 ): SqlFragment | null {
 	const smartResult = smartRegexToLike(field, pattern, options, schema, fieldName);
 	if (smartResult) return smartResult;
-	
+
 	return null;
 }
 
 function buildElemMatchConditions(criteria: Record<string, unknown>): SqlFragment {
 	const conditions: string[] = [];
 	const args: (string | number | boolean | null)[] = [];
-	
+
 	for (const [key, value] of Object.entries(criteria)) {
 		if (key.startsWith('$')) {
 			const fragment = processOperatorValue('json_each.value', { [key]: value });
@@ -127,7 +127,7 @@ function buildElemMatchConditions(criteria: Record<string, unknown>): SqlFragmen
 			args.push(...fragment.args);
 		}
 	}
-	
+
 	return {
 		sql: conditions.length > 0 ? conditions.join(' AND ') : '1=1',
 		args
@@ -141,7 +141,7 @@ export function translateElemMatch(field: string, criteria: ElemMatchCriteria): 
 			args: [criteria as string | number | boolean]
 		};
 	}
-	
+
 	if (criteria.$and && Array.isArray(criteria.$and)) {
 		const fragments = criteria.$and.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond));
 		const sql = fragments.map(f => f.sql).join(' AND ');
@@ -151,7 +151,7 @@ export function translateElemMatch(field: string, criteria: ElemMatchCriteria): 
 			args
 		};
 	}
-	
+
 	if (criteria.$or && Array.isArray(criteria.$or)) {
 		const fragments = criteria.$or.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond));
 		const sql = fragments.map(f => f.sql).join(' OR ');
@@ -161,7 +161,7 @@ export function translateElemMatch(field: string, criteria: ElemMatchCriteria): 
 			args
 		};
 	}
-	
+
 	if (criteria.$nor && Array.isArray(criteria.$nor)) {
 		const fragments = criteria.$nor.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond));
 		const sql = fragments.map(f => f.sql).join(' OR ');
@@ -171,12 +171,12 @@ export function translateElemMatch(field: string, criteria: ElemMatchCriteria): 
 			args
 		};
 	}
-	
+
 	const fragment = buildElemMatchConditions(criteria as Record<string, unknown>);
 	if (fragment.sql === '1=1') {
 		return null;
 	}
-	
+
 	return {
 		sql: `EXISTS (SELECT 1 FROM json_each(${field}) WHERE ${fragment.sql})`,
 		args: fragment.args
@@ -186,7 +186,7 @@ export function translateElemMatch(field: string, criteria: ElemMatchCriteria): 
 function processOperatorValue(field: string, value: unknown): SqlFragment {
 	if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
 		const [[op, opValue]] = Object.entries(value);
-		
+
 		switch (op) {
 			case '$eq': return translateEq(field, opValue);
 			case '$ne': return translateNe(field, opValue);
@@ -199,7 +199,7 @@ function processOperatorValue(field: string, value: unknown): SqlFragment {
 			default: return translateEq(field, opValue);
 		}
 	}
-	
+
 	return translateEq(field, value);
 }
 
@@ -211,31 +211,21 @@ export function translateNot(field: string, criteria: unknown): SqlFragment {
 	};
 }
 
-export function translateType(field: string, type: string): SqlFragment | null {
+export function translateType(
+	jsonColumn: string,
+	fieldName: string,
+	type: string
+): SqlFragment | null {
+	const jsonPath = `$.${fieldName}`;
+
 	switch (type) {
-		case 'number':
-			return { 
-				sql: `(typeof(${field}) = 'integer' OR typeof(${field}) = 'real')`, 
-				args: [] 
-			};
-		case 'string':
-			return { sql: `typeof(${field}) = 'text'`, args: [] };
-		case 'null':
-			return { sql: `typeof(${field}) = 'null'`, args: [] };
-		case 'array':
-			// MongoDB $type: 'array' emulation
-			// json_quote() is a no-op on JSON values from json_extract() for real arrays,
-			// but quotes plain string values → distinguishes storage type, not parsed content
-			// See https://sqlite.org/json1.html#jquote (no-op rule)
-			return { 
-				sql: `json_type(json_quote(${field})) = 'array'`, 
-				args: [] 
-			};
-		case 'boolean':
-		case 'object':
-		case 'date':
-		default:
-			return null;
+		case 'null': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'null'`, args: [] };
+		case 'boolean': return { sql: `json_type(${jsonColumn}, '${jsonPath}') IN ('true', 'false')`, args: [] };
+		case 'number': return { sql: `json_type(${jsonColumn}, '${jsonPath}') IN ('integer', 'real')`, args: [] };
+		case 'string': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'text'`, args: [] };
+		case 'array': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'array'`, args: [] };
+		case 'object': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'object'`, args: [] };
+		default: return null;
 	}
 }
 
