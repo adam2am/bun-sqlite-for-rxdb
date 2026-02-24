@@ -3,6 +3,10 @@ export interface SqlFragment {
 	args: (string | number | boolean | null)[];
 }
 
+type QueryValue = string | number | boolean | null;
+type OperatorExpression = { [key: string]: unknown };
+type ElemMatchCriteria = QueryValue | OperatorExpression;
+
 import { smartRegexToLike } from './smart-regex';
 
 export function translateEq(field: string, value: unknown): SqlFragment {
@@ -99,11 +103,46 @@ export function translateRegex(field: string, pattern: string, options?: string)
 	return null;
 }
 
-export function translateElemMatch(field: string, criteria: any): SqlFragment | null {
-	return null;
+export function translateElemMatch(field: string, criteria: ElemMatchCriteria): SqlFragment | null {
+	if (typeof criteria !== 'object' || criteria === null) {
+		return {
+			sql: `EXISTS (SELECT 1 FROM json_each(${field}) WHERE json_each.value = ?)`,
+			args: [criteria as string | number | boolean]
+		};
+	}
+	
+	if (criteria.$and || criteria.$or || criteria.$nor) {
+		return null;
+	}
+	
+	const conditions: string[] = [];
+	const args: (string | number | boolean | null)[] = [];
+	
+	for (const [key, value] of Object.entries(criteria)) {
+		if (key.startsWith('$')) {
+			const fragment = processOperatorValue('json_each.value', { [key]: value });
+			conditions.push(fragment.sql);
+			args.push(...fragment.args);
+		} else {
+			const propertyField = `json_extract(json_each.value, '$.${key}')`;
+			const fragment = processOperatorValue(propertyField, value);
+			conditions.push(fragment.sql);
+			args.push(...fragment.args);
+		}
+	}
+	
+	if (conditions.length === 0) {
+		return null;
+	}
+	
+	const whereClause = conditions.join(' AND ');
+	return {
+		sql: `EXISTS (SELECT 1 FROM json_each(${field}) WHERE ${whereClause})`,
+		args
+	};
 }
 
-function processOperatorValue(field: string, value: any): SqlFragment {
+function processOperatorValue(field: string, value: unknown): SqlFragment {
 	if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
 		const [[op, opValue]] = Object.entries(value);
 		
@@ -123,7 +162,7 @@ function processOperatorValue(field: string, value: any): SqlFragment {
 	return translateEq(field, value);
 }
 
-export function translateNot(field: string, criteria: any): SqlFragment {
+export function translateNot(field: string, criteria: unknown): SqlFragment {
 	const inner = processOperatorValue(field, criteria);
 	return {
 		sql: `NOT(${inner.sql})`,
