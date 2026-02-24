@@ -611,6 +611,8 @@ Improvement: 29.8% faster
 
 **Optimization Strategy:** Implement pure SQL for each operator one by one, measure improvements
 
+**Long-term Goal:** Remove Mingo fallback entirely once all operators are pure SQL (dead code elimination)
+
 ### **Two Paths Forward:**
 
 #### **Path A: Mingo Fallback (Quick Fix - 10 minutes)**
