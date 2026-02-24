@@ -142,8 +142,16 @@ export function translateType(field: string, type: string): SqlFragment | null {
 			return { sql: `typeof(${field}) = 'text'`, args: [] };
 		case 'null':
 			return { sql: `typeof(${field}) = 'null'`, args: [] };
-		case 'boolean':
 		case 'array':
+			// MongoDB $type: 'array' emulation
+			// json_quote() is a no-op on JSON values from json_extract() for real arrays,
+			// but quotes plain string values → distinguishes storage type, not parsed content
+			// See https://sqlite.org/json1.html#jquote (no-op rule)
+			return { 
+				sql: `json_type(json_quote(${field})) = 'array'`, 
+				args: [] 
+			};
+		case 'boolean':
 		case 'object':
 		case 'date':
 		default:

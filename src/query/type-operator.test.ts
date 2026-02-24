@@ -25,9 +25,10 @@ describe('$type Operator', () => {
 		expect(result).toBeNull();
 	});
 
-	it('returns null for array type (Mingo fallback)', () => {
+	it('translates array type to json_type check with json_quote no-op', () => {
 		const result = translateType('tags', 'array');
-		expect(result).toBeNull();
+		expect(result?.sql).toBe("json_type(json_quote(tags)) = 'array'");
+		expect(result?.args).toEqual([]);
 	});
 
 	it('returns null for object type (Mingo fallback)', () => {
