@@ -50,21 +50,21 @@ export function buildWhereClause<RxDocType>(
 	collectionName: string
 ): SqlFragment {
 	const cacheKey = `v${schema.version}_${collectionName}_${stringify(selector)}`;
-	
+
 	const cached = QUERY_CACHE.get(cacheKey);
 	if (cached) {
 		QUERY_CACHE.delete(cacheKey);
 		QUERY_CACHE.set(cacheKey, cached);
 		return cached;
 	}
-	
+
 	const result = processSelector(selector, schema, 0);
-	
+
 	if (QUERY_CACHE.size >= MAX_CACHE_SIZE) {
 		const firstKey = QUERY_CACHE.keys().next().value;
 		if (firstKey) QUERY_CACHE.delete(firstKey);
 	}
-	
+
 	QUERY_CACHE.set(cacheKey, result);
 	return result;
 }
@@ -78,12 +78,12 @@ function buildLogicalOperator<RxDocType>(
 	if (conditions.length === 0) {
 		return { sql: '1=1', args: [] };
 	}
-	
+
 	const fragments = conditions.map(subSelector => processSelector(subSelector, schema, logicalDepth + 1));
 	const sql = fragments.map(f => f.sql).join(' OR ');
 	const args = fragments.flatMap(f => f.args);
-	
-	return operator === 'nor' 
+
+	return operator === 'nor'
 		? { sql: `NOT(${sql})`, args }
 		: { sql, args };
 }
@@ -95,7 +95,7 @@ function processSelector<RxDocType>(
 ): SqlFragment {
 	const conditions: string[] = [];
 	const args: (string | number | boolean | null)[] = [];
-	
+
 	for (const [field, value] of Object.entries(selector)) {
 		if (field === '$and' && Array.isArray(value)) {
 			const andFragments = value.map(subSelector => processSelector(subSelector, schema, logicalDepth));
@@ -125,11 +125,11 @@ function processSelector<RxDocType>(
 		const columnInfo = getColumnInfo(field, schema);
 		const fieldName = columnInfo.column || `json_extract(data, '${columnInfo.jsonPath}')`;
 		const actualFieldName = columnInfo.jsonPath?.replace(/^\$\./, '') || columnInfo.column || field;
-		
+
 		if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
 			for (const [op, opValue] of Object.entries(value)) {
 				let fragment: SqlFragment;
-				
+
 				switch (op) {
 					case '$eq':
 						fragment = translateEq(fieldName, opValue);
@@ -158,17 +158,17 @@ function processSelector<RxDocType>(
 					case '$exists':
 						fragment = translateExists(fieldName, opValue as boolean);
 						break;
-				case '$regex':
-					const options = (value as Record<string, unknown>).$options as string | undefined;
-					const regexFragment = translateRegex(fieldName, opValue as string, options, schema, actualFieldName);
-					if (!regexFragment) continue;
-					fragment = regexFragment;
-					break;
-				case '$elemMatch':
-					const elemMatchFragment = translateElemMatch(fieldName, opValue as ElemMatchCriteria);
-					if (!elemMatchFragment) continue;
-					fragment = elemMatchFragment;
-					break;
+					case '$regex':
+						const options = (value as Record<string, unknown>).$options as string | undefined;
+						const regexFragment = translateRegex(fieldName, opValue as string, options, schema, actualFieldName);
+						if (!regexFragment) continue;
+						fragment = regexFragment;
+						break;
+					case '$elemMatch':
+						const elemMatchFragment = translateElemMatch(fieldName, opValue as ElemMatchCriteria);
+						if (!elemMatchFragment) continue;
+						fragment = elemMatchFragment;
+						break;
 					case '$not':
 						fragment = translateNot(fieldName, opValue);
 						break;
@@ -186,7 +186,7 @@ function processSelector<RxDocType>(
 					default:
 						continue;
 				}
-				
+
 				conditions.push(fragment.sql);
 				args.push(...fragment.args);
 			}
@@ -196,7 +196,7 @@ function processSelector<RxDocType>(
 			args.push(...fragment.args);
 		}
 	}
-	
+
 	const where = conditions.length > 0 ? conditions.join(' AND ') : '1=1';
 	return { sql: where, args };
 }
