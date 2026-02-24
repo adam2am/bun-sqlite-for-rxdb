@@ -111,18 +111,7 @@ export function translateRegex<RxDocType>(
 	return null;
 }
 
-export function translateElemMatch(field: string, criteria: ElemMatchCriteria): SqlFragment | null {
-	if (typeof criteria !== 'object' || criteria === null) {
-		return {
-			sql: `EXISTS (SELECT 1 FROM json_each(${field}) WHERE json_each.value = ?)`,
-			args: [criteria as string | number | boolean]
-		};
-	}
-	
-	if (criteria.$and || criteria.$or || criteria.$nor) {
-		return null;
-	}
-	
+function buildElemMatchConditions(criteria: Record<string, unknown>): SqlFragment {
 	const conditions: string[] = [];
 	const args: (string | number | boolean | null)[] = [];
 	
@@ -139,14 +128,58 @@ export function translateElemMatch(field: string, criteria: ElemMatchCriteria): 
 		}
 	}
 	
-	if (conditions.length === 0) {
+	return {
+		sql: conditions.length > 0 ? conditions.join(' AND ') : '1=1',
+		args
+	};
+}
+
+export function translateElemMatch(field: string, criteria: ElemMatchCriteria): SqlFragment | null {
+	if (typeof criteria !== 'object' || criteria === null) {
+		return {
+			sql: `EXISTS (SELECT 1 FROM json_each(${field}) WHERE json_each.value = ?)`,
+			args: [criteria as string | number | boolean]
+		};
+	}
+	
+	if (criteria.$and && Array.isArray(criteria.$and)) {
+		const fragments = criteria.$and.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond));
+		const sql = fragments.map(f => f.sql).join(' AND ');
+		const args = fragments.flatMap(f => f.args);
+		return {
+			sql: `EXISTS (SELECT 1 FROM json_each(${field}) WHERE ${sql})`,
+			args
+		};
+	}
+	
+	if (criteria.$or && Array.isArray(criteria.$or)) {
+		const fragments = criteria.$or.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond));
+		const sql = fragments.map(f => f.sql).join(' OR ');
+		const args = fragments.flatMap(f => f.args);
+		return {
+			sql: `EXISTS (SELECT 1 FROM json_each(${field}) WHERE ${sql})`,
+			args
+		};
+	}
+	
+	if (criteria.$nor && Array.isArray(criteria.$nor)) {
+		const fragments = criteria.$nor.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond));
+		const sql = fragments.map(f => f.sql).join(' OR ');
+		const args = fragments.flatMap(f => f.args);
+		return {
+			sql: `EXISTS (SELECT 1 FROM json_each(${field}) WHERE NOT (${sql}))`,
+			args
+		};
+	}
+	
+	const fragment = buildElemMatchConditions(criteria as Record<string, unknown>);
+	if (fragment.sql === '1=1') {
 		return null;
 	}
 	
-	const whereClause = conditions.join(' AND ');
 	return {
-		sql: `EXISTS (SELECT 1 FROM json_each(${field}) WHERE ${whereClause})`,
-		args
+		sql: `EXISTS (SELECT 1 FROM json_each(${field}) WHERE ${fragment.sql})`,
+		args: fragment.args
 	};
 }
 

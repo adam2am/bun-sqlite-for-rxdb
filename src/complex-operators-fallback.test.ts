@@ -129,6 +129,326 @@ describe('$elemMatch and $type Fallback (TDD)', () => {
 		
 		await instance.remove();
 	});
+
+	it('handles $elemMatch with $and (SQL fast path, no Mingo fallback)', async () => {
+		interface DocWithObjects {
+			id: string;
+			name: string;
+			items: Array<{ label: string; status: string; count: number }>;
+			_deleted: boolean;
+			_attachments: Record<string, unknown>;
+			_rev: string;
+			_meta: { lwt: number };
+		}
+
+		const objInstance = await storage.createStorageInstance<DocWithObjects>({
+			databaseInstanceToken: `test-token-${Date.now()}`,
+			databaseName: 'testdb',
+			collectionName: 'items',
+			schema: {
+				version: 0,
+				primaryKey: 'id',
+				type: 'object',
+				properties: {
+					id: { type: 'string', maxLength: 100 },
+					name: { type: 'string' },
+					items: { type: 'array' },
+					_deleted: { type: 'boolean' },
+					_attachments: { type: 'object' },
+					_rev: { type: 'string' },
+					_meta: { type: 'object', properties: { lwt: { type: 'number' } } }
+				},
+				required: ['id', '_deleted', '_attachments', '_rev', '_meta']
+			},
+			options: {},
+			multiInstance: false,
+			devMode: false
+		});
+
+		const docs: RxDocumentData<DocWithObjects>[] = [
+			{ 
+				id: 'doc1', 
+				name: 'First',
+				items: [
+					{ label: 'premium', status: 'active', count: 10 },
+					{ label: 'basic', status: 'inactive', count: 5 }
+				],
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-a', 
+				_meta: { lwt: Date.now() } 
+			},
+			{ 
+				id: 'doc2', 
+				name: 'Second',
+				items: [
+					{ label: 'premium', status: 'inactive', count: 3 },
+					{ label: 'vip', status: 'active', count: 15 }
+				],
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-b', 
+				_meta: { lwt: Date.now() } 
+			},
+			{ 
+				id: 'doc3', 
+				name: 'Third',
+				items: [
+					{ label: 'basic', status: 'active', count: 2 }
+				],
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-c', 
+				_meta: { lwt: Date.now() } 
+			}
+		];
+
+		await objInstance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+
+		const result = await objInstance.query({ 
+			query: { 
+				selector: { 
+					items: { 
+						$elemMatch: { 
+							$and: [
+								{ label: 'premium' }, 
+								{ status: 'active' }
+							]
+						} 
+					} 
+				}, 
+				sort: [{ id: 'asc' }], 
+				skip: 0 
+			},
+			queryPlan: { 
+				index: [], 
+				startKeys: [], 
+				endKeys: [], 
+				inclusiveStart: true, 
+				inclusiveEnd: true, 
+				sortSatisfiedByIndex: false, 
+				selectorSatisfiedByIndex: false 
+			}
+		});
+
+		expect(result.documents).toHaveLength(1);
+		expect(result.documents[0].id).toBe('doc1');
+
+		await objInstance.remove();
+	});
+
+	it('handles $elemMatch with $or (SQL fast path, no Mingo fallback)', async () => {
+		interface DocWithObjects {
+			id: string;
+			name: string;
+			items: Array<{ type: string; priority: number }>;
+			_deleted: boolean;
+			_attachments: Record<string, unknown>;
+			_rev: string;
+			_meta: { lwt: number };
+		}
+
+		const objInstance = await storage.createStorageInstance<DocWithObjects>({
+			databaseInstanceToken: `test-token-${Date.now()}`,
+			databaseName: 'testdb',
+			collectionName: 'items-or',
+			schema: {
+				version: 0,
+				primaryKey: 'id',
+				type: 'object',
+				properties: {
+					id: { type: 'string', maxLength: 100 },
+					name: { type: 'string' },
+					items: { type: 'array' },
+					_deleted: { type: 'boolean' },
+					_attachments: { type: 'object' },
+					_rev: { type: 'string' },
+					_meta: { type: 'object', properties: { lwt: { type: 'number' } } }
+				},
+				required: ['id', '_deleted', '_attachments', '_rev', '_meta']
+			},
+			options: {},
+			multiInstance: false,
+			devMode: false
+		});
+
+		const docs: RxDocumentData<DocWithObjects>[] = [
+			{ 
+				id: 'doc1', 
+				name: 'First',
+				items: [
+					{ type: 'A', priority: 1 },
+					{ type: 'C', priority: 3 }
+				],
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-a', 
+				_meta: { lwt: Date.now() } 
+			},
+			{ 
+				id: 'doc2', 
+				name: 'Second',
+				items: [
+					{ type: 'B', priority: 2 }
+				],
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-b', 
+				_meta: { lwt: Date.now() } 
+			},
+			{ 
+				id: 'doc3', 
+				name: 'Third',
+				items: [
+					{ type: 'C', priority: 5 }
+				],
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-c', 
+				_meta: { lwt: Date.now() } 
+			}
+		];
+
+		await objInstance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+
+		const result = await objInstance.query({ 
+			query: { 
+				selector: { 
+					items: { 
+						$elemMatch: { 
+							$or: [
+								{ type: 'A' }, 
+								{ type: 'B' }
+							]
+						} 
+					} 
+				}, 
+				sort: [{ id: 'asc' }], 
+				skip: 0 
+			},
+			queryPlan: { 
+				index: [], 
+				startKeys: [], 
+				endKeys: [], 
+				inclusiveStart: true, 
+				inclusiveEnd: true, 
+				sortSatisfiedByIndex: false, 
+				selectorSatisfiedByIndex: false 
+			}
+		});
+
+		expect(result.documents).toHaveLength(2);
+		expect(result.documents[0].id).toBe('doc1');
+		expect(result.documents[1].id).toBe('doc2');
+
+		await objInstance.remove();
+	});
+
+	it('handles $elemMatch with $nor (SQL fast path, no Mingo fallback)', async () => {
+		interface DocWithObjects {
+			id: string;
+			name: string;
+			items: Array<{ status: string; archived: boolean }>;
+			_deleted: boolean;
+			_attachments: Record<string, unknown>;
+			_rev: string;
+			_meta: { lwt: number };
+		}
+
+		const objInstance = await storage.createStorageInstance<DocWithObjects>({
+			databaseInstanceToken: `test-token-${Date.now()}`,
+			databaseName: 'testdb',
+			collectionName: 'items-nor',
+			schema: {
+				version: 0,
+				primaryKey: 'id',
+				type: 'object',
+				properties: {
+					id: { type: 'string', maxLength: 100 },
+					name: { type: 'string' },
+					items: { type: 'array' },
+					_deleted: { type: 'boolean' },
+					_attachments: { type: 'object' },
+					_rev: { type: 'string' },
+					_meta: { type: 'object', properties: { lwt: { type: 'number' } } }
+				},
+				required: ['id', '_deleted', '_attachments', '_rev', '_meta']
+			},
+			options: {},
+			multiInstance: false,
+			devMode: false
+		});
+
+		const docs: RxDocumentData<DocWithObjects>[] = [
+			{ 
+				id: 'doc1', 
+				name: 'First',
+				items: [
+					{ status: 'active', archived: false },
+					{ status: 'pending', archived: false }
+				],
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-a', 
+				_meta: { lwt: Date.now() } 
+			},
+			{ 
+				id: 'doc2', 
+				name: 'Second',
+				items: [
+					{ status: 'deleted', archived: true }
+				],
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-b', 
+				_meta: { lwt: Date.now() } 
+			},
+			{ 
+				id: 'doc3', 
+				name: 'Third',
+				items: [
+					{ status: 'archived', archived: true }
+				],
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-c', 
+				_meta: { lwt: Date.now() } 
+			}
+		];
+
+		await objInstance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+
+		const result = await objInstance.query({ 
+			query: { 
+				selector: { 
+					items: { 
+						$elemMatch: { 
+							$nor: [
+								{ status: 'deleted' }, 
+								{ status: 'archived' }
+							]
+						} 
+					} 
+				}, 
+				sort: [{ id: 'asc' }], 
+				skip: 0 
+			},
+			queryPlan: { 
+				index: [], 
+				startKeys: [], 
+				endKeys: [], 
+				inclusiveStart: true, 
+				inclusiveEnd: true, 
+				sortSatisfiedByIndex: false, 
+				selectorSatisfiedByIndex: false 
+			}
+		});
+
+		expect(result.documents).toHaveLength(1);
+		expect(result.documents[0].id).toBe('doc1');
+
+		await objInstance.remove();
+	});
 	
 	it('handles $type with array type', async () => {
 		const docs: RxDocumentData<TestDocType>[] = [
@@ -482,150 +802,6 @@ describe('$elemMatch and $type Fallback (TDD)', () => {
 		});
 		
 		expect(result.documents).toHaveLength(2);
-		
-		await instance.remove();
-	});
-	
-	it('handles $elemMatch with $and (Mingo fallback)', async () => {
-		const docs: RxDocumentData<TestDocType>[] = [
-			{ 
-				id: 'user1', 
-				name: 'Alice', 
-				tags: ['premium', 'active'], 
-				metadata: { active: true, count: 5 },
-				age: 30, 
-				_deleted: false, 
-				_attachments: {}, 
-				_rev: '1-a', 
-				_meta: { lwt: Date.now() } 
-			},
-			{ 
-				id: 'user2', 
-				name: 'Bob', 
-				tags: ['premium'], 
-				metadata: { active: false, count: 2 },
-				age: 25, 
-				_deleted: false, 
-				_attachments: {}, 
-				_rev: '1-b', 
-				_meta: { lwt: Date.now() } 
-			},
-			{ 
-				id: 'user3', 
-				name: 'Charlie', 
-				tags: ['active'], 
-				metadata: { active: true, count: 8 },
-				age: 35, 
-				_deleted: false, 
-				_attachments: {}, 
-				_rev: '1-c', 
-				_meta: { lwt: Date.now() } 
-			}
-		];
-		
-		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
-		
-		const result = await instance.query({ 
-			query: { 
-				selector: { 
-					tags: { 
-						$elemMatch: { 
-							$and: [
-								{ $eq: 'premium' },
-								{ $ne: 'inactive' }
-							]
-						}
-					} 
-				}, 
-				sort: [{ id: 'asc' }], 
-				skip: 0 
-			},
-			queryPlan: { 
-				index: [], 
-				startKeys: [], 
-				endKeys: [], 
-				inclusiveStart: true, 
-				inclusiveEnd: true, 
-				sortSatisfiedByIndex: false, 
-				selectorSatisfiedByIndex: false 
-			}
-		});
-		
-		expect(result.documents).toHaveLength(2);
-		expect(result.documents[0].id).toBe('user1');
-		expect(result.documents[1].id).toBe('user2');
-		
-		await instance.remove();
-	});
-	
-	it('handles $elemMatch with $or (Mingo fallback)', async () => {
-		const docs: RxDocumentData<TestDocType>[] = [
-			{ 
-				id: 'user1', 
-				name: 'Alice', 
-				tags: ['premium'], 
-				metadata: { active: true, count: 5 },
-				age: 30, 
-				_deleted: false, 
-				_attachments: {}, 
-				_rev: '1-a', 
-				_meta: { lwt: Date.now() } 
-			},
-			{ 
-				id: 'user2', 
-				name: 'Bob', 
-				tags: ['vip'], 
-				metadata: { active: false, count: 2 },
-				age: 25, 
-				_deleted: false, 
-				_attachments: {}, 
-				_rev: '1-b', 
-				_meta: { lwt: Date.now() } 
-			},
-			{ 
-				id: 'user3', 
-				name: 'Charlie', 
-				tags: ['basic'], 
-				metadata: { active: true, count: 8 },
-				age: 35, 
-				_deleted: false, 
-				_attachments: {}, 
-				_rev: '1-c', 
-				_meta: { lwt: Date.now() } 
-			}
-		];
-		
-		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
-		
-		const result = await instance.query({ 
-			query: { 
-				selector: { 
-					tags: { 
-						$elemMatch: { 
-							$or: [
-								{ $eq: 'premium' },
-								{ $eq: 'vip' }
-							]
-						}
-					} 
-				}, 
-				sort: [{ id: 'asc' }], 
-				skip: 0 
-			},
-			queryPlan: { 
-				index: [], 
-				startKeys: [], 
-				endKeys: [], 
-				inclusiveStart: true, 
-				inclusiveEnd: true, 
-				sortSatisfiedByIndex: false, 
-				selectorSatisfiedByIndex: false 
-			}
-		});
-		
-		expect(result.documents).toHaveLength(2);
-		expect(result.documents[0].id).toBe('user1');
-		expect(result.documents[1].id).toBe('user2');
 		
 		await instance.remove();
 	});

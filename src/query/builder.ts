@@ -12,13 +12,6 @@ export function canTranslateToSQL<RxDocType>(
 	schema?: RxJsonSchema<RxDocumentData<RxDocType>>
 ): boolean {
 	for (const [field, value] of Object.entries(selector)) {
-		if (field === '$and' || field === '$or' || field === '$nor') {
-			if (Array.isArray(value) && !value.every(sub => canTranslateToSQL(sub, schema))) {
-				return false;
-			}
-			continue;
-		}
-		
 		if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
 			for (const [op, opValue] of Object.entries(value)) {
 				if (op === '$regex') {

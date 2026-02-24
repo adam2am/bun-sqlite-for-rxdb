@@ -23,8 +23,24 @@ describe('$elemMatch Operator', () => {
 		expect(result?.args).toEqual(['Turing Award', 1980]);
 	});
 
-	it('returns null for complex nested operators ($and, $or, $nor)', () => {
+	it('translates $and operator', () => {
 		const result = translateElemMatch('data', { $and: [{ status: 'active' }, { count: { $gte: 10 } }] });
-		expect(result).toBeNull();
+		expect(result).not.toBeNull();
+		expect(result?.sql).toBe("EXISTS (SELECT 1 FROM json_each(data) WHERE json_extract(json_each.value, '$.status') = ? AND json_extract(json_each.value, '$.count') >= ?)");
+		expect(result?.args).toEqual(['active', 10]);
+	});
+
+	it('translates $or operator', () => {
+		const result = translateElemMatch('data', { $or: [{ type: 'A' }, { type: 'B' }] });
+		expect(result).not.toBeNull();
+		expect(result?.sql).toBe("EXISTS (SELECT 1 FROM json_each(data) WHERE json_extract(json_each.value, '$.type') = ? OR json_extract(json_each.value, '$.type') = ?)");
+		expect(result?.args).toEqual(['A', 'B']);
+	});
+
+	it('translates $nor operator', () => {
+		const result = translateElemMatch('data', { $nor: [{ status: 'deleted' }, { status: 'archived' }] });
+		expect(result).not.toBeNull();
+		expect(result?.sql).toBe("EXISTS (SELECT 1 FROM json_each(data) WHERE NOT (json_extract(json_each.value, '$.status') = ? OR json_extract(json_each.value, '$.status') = ?))");
+		expect(result?.args).toEqual(['deleted', 'archived']);
 	});
 });
