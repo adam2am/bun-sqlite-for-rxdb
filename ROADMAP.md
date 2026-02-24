@@ -580,6 +580,83 @@ Improvement: 29.8% faster
 **Effort:** 2 hours (if validated)  
 **Status:** ❓ Unproven - need evidence from senior
 
+
+---
+
+## 🔬 v1.2.0: Complex Operator Optimization (Future)
+
+**Current State (v1.1.4):**
+- ✅ All simple SQL operators working (162/162 tests passing)
+- ✅ Mingo routing architecture implemented (canTranslateToSQL + upfront routing)
+- ✅ All 168 tests passing (6 complex operator tests now use Mingo)
+- ✅ 100% routing accuracy (SQL vs Mingo decision is correct)
+
+**The Vision:** Superfast bun:sqlite for ALL operators, no hybrid fallbacks
+
+### **Baseline Performance (2026-02-24)**
+
+**Mingo Routing Architecture - 10k documents, 10 runs:**
+
+| Query Type | Avg | Min | Max | Median | StdDev | Route |
+|------------|-----|-----|-----|--------|--------|-------|
+| Complex $regex char class | 60.77ms | 45.31ms | 126.80ms | 52.96ms | 22.80ms | Mingo |
+| Complex $regex case-insensitive | 42.24ms | 33.14ms | 60.23ms | 41.37ms | 7.67ms | Mingo |
+| $elemMatch | 74.68ms | 67.32ms | 88.39ms | 73.08ms | 6.22ms | Mingo |
+| ~~$type array~~ | ~~52.44ms~~ | ~~44.25ms~~ | ~~95.37ms~~ | ~~47.63ms~~ | ~~14.72ms~~ | ~~Mingo~~ |
+| **$type array** ✅ | **33.07ms** | **27.33ms** | **44.25ms** | **27.33ms** | **5.12ms** | **SQL** |
+
+**SQL vs Mingo Performance Gap:** 5.69x slower for Mingo (avg 57.53ms vs 10.12ms)
+
+**$type array Optimization (v1.2.0):** 1.59x faster than Mingo (33.07ms vs 52.44ms) 🚀
+
+**Optimization Strategy:** Implement pure SQL for each operator one by one, measure improvements
+
+### **Two Paths Forward:**
+
+#### **Path A: Mingo Fallback (Quick Fix - 10 minutes)**
+- Use Mingo for complex operators that SQL can't handle
+- Pros: Battle-tested, handles ALL operators, ships today
+- Cons: 1.65x slower than SQL (326ms vs 198ms on 100k docs)
+- Use case: Rare complex queries (<1% of workload)
+
+#### **Path B: Pure SQL Implementation (Proper Fix - 2-4 hours)**
+**Inspired by industry standards (Mingo patterns) but leveraging bun:sqlite speed**
+
+**Complex operators to implement:**
+
+| Operator | SQL Implementation | Effort | Speedup | Status |
+|----------|-------------------|--------|---------|--------|
+| ~~`$type` (array/object)~~ | ~~`json_type()` check~~ | ~~15 min~~ | ~~1.65x~~ | ✅ **DONE** (1.59x faster) |
+| `$elemMatch` | `EXISTS + json_each()` subquery | 1 hour | Unknown | 📋 Next |
+| `$regex` with flags | `LOWER() + LIKE` for case-insensitive | 30 min | 1.65x | 📋 Next |
+| `$regex` (complex) | Register custom SQLite function | 1 hour | Same as Mingo | 📋 Future |
+
+**Decision Matrix:**
+- If complex operators are <1% of queries → Ship Mingo fallback (Path A)
+- If complex operators are >10% of queries → Implement pure SQL (Path B)
+- **Recommendation:** Ship Path A now, measure usage, optimize Path B if needed
+
+**Linus Principle:**
+> "Don't optimize code that isn't proven to be a bottleneck. Ship it, measure it, then optimize if needed."
+
+### **v1.2.0 Potential Features:**
+1. **Mingo Fallback** (Priority 1 - fixes 6 failing tests)
+   - Implement Mingo for complex operators
+   - Measure fallback usage in production
+   - Decide if pure SQL optimization is needed
+
+2. **Pure SQL Complex Operators** (Priority 2 - if metrics show need)
+   - Implement `$type` with `json_type()` (easy win)
+   - Implement case-insensitive regex with `LOWER() + LIKE`
+   - Benchmark `$elemMatch` with `json_each()` vs Mingo
+   - Only implement if fallback is >10% of queries
+
+3. **Covering Indexes** (Priority 3 - further optimization)
+   - Add primary key to compound indexes
+   - Potential for additional query speedup
+
+**Status:** 📋 Planning - measure before optimizing
+
 ---
 
 ## 🤝 Contributing
