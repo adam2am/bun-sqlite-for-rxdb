@@ -485,4 +485,148 @@ describe('$elemMatch and $type Fallback (TDD)', () => {
 		
 		await instance.remove();
 	});
+	
+	it('handles $elemMatch with $and (Mingo fallback)', async () => {
+		const docs: RxDocumentData<TestDocType>[] = [
+			{ 
+				id: 'user1', 
+				name: 'Alice', 
+				tags: ['premium', 'active'], 
+				metadata: { active: true, count: 5 },
+				age: 30, 
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-a', 
+				_meta: { lwt: Date.now() } 
+			},
+			{ 
+				id: 'user2', 
+				name: 'Bob', 
+				tags: ['premium'], 
+				metadata: { active: false, count: 2 },
+				age: 25, 
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-b', 
+				_meta: { lwt: Date.now() } 
+			},
+			{ 
+				id: 'user3', 
+				name: 'Charlie', 
+				tags: ['active'], 
+				metadata: { active: true, count: 8 },
+				age: 35, 
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-c', 
+				_meta: { lwt: Date.now() } 
+			}
+		];
+		
+		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await instance.query({ 
+			query: { 
+				selector: { 
+					tags: { 
+						$elemMatch: { 
+							$and: [
+								{ $eq: 'premium' },
+								{ $ne: 'inactive' }
+							]
+						}
+					} 
+				}, 
+				sort: [{ id: 'asc' }], 
+				skip: 0 
+			},
+			queryPlan: { 
+				index: [], 
+				startKeys: [], 
+				endKeys: [], 
+				inclusiveStart: true, 
+				inclusiveEnd: true, 
+				sortSatisfiedByIndex: false, 
+				selectorSatisfiedByIndex: false 
+			}
+		});
+		
+		expect(result.documents).toHaveLength(2);
+		expect(result.documents[0].id).toBe('user1');
+		expect(result.documents[1].id).toBe('user2');
+		
+		await instance.remove();
+	});
+	
+	it('handles $elemMatch with $or (Mingo fallback)', async () => {
+		const docs: RxDocumentData<TestDocType>[] = [
+			{ 
+				id: 'user1', 
+				name: 'Alice', 
+				tags: ['premium'], 
+				metadata: { active: true, count: 5 },
+				age: 30, 
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-a', 
+				_meta: { lwt: Date.now() } 
+			},
+			{ 
+				id: 'user2', 
+				name: 'Bob', 
+				tags: ['vip'], 
+				metadata: { active: false, count: 2 },
+				age: 25, 
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-b', 
+				_meta: { lwt: Date.now() } 
+			},
+			{ 
+				id: 'user3', 
+				name: 'Charlie', 
+				tags: ['basic'], 
+				metadata: { active: true, count: 8 },
+				age: 35, 
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-c', 
+				_meta: { lwt: Date.now() } 
+			}
+		];
+		
+		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await instance.query({ 
+			query: { 
+				selector: { 
+					tags: { 
+						$elemMatch: { 
+							$or: [
+								{ $eq: 'premium' },
+								{ $eq: 'vip' }
+							]
+						}
+					} 
+				}, 
+				sort: [{ id: 'asc' }], 
+				skip: 0 
+			},
+			queryPlan: { 
+				index: [], 
+				startKeys: [], 
+				endKeys: [], 
+				inclusiveStart: true, 
+				inclusiveEnd: true, 
+				sortSatisfiedByIndex: false, 
+				selectorSatisfiedByIndex: false 
+			}
+		});
+		
+		expect(result.documents).toHaveLength(2);
+		expect(result.documents[0].id).toBe('user1');
+		expect(result.documents[1].id).toBe('user2');
+		
+		await instance.remove();
+	});
 });
