@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.2.2] - 2026-02-24
+
+### Fixed
+- **$type Operator** (SQL Translation)
+  - Fixed translateType() signature: now requires jsonColumn, fieldName, and type parameters
+  - Rewritten to use SQLite's json_type() for all 6 RxDB types (was using typeof() for only 3)
+  - All types now translate to SQL: null, boolean, number, string, array, object
+  - Removed redundant canTranslateToSQL check (all types now supported)
+  - Fixed TypeScript error: "Expected 3 arguments, but got 2"
+
+### Changed
+- **Architecture Simplification**
+  - Removed redundant ternary in translateType() (both branches identical)
+  - Cleaner jsonPath construction: `$.${fieldName}`
+
+### Test Results
+- 181/184 tests passing (3 pre-existing regex bugs unrelated to $type)
+- All 6 $type operator tests passing
+
+---
+
 ## [1.2.1] - 2026-02-24
 
 ### Added
