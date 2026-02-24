@@ -1,6 +1,22 @@
 import { describe, test, expect } from "bun:test";
 import { Database } from "bun:sqlite";
 import { translateRegex } from "./operators";
+import type { RxJsonSchema, RxDocumentData } from 'rxdb';
+
+const mockSchema: RxJsonSchema<RxDocumentData<{ id: string; name: string }>> = {
+	version: 0,
+	primaryKey: 'id',
+	type: 'object',
+	properties: {
+		id: { type: 'string' },
+		name: { type: 'string' },
+		_deleted: { type: 'boolean' },
+		_attachments: { type: 'object' },
+		_rev: { type: 'string' },
+		_meta: { type: 'object', properties: { lwt: { type: 'number' } } }
+	},
+	required: ['id', 'name', '_deleted', '_attachments', '_rev', '_meta']
+};
 
 describe("Regex operator - % and _ escaping regression test", () => {
 	test("case-insensitive exact match with % character should escape properly", () => {
@@ -11,7 +27,7 @@ describe("Regex operator - % and _ escaping regression test", () => {
 		db.run(`INSERT INTO test (id, data) VALUES ('2', '{"name": "100x"}')`);
 		db.run(`INSERT INTO test (id, data) VALUES ('3', '{"name": "50%"}')`);
 		
-		const result = translateRegex("json_extract(data, '$.name')", '^100%$', 'i');
+		const result = translateRegex("json_extract(data, '$.name')", '^100%$', 'i', mockSchema, 'name');
 		
 		expect(result).not.toBeNull();
 		const rows = db.query(`SELECT * FROM test WHERE ${result!.sql}`).all(...result!.args);
@@ -30,7 +46,7 @@ describe("Regex operator - % and _ escaping regression test", () => {
 		db.run(`INSERT INTO test (id, data) VALUES ('2', '{"name": "testxname"}')`);
 		db.run(`INSERT INTO test (id, data) VALUES ('3', '{"name": "test-name"}')`);
 		
-		const result = translateRegex("json_extract(data, '$.name')", '^test_name$', 'i');
+		const result = translateRegex("json_extract(data, '$.name')", '^test_name$', 'i', mockSchema, 'name');
 		
 		expect(result).not.toBeNull();
 		const rows = db.query(`SELECT * FROM test WHERE ${result!.sql}`).all(...result!.args);
