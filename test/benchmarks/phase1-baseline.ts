@@ -97,6 +97,7 @@ async function benchmark10k() {
 		countComplex: [] as number[],
 		bulkWrite1: [] as number[],
 		bulkWrite10: [] as number[],
+		bulkWrite100: [] as number[],
 		queryEq: [] as number[],
 		queryGt: [] as number[]
 	};
@@ -127,6 +128,12 @@ async function benchmark10k() {
 			document: { id: `bulk10-${run}-${i}`, name: 'Bulk', age: 25, status: 'active', _deleted: false, _attachments: {}, _rev: '1-xyz', _meta: { lwt: Date.now() } }
 		})), 'benchmark');
 		results.bulkWrite10.push(performance.now() - start4);
+
+		const start4b = performance.now();
+		await instance.bulkWrite(Array.from({ length: 100 }, (_, i) => ({
+			document: { id: `bulk100-${run}-${i}`, name: 'Bulk', age: 25, status: 'active', _deleted: false, _attachments: {}, _rev: '1-xyz', _meta: { lwt: Date.now() } }
+		})), 'benchmark');
+		results.bulkWrite100.push(performance.now() - start4b);
 
 		const start5 = performance.now();
 		await instance.query({
@@ -211,6 +218,7 @@ async function main() {
 		countComplex: [] as number[],
 		bulkWrite1: [] as number[],
 		bulkWrite10: [] as number[],
+		bulkWrite100: [] as number[],
 		queryEq: [] as number[],
 		queryGt: [] as number[]
 	};

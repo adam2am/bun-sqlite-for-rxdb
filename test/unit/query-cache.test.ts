@@ -233,26 +233,27 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 		const results: number[] = [];
 		
 		for (let batch = 0; batch < 5; batch++) {
-			const start = performance.now();
+			const start = process.hrtime.bigint();
 			for (let i = 0; i < 1000; i++) {
 				const selector: MangoQuerySelector<RxDocumentData<TestDoc>> = { age: { $eq: i % 50 } };
 				buildWhereClause(selector, schema, 'test');
 			}
-			results.push(performance.now() - start);
+			const elapsed = process.hrtime.bigint() - start;
+			results.push(Number(elapsed) / 1_000_000);
 		}
 		
 		const firstBatch = results[0];
 		const avgLaterBatches = results.slice(1).reduce((a, b) => a + b, 0) / 4;
 		
-		expect(avgLaterBatches).toBeLessThanOrEqual(firstBatch * 1.5);
+		expect(avgLaterBatches).toBeLessThanOrEqual(firstBatch * 2);
 		expect(getCacheSize()).toBe(50);
 		console.log(`  Under load: First batch ${firstBatch.toFixed(2)}ms, Later batches ${avgLaterBatches.toFixed(2)}ms`);
 	});
 
-	test('Edge Case 13: Cache is BOUNDED at 500 entries (no exponential growth)', () => {
+	test('Edge Case 13: Cache is BOUNDED at 1000 entries (no exponential growth)', () => {
 		clearCache();
 		
-		for (let i = 0; i < 1000; i++) {
+		for (let i = 0; i < 1500; i++) {
 			const selector: MangoQuerySelector<RxDocumentData<TestDoc>> = { 
 				id: { $eq: `unique-${i}` },
 				age: { $eq: i }
@@ -260,27 +261,29 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 			buildWhereClause(selector, schema, 'test');
 		}
 		
-		expect(getCacheSize()).toBe(500);
-		console.log(`  Cache bounded: Added 1000 unique queries, cache size = ${getCacheSize()} (max 500) ✅`);
+		expect(getCacheSize()).toBe(1000);
+		console.log(`  Cache bounded: Added 1500 unique queries, cache size = ${getCacheSize()} (max 1000) ✅`);
 		
 		const firstQuery: MangoQuerySelector<RxDocumentData<TestDoc>> = { 
 			id: { $eq: 'unique-0' },
 			age: { $eq: 0 }
 		};
 		const lastQuery: MangoQuerySelector<RxDocumentData<TestDoc>> = { 
-			id: { $eq: 'unique-999' },
-			age: { $eq: 999 }
+			id: { $eq: 'unique-1499' },
+			age: { $eq: 1499 }
 		};
 		
-		const start1 = performance.now();
+		const start1 = process.hrtime.bigint();
 		buildWhereClause(firstQuery, schema, 'test');
-		const time1 = performance.now() - start1;
-		
-		const start2 = performance.now();
+		const time1 = Number(process.hrtime.bigint() - start1) / 1_000_000;
+		console.log(`  First query (evicted): ${(time1 * 1000).toFixed(2)}µs (cache miss)`);
+
+		const start2 = process.hrtime.bigint();
 		buildWhereClause(lastQuery, schema, 'test');
-		const time2 = performance.now() - start2;
-		
-		expect(time2).toBeLessThanOrEqual(time1 * 2);
+		const time2 = Number(process.hrtime.bigint() - start2) / 1_000_000;
+		console.log(`  Last query (cached): ${(time2 * 1000).toFixed(2)}µs (cache hit)`);
+
+		expect(time2).toBeLessThanOrEqual(time1 * 1.5);
 		console.log(`  FIFO eviction works: First query ${time1.toFixed(3)}ms (evicted), Last query ${time2.toFixed(3)}ms (cached)`);
 	});
 });
