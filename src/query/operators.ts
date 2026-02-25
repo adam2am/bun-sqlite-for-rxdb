@@ -203,7 +203,8 @@ function processOperatorValue(field: string, value: unknown): SqlFragment {
 	return translateEq(field, value);
 }
 
-export function translateNot(field: string, criteria: unknown): SqlFragment {
+export function translateNot(field: string, criteria: unknown): SqlFragment | null {
+	if (!criteria || (typeof criteria === 'object' && Object.keys(criteria).length === 0)) return null;
 	const inner = processOperatorValue(field, criteria);
 	return {
 		sql: `NOT(${inner.sql})`,
@@ -236,7 +237,9 @@ export function translateSize(field: string, size: number): SqlFragment {
 	};
 }
 
-export function translateMod(field: string, [divisor, remainder]: [number, number]): SqlFragment {
+export function translateMod(field: string, value: unknown): SqlFragment | null {
+	if (!Array.isArray(value) || value.length !== 2) return null;
+	const [divisor, remainder] = value;
 	return {
 		sql: `${field} % ? = ?`,
 		args: [divisor, remainder]

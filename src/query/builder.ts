@@ -2,7 +2,26 @@ import type { RxJsonSchema, MangoQuerySelector, RxDocumentData } from 'rxdb';
 import { getColumnInfo } from './schema-mapper';
 import { translateEq, translateNe, translateGt, translateGte, translateLt, translateLte, translateIn, translateNin, translateExists, translateRegex, translateElemMatch, translateNot, translateType, translateSize, translateMod } from './operators';
 import type { SqlFragment, ElemMatchCriteria } from './operators';
-import stringify from 'fast-stable-stringify';
+
+function safeStringify(obj: unknown): string {
+	const seen = new WeakSet();
+	return JSON.stringify(obj, (key, value) => {
+		if (typeof value === 'object' && value !== null) {
+			if (seen.has(value)) return '[Circular]';
+			seen.add(value);
+			// Sort object keys for deterministic output
+			if (!Array.isArray(value)) {
+				const sorted: Record<string, any> = {};
+				Object.keys(value).sort().forEach(k => {
+					sorted[k] = value[k];
+				});
+				return sorted;
+			}
+		}
+		if (typeof value === 'symbol' || typeof value === 'function') return undefined;
+		return value;
+	});
+}
 
 const QUERY_CACHE = new Map<string, SqlFragment | null>();
 const MAX_CACHE_SIZE = 1000;
@@ -20,7 +39,9 @@ export function buildWhereClause<RxDocType>(
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	collectionName: string
 ): SqlFragment | null {
-	const cacheKey = `v${schema.version}_${collectionName}_${stringify(selector)}`;
+	if (!selector || typeof selector !== 'object') return null;
+	
+	const cacheKey = `v${schema.version}_${collectionName}_${safeStringify(selector)}`;
 
 	const cached = QUERY_CACHE.get(cacheKey);
 	if (cached) {
@@ -67,6 +88,8 @@ function processSelector<RxDocType>(
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	logicalDepth: number
 ): SqlFragment | null {
+	if (!selector || typeof selector !== 'object') return null;
+	
 	const conditions: string[] = [];
 	const args: (string | number | boolean | null)[] = [];
 
@@ -149,9 +172,12 @@ function processSelector<RxDocType>(
 					if (!elemMatchFragment) return null;
 					fragment = elemMatchFragment;
 					break;
-					case '$not':
-						fragment = translateNot(fieldName, opValue);
-						break;
+				case '$not': {
+					const notResult = translateNot(fieldName, opValue);
+					if (!notResult) return null;
+					fragment = notResult;
+					break;
+				}
 				case '$type':
 					const typeFragment = translateType('data', actualFieldName, opValue as string);
 					if (!typeFragment) return null;
@@ -160,9 +186,12 @@ function processSelector<RxDocType>(
 					case '$size':
 						fragment = translateSize(fieldName, opValue as number);
 						break;
-					case '$mod':
-						fragment = translateMod(fieldName, opValue as [number, number]);
-						break;
+				case '$mod': {
+					const modResult = translateMod(fieldName, opValue);
+					if (!modResult) return null;
+					fragment = modResult;
+					break;
+				}
 					default:
 						continue;
 				}

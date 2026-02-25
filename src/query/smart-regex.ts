@@ -64,6 +64,8 @@ export function smartRegexToLike<RxDocType>(
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	fieldName: string
 ): SqlFragment | null {
+	if (typeof pattern !== 'string') return null;
+	
 	const caseInsensitive = options?.includes('i') ?? false;
 	const hasLowerIndex = hasExpressionIndex(fieldName, schema);
 	
