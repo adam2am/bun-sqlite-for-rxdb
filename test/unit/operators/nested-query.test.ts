@@ -87,7 +87,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 
 	expect(result).not.toBeNull();
 	expect(result!.sql).toBe(
-		"json_extract(data, '$.name') IS NOT NULL AND (json_extract(data, '$.age') >= ? AND json_extract(data, '$.status') = ?) OR json_extract(data, '$.role') = ?"
+		"json_extract(data, '$.name') IS NOT NULL AND ((json_extract(data, '$.age') >= ? AND json_extract(data, '$.status') = ?) OR json_extract(data, '$.role') = ?)"
 	);
 	expect(result!.args).toEqual([21, 'verified', 'admin']);
 	});
@@ -109,7 +109,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 
 	expect(result).not.toBeNull();
 	expect(result!.sql).toBe(
-		"json_extract(data, '$.age') IN (?, ?, ?) OR json_extract(data, '$.status') = ? AND json_extract(data, '$.verified') = ?"
+		"(json_extract(data, '$.age') IN (?, ?, ?) OR json_extract(data, '$.status') = ?) AND json_extract(data, '$.verified') = ?"
 	);
 	expect(result!.args).toEqual([18, 19, 20, 'student', true]);
 	});
@@ -199,7 +199,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 	const result = buildWhereClause(selector, mockSchema, 'test');
 
 	expect(result).not.toBeNull();
-	expect(result!.sql).toBe("json_extract(data, '$.verified') = ? AND json_extract(data, '$.status') = ? OR json_extract(data, '$.status') = ?");
+	expect(result!.sql).toBe("json_extract(data, '$.verified') = ? AND (json_extract(data, '$.status') = ? OR json_extract(data, '$.status') = ?)");
 	expect(result!.args).toEqual([true, 'active', 'trial']);
 	});
 });

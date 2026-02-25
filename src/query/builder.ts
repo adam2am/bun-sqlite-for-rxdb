@@ -95,7 +95,7 @@ function processSelector<RxDocType>(
 
 	for (const [field, value] of Object.entries(selector)) {
 		if (field === '$and' && Array.isArray(value)) {
-			const andFragments = value.map(subSelector => processSelector(subSelector, schema, logicalDepth));
+			const andFragments = value.map(subSelector => processSelector(subSelector, schema, logicalDepth + 1));
 			if (andFragments.some(f => f === null)) return null;
 			
 			const andConditions = andFragments.map(f => f!.sql);
