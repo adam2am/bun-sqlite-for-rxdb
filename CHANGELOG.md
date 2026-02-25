@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.2.6] - 2026-02-25
+
+### Performance 🔥
+- **Statement caching in all() and get(): 35% variance reduction**
+  - Added LRU statement caching to all() and get() methods
+  - Previously only run() had caching, causing 22% query variance
+  - queryEq: 5.43ms → 3.52ms StdDev (35% reduction)
+  - queryRepeated: 4.25ms → 3.87ms StdDev (9% reduction)
+  - 6.8x faster for cached queries (performance test)
+
+### Added
+- **Linus-style close() safety**
+  - close() now throws on use-after-close (prevents resource leaks)
+  - Matches industry standard (file handles, DB connections, streams)
+  - Prevents silent failures and memory leaks
+- **20 comprehensive StatementManager tests**
+  - Cache hits/misses, LRU eviction, boundary conditions
+  - Multiple managers isolation, statement finalization
+  - Stress tests: 10k queries in 81ms (8.17µs per query)
+
+### Technical Details
+- Statement cache uses same LRU pattern as run() method
+- MAX_STATEMENTS = 500 with proper finalization on eviction
+- close() sets flag and throws Error on subsequent use
+- All 204 tests passing (20 new StatementManager tests)
+- No regressions in query or write performance
+
+---
+
 ## [1.2.5] - 2026-02-25
 
 ### Performance 🔥
