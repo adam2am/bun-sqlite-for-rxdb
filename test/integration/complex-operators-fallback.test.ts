@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
-import { getRxStorageBunSQLite } from './storage';
+import { getRxStorageBunSQLite } from '$app/storage';
 import type { RxDocumentData, RxStorage, RxStorageInstance } from 'rxdb';
-import type { BunSQLiteStorageSettings, BunSQLiteInternals } from './types';
+import type { BunSQLiteStorageSettings, BunSQLiteInternals } from '$app/types';
 
 interface TestDocType {
 	id: string;
@@ -804,5 +804,109 @@ describe('$elemMatch and $type Fallback (TDD)', () => {
 		expect(result.documents).toHaveLength(2);
 		
 		await instance.remove();
+	});
+
+	it('handles $type with boolean type (SQL fast path)', async () => {
+		interface DocWithBoolean {
+			id: string;
+			name: string;
+			active: boolean;
+			verified: boolean;
+			count: number;
+			_deleted: boolean;
+			_attachments: Record<string, unknown>;
+			_rev: string;
+			_meta: { lwt: number };
+		}
+
+		const boolInstance = await storage.createStorageInstance<DocWithBoolean>({
+			databaseInstanceToken: `test-token-${Date.now()}`,
+			databaseName: 'testdb',
+			collectionName: 'bool-test',
+			schema: {
+				version: 0,
+				primaryKey: 'id',
+				type: 'object',
+				properties: {
+					id: { type: 'string', maxLength: 100 },
+					name: { type: 'string' },
+					active: { type: 'boolean' },
+					verified: { type: 'boolean' },
+					count: { type: 'number' },
+					_deleted: { type: 'boolean' },
+					_attachments: { type: 'object' },
+					_rev: { type: 'string' },
+					_meta: { type: 'object', properties: { lwt: { type: 'number' } } }
+				},
+				required: ['id', '_deleted', '_attachments', '_rev', '_meta']
+			},
+			options: {},
+			multiInstance: false,
+			devMode: false
+		});
+
+		const docs: RxDocumentData<DocWithBoolean>[] = [
+			{ 
+				id: 'doc1', 
+				name: 'First',
+				active: true,
+				verified: false,
+				count: 10,
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-a', 
+				_meta: { lwt: Date.now() } 
+			},
+			{ 
+				id: 'doc2', 
+				name: 'Second',
+				active: false,
+				verified: true,
+				count: 5,
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-b', 
+				_meta: { lwt: Date.now() } 
+			},
+			{ 
+				id: 'doc3', 
+				name: 'Third',
+				active: true,
+				verified: true,
+				count: 0,
+				_deleted: false, 
+				_attachments: {}, 
+				_rev: '1-c', 
+				_meta: { lwt: Date.now() } 
+			}
+		];
+
+		await boolInstance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+
+		const result = await boolInstance.query({ 
+			query: { 
+				selector: { 
+					active: { $type: 'boolean' } 
+				}, 
+				sort: [{ id: 'asc' }], 
+				skip: 0 
+			},
+			queryPlan: { 
+				index: [], 
+				startKeys: [], 
+				endKeys: [], 
+				inclusiveStart: true, 
+				inclusiveEnd: true, 
+				sortSatisfiedByIndex: false, 
+				selectorSatisfiedByIndex: false 
+			}
+		});
+
+		expect(result.documents).toHaveLength(3);
+		expect(result.documents[0].id).toBe('doc1');
+		expect(result.documents[1].id).toBe('doc2');
+		expect(result.documents[2].id).toBe('doc3');
+
+		await boolInstance.remove();
 	});
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { translateMod } from './operators';
+import { translateMod } from '$app/query/operators';
 
 describe('$mod Operator', () => {
 	it('translates modulo check to % operator', () => {

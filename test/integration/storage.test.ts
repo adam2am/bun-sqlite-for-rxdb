@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
-import { getRxStorageBunSQLite } from './storage';
+import { getRxStorageBunSQLite } from '$app/storage';
 import type { RxDocumentData, RxStorage, RxStorageInstance, PreparedQuery, EventBulk, RxStorageChangeEvent } from 'rxdb';
-import type { BunSQLiteStorageSettings, BunSQLiteInternals } from './types';
+import type { BunSQLiteStorageSettings, BunSQLiteInternals } from '$app/types';
 
 interface TestDocType {
 	id: string;

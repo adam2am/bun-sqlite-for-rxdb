@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { translateEq, translateNe, translateGt, translateGte, translateLt, translateLte } from './operators';
+import { translateEq, translateNe, translateGt, translateGte, translateLt, translateLte } from '$app/query/operators';
 
 describe('Query Operators', () => {
 	describe('translateEq', () => {

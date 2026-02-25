@@ -1,5 +1,5 @@
 import { describe, test, expect, afterEach } from 'bun:test';
-import { BunSQLiteStorageInstance } from './instance';
+import { BunSQLiteStorageInstance } from '$app/instance';
 import type { RxStorageInstanceCreationParams } from 'rxdb';
 
 describe('cleanup() - TDD Red Phase', () => {

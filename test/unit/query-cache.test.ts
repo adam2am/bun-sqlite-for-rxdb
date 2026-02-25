@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from 'bun:test';
-import { buildWhereClause, getCacheSize, clearCache } from '../src/query/builder';
+import { buildWhereClause, getCacheSize, clearCache } from '$app/query/builder';
 import type { RxJsonSchema, MangoQuerySelector, RxDocumentData } from 'rxdb';
 
 type TestDoc = {

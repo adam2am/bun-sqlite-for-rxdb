@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { translateIn, translateNin } from './operators';
+import { translateIn, translateNin } from '$app/query/operators';
 
 describe('$in operator', () => {
 	it('generates IN clause for array of values', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { buildWhereClause } from './builder';
+import { buildWhereClause } from '$app/query/builder';
 import type { MangoQuerySelector, RxJsonSchema, RxDocumentData } from 'rxdb';
 
 interface TestDocType {

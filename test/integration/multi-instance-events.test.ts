@@ -2,7 +2,7 @@ import { describe, test, expect, afterEach } from 'bun:test';
 import { createRxDatabase, addRxPlugin } from 'rxdb';
 import { RxDBDevModePlugin } from 'rxdb/plugins/dev-mode';
 import { wrappedValidateAjvStorage } from 'rxdb/plugins/validate-ajv';
-import { getRxStorageBunSQLite } from './index';
+import { getRxStorageBunSQLite } from '$app/index';
 import type { RxDatabase } from 'rxdb';
 
 addRxPlugin(RxDBDevModePlugin);

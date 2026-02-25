@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { translateSize } from './operators';
+import { translateSize } from '$app/query/operators';
 
 describe('$size Operator', () => {
 	it('translates array size check to json_array_length', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { translateElemMatch } from './operators';
+import { translateElemMatch } from '$app/query/operators';
 
 describe('$elemMatch Operator', () => {
 	it('translates simple equality match', () => {

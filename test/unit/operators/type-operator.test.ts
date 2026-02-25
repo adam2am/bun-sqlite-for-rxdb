@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { translateType } from './operators';
+import { translateType } from '$app/query/operators';
 
 describe('$type Operator', () => {
 	it('translates null type to SQL', () => {

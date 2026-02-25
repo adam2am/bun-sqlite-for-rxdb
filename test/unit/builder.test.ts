@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { buildWhereClause } from './builder';
+import { buildWhereClause } from '$app/query/builder';
 import type { RxJsonSchema, RxDocumentData } from 'rxdb';
 
 interface TestDocType {

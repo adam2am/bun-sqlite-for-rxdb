@@ -1,21 +1,13 @@
 import { describe, test, expect } from "bun:test";
 import { Database } from "bun:sqlite";
-import { translateRegex } from "./operators";
+import { translateRegex } from "$app/query/operators";
 import type { RxJsonSchema, RxDocumentData } from 'rxdb';
 
-const mockSchema: RxJsonSchema<RxDocumentData<{ id: string; name: string }>> = {
+const mockSchema: RxJsonSchema<RxDocumentData<any>> = {
 	version: 0,
 	primaryKey: 'id',
 	type: 'object',
-	properties: {
-		id: { type: 'string' },
-		name: { type: 'string' },
-		_deleted: { type: 'boolean' },
-		_attachments: { type: 'object' },
-		_rev: { type: 'string' },
-		_meta: { type: 'object', properties: { lwt: { type: 'number' } } }
-	},
-	required: ['id', 'name', '_deleted', '_attachments', '_rev', '_meta']
+	properties: {}
 };
 
 describe("Regex operator - % and _ escaping regression test", () => {

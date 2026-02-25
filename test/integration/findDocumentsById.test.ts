@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { getRxStorageBunSQLite } from './storage';
+import { getRxStorageBunSQLite } from '$app/storage';
 import type { RxDocumentData, RxJsonSchema } from 'rxdb';
 
 interface TestDoc {

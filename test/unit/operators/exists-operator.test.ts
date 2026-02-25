@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { translateExists } from './operators';
+import { translateExists } from '$app/query/operators';
 
 describe('$exists Operator', () => {
 	it('translates $exists: true to IS NOT NULL', () => {

@@ -1,5 +1,5 @@
 import { describe, test, expect, afterEach } from 'bun:test';
-import { getRxStorageBunSQLite } from './index';
+import { getRxStorageBunSQLite } from '$app/index';
 import type { RxStorageInstance, EventBulk, RxStorageChangeEvent, RxDocumentData, RxStorageDefaultCheckpoint } from 'rxdb';
 
 interface TestDoc {

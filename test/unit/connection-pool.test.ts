@@ -1,5 +1,5 @@
 import { describe, test, expect, afterEach } from 'bun:test';
-import { getDatabase, releaseDatabase } from './connection-pool';
+import { getDatabase, releaseDatabase } from '$app/connection-pool';
 
 describe('Connection Pool', () => {
 	afterEach(() => {

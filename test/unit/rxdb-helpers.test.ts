@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from './rxdb-helpers';
+import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from '$app/rxdb-helpers';
 import type { BulkWriteRow, RxDocumentData, RxStorageInstance, RxStorageInstanceCreationParams, RxStorageDefaultCheckpoint, RxStorageCountResult, EventBulk, RxStorageChangeEvent, RxJsonSchema } from 'rxdb';
 import { Subject } from 'rxjs';
 

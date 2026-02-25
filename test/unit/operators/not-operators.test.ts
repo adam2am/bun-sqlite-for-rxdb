@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { translateNot } from './operators';
+import { translateNot } from '$app/query/operators';
 
 describe('$not Operator', () => {
 	it('negates simple equality', () => {
