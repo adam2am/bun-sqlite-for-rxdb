@@ -5,7 +5,7 @@ import type { SqlFragment, ElemMatchCriteria } from './operators';
 import stringify from 'fast-stable-stringify';
 
 const QUERY_CACHE = new Map<string, SqlFragment>();
-const MAX_CACHE_SIZE = 500;
+const MAX_CACHE_SIZE = 1000;
 
 export function canTranslateToSQL<RxDocType>(
 	selector: MangoQuerySelector<RxDocumentData<RxDocType>>,
