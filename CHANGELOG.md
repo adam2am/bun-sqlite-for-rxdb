@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.2.7] - 2026-02-25
+
+### Fixed 🔥
+- **Transaction queue for bulkWrite: Prevents race conditions**
+  - Added `sqliteTransaction()` helper to serialize concurrent writes
+  - Wraps bulkWrite in transaction queue (BEGIN IMMEDIATE → COMMIT/ROLLBACK)
+  - Prevents data corruption from parallel bulkWrite calls
+  - SQLite doesn't support concurrent writes - queue ensures serialization
+
+### Added
+- **7 comprehensive transaction queue tests**
+  - Tests for successful transactions, rollback on error
+  - Concurrent write serialization verification
+  - Race condition prevention tests
+  - Error preservation and handler result tests
+
+### Technical Details
+- Transaction queue uses WeakMap to track per-database queues
+- BEGIN IMMEDIATE ensures exclusive write lock
+- Automatic ROLLBACK on errors
+- All 211 tests passing (7 new transaction queue tests)
+- No performance regression (transactions were already implicit)
+
+---
+
 ## [1.2.6] - 2026-02-25
 
 ### Performance 🔥

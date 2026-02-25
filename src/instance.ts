@@ -25,6 +25,7 @@ import { buildWhereClause, canTranslateToSQL } from './query/builder';
 import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from './rxdb-helpers';
 import { StatementManager } from './statement-manager';
 import { getDatabase, releaseDatabase } from './connection-pool';
+import { sqliteTransaction } from './transaction-queue';
 
 export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<RxDocType, BunSQLiteInternals, BunSQLiteStorageSettings> {
 	private db: Database;
@@ -118,88 +119,90 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		documentWrites: BulkWriteRow<RxDocType>[],
 		context: string
 	): Promise<RxStorageBulkWriteResponse<RxDocType>> {
-		if (documentWrites.length === 0) {
-			return { error: [] };
-		}
+		return sqliteTransaction(this.db, async () => {
+			if (documentWrites.length === 0) {
+				return { error: [] };
+			}
 
-		const ids = documentWrites.map(w => (w.document as RxDocumentData<RxDocType>)[this.primaryPath as keyof RxDocumentData<RxDocType>] as string);
-		const docsInDb = await this.findDocumentsById(ids, true);
-		const docsInDbMap = new Map(docsInDb.map(d => [d[this.primaryPath as keyof RxDocumentData<RxDocType>] as string, d]));
+			const ids = documentWrites.map(w => (w.document as RxDocumentData<RxDocType>)[this.primaryPath as keyof RxDocumentData<RxDocType>] as string);
+			const docsInDb = await this.findDocumentsById(ids, true);
+			const docsInDbMap = new Map(docsInDb.map(d => [d[this.primaryPath as keyof RxDocumentData<RxDocType>] as string, d]));
 
-		const categorized = categorizeBulkWriteRows(
-			this,
-			this.primaryPath,
-			docsInDbMap,
-			documentWrites,
-			context
-		);
+			const categorized = categorizeBulkWriteRows(
+				this,
+				this.primaryPath,
+				docsInDbMap,
+				documentWrites,
+				context
+			);
 
-		const insertQuery = `INSERT INTO "${this.tableName}" (id, data, deleted, rev, mtime_ms) VALUES (?, jsonb(?), ?, ?, ?)`;
-		const updateQuery = `UPDATE "${this.tableName}" SET data = jsonb(?), deleted = ?, rev = ?, mtime_ms = ? WHERE id = ?`;
+			const insertQuery = `INSERT INTO "${this.tableName}" (id, data, deleted, rev, mtime_ms) VALUES (?, jsonb(?), ?, ?, ?)`;
+			const updateQuery = `UPDATE "${this.tableName}" SET data = jsonb(?), deleted = ?, rev = ?, mtime_ms = ? WHERE id = ?`;
 
-		for (const row of categorized.bulkInsertDocs) {
-			const doc = row.document;
-			const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
-			try {
-				this.stmtManager.run({ query: insertQuery, params: [id, JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt] });
-		} catch (err: unknown) {
-			if (err && typeof err === 'object' && 'code' in err && (err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || err.code === 'SQLITE_CONSTRAINT_UNIQUE')) {
-					const documentInDb = docsInDbMap.get(id);
-					categorized.errors.push({
-						isError: true,
-						status: 409,
-						documentId: id,
-						writeRow: row,
-						documentInDb: documentInDb || doc
-					});
-				} else {
-					throw err;
+			for (const row of categorized.bulkInsertDocs) {
+				const doc = row.document;
+				const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
+				try {
+					this.stmtManager.run({ query: insertQuery, params: [id, JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt] });
+			} catch (err: unknown) {
+				if (err && typeof err === 'object' && 'code' in err && (err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || err.code === 'SQLITE_CONSTRAINT_UNIQUE')) {
+						const documentInDb = docsInDbMap.get(id);
+						categorized.errors.push({
+							isError: true,
+							status: 409,
+							documentId: id,
+							writeRow: row,
+							documentInDb: documentInDb || doc
+						});
+					} else {
+						throw err;
+					}
 				}
 			}
-		}
 
-		for (const row of categorized.bulkUpdateDocs) {
-			const doc = row.document;
-			const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
-			this.stmtManager.run({ query: updateQuery, params: [JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt, id] });
-		}
+			for (const row of categorized.bulkUpdateDocs) {
+				const doc = row.document;
+				const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
+				this.stmtManager.run({ query: updateQuery, params: [JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt, id] });
+			}
 
-		const insertAttQuery = `INSERT OR REPLACE INTO "${this.tableName}_attachments" (id, data, digest) VALUES (?, ?, ?)`;
-		const deleteAttQuery = `DELETE FROM "${this.tableName}_attachments" WHERE id = ?`;
+			const insertAttQuery = `INSERT OR REPLACE INTO "${this.tableName}_attachments" (id, data, digest) VALUES (?, ?, ?)`;
+			const deleteAttQuery = `DELETE FROM "${this.tableName}_attachments" WHERE id = ?`;
 
-		for (const att of [...categorized.attachmentsAdd, ...categorized.attachmentsUpdate]) {
-			this.stmtManager.run({
-				query: insertAttQuery,
-				params: [
-					this.attachmentMapKey(att.documentId, att.attachmentId),
-					att.attachmentData.data,
-					att.digest
-				]
-			});
-		}
+			for (const att of [...categorized.attachmentsAdd, ...categorized.attachmentsUpdate]) {
+				this.stmtManager.run({
+					query: insertAttQuery,
+					params: [
+						this.attachmentMapKey(att.documentId, att.attachmentId),
+						att.attachmentData.data,
+						att.digest
+					]
+				});
+			}
 
-		for (const att of categorized.attachmentsRemove) {
-			this.stmtManager.run({
-				query: deleteAttQuery,
-				params: [this.attachmentMapKey(att.documentId, att.attachmentId)]
-			});
-		}
+			for (const att of categorized.attachmentsRemove) {
+				this.stmtManager.run({
+					query: deleteAttQuery,
+					params: [this.attachmentMapKey(att.documentId, att.attachmentId)]
+				});
+			}
 
-		const failedDocIds = new Set(categorized.errors.map(e => e.documentId));
-		categorized.eventBulk.events = categorized.eventBulk.events.filter(
-			event => !failedDocIds.has(event.documentId)
-		);
+			const failedDocIds = new Set(categorized.errors.map(e => e.documentId));
+			categorized.eventBulk.events = categorized.eventBulk.events.filter(
+				event => !failedDocIds.has(event.documentId)
+			);
 
-		if (categorized.eventBulk.events.length > 0 && categorized.newestRow) {
-			const lastState = categorized.newestRow.document;
-			categorized.eventBulk.checkpoint = {
-				id: lastState[this.primaryPath as keyof typeof lastState] as string,
-				lwt: lastState._meta.lwt
-			};
-			this.changeStream$.next(categorized.eventBulk);
-		}
+			if (categorized.eventBulk.events.length > 0 && categorized.newestRow) {
+				const lastState = categorized.newestRow.document;
+				categorized.eventBulk.checkpoint = {
+					id: lastState[this.primaryPath as keyof typeof lastState] as string,
+					lwt: lastState._meta.lwt
+				};
+				this.changeStream$.next(categorized.eventBulk);
+			}
 
-		return { error: categorized.errors };
+			return { error: categorized.errors };
+		});
 	}
 
 	async findDocumentsById(ids: string[], withDeleted: boolean): Promise<RxDocumentData<RxDocType>[]> {
