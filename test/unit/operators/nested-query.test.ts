@@ -56,12 +56,13 @@ describe('Nested Query Builder - Depth Tracking', () => {
 			]
 		};
 
-		const result = buildWhereClause(selector, mockSchema, 'test');
+	const result = buildWhereClause(selector, mockSchema, 'test');
 
-		expect(result.sql).toBe(
-			"(json_extract(data, '$.age') >= ? AND (json_extract(data, '$.status') = ? OR json_extract(data, '$.status') = ?)) OR json_extract(data, '$.age') < ?"
-		);
-		expect(result.args).toEqual([30, 'active', 'premium', 18]);
+	expect(result).not.toBeNull();
+	expect(result!.sql).toBe(
+		"(json_extract(data, '$.age') >= ? AND (json_extract(data, '$.status') = ? OR json_extract(data, '$.status') = ?)) OR json_extract(data, '$.age') < ?"
+	);
+	expect(result!.args).toEqual([30, 'active', 'premium', 18]);
 	});
 
 	test('triple nested $and inside $or inside $and', () => {
@@ -82,12 +83,13 @@ describe('Nested Query Builder - Depth Tracking', () => {
 			]
 		};
 
-		const result = buildWhereClause(selector, mockSchema, 'test');
+	const result = buildWhereClause(selector, mockSchema, 'test');
 
-		expect(result.sql).toBe(
-			"json_extract(data, '$.name') IS NOT NULL AND (json_extract(data, '$.age') >= ? AND json_extract(data, '$.status') = ?) OR json_extract(data, '$.role') = ?"
-		);
-		expect(result.args).toEqual([21, 'verified', 'admin']);
+	expect(result).not.toBeNull();
+	expect(result!.sql).toBe(
+		"json_extract(data, '$.name') IS NOT NULL AND (json_extract(data, '$.age') >= ? AND json_extract(data, '$.status') = ?) OR json_extract(data, '$.role') = ?"
+	);
+	expect(result!.args).toEqual([21, 'verified', 'admin']);
 	});
 
 	test('complex nested with $in inside $or inside $and', () => {
@@ -103,12 +105,13 @@ describe('Nested Query Builder - Depth Tracking', () => {
 			]
 		};
 
-		const result = buildWhereClause(selector, mockSchema, 'test');
+	const result = buildWhereClause(selector, mockSchema, 'test');
 
-		expect(result.sql).toBe(
-			"json_extract(data, '$.age') IN (?, ?, ?) OR json_extract(data, '$.status') = ? AND json_extract(data, '$.verified') = ?"
-		);
-		expect(result.args).toEqual([18, 19, 20, 'student', true]);
+	expect(result).not.toBeNull();
+	expect(result!.sql).toBe(
+		"json_extract(data, '$.age') IN (?, ?, ?) OR json_extract(data, '$.status') = ? AND json_extract(data, '$.verified') = ?"
+	);
+	expect(result!.args).toEqual([18, 19, 20, 'student', true]);
 	});
 
 	test('four-level nesting with mixed operators', () => {
@@ -134,12 +137,13 @@ describe('Nested Query Builder - Depth Tracking', () => {
 			]
 		};
 
-		const result = buildWhereClause(selector, mockSchema, 'test');
+	const result = buildWhereClause(selector, mockSchema, 'test');
 
-		expect(result.sql).toBe(
-			"(json_extract(data, '$.country') = ? AND ((json_extract(data, '$.age') >= ? AND json_extract(data, '$.age') <= ?) OR json_extract(data, '$.status') = ?)) OR json_extract(data, '$.role') = ?"
-		);
-		expect(result.args).toEqual(['US', 18, 65, 'exempt', 'admin']);
+	expect(result).not.toBeNull();
+	expect(result!.sql).toBe(
+		"(json_extract(data, '$.country') = ? AND ((json_extract(data, '$.age') >= ? AND json_extract(data, '$.age') <= ?) OR json_extract(data, '$.status') = ?)) OR json_extract(data, '$.role') = ?"
+	);
+	expect(result!.args).toEqual(['US', 18, 65, 'exempt', 'admin']);
 	});
 
 	test('nested $or with $nin and $gt', () => {
@@ -155,12 +159,13 @@ describe('Nested Query Builder - Depth Tracking', () => {
 			]
 		};
 
-		const result = buildWhereClause(selector, mockSchema, 'test');
+	const result = buildWhereClause(selector, mockSchema, 'test');
 
-		expect(result.sql).toBe(
-			"(json_extract(data, '$.status') NOT IN (?, ?) AND json_extract(data, '$.age') > ?) OR json_extract(data, '$.role') IN (?, ?)"
-		);
-		expect(result.args).toEqual(['banned', 'suspended', 21, 'admin', 'moderator']);
+	expect(result).not.toBeNull();
+	expect(result!.sql).toBe(
+		"(json_extract(data, '$.status') NOT IN (?, ?) AND json_extract(data, '$.age') > ?) OR json_extract(data, '$.role') IN (?, ?)"
+	);
+	expect(result!.args).toEqual(['banned', 'suspended', 21, 'admin', 'moderator']);
 	});
 
 	test('parentheses placement with single $or at root', () => {
@@ -171,10 +176,11 @@ describe('Nested Query Builder - Depth Tracking', () => {
 			]
 		};
 
-		const result = buildWhereClause(selector, mockSchema, 'test');
+	const result = buildWhereClause(selector, mockSchema, 'test');
 
-		expect(result.sql).toBe("json_extract(data, '$.age') < ? OR json_extract(data, '$.age') > ?");
-		expect(result.args).toEqual([18, 65]);
+	expect(result).not.toBeNull();
+	expect(result!.sql).toBe("json_extract(data, '$.age') < ? OR json_extract(data, '$.age') > ?");
+	expect(result!.args).toEqual([18, 65]);
 	});
 
 	test('parentheses placement with nested $or at depth 1', () => {
@@ -190,9 +196,10 @@ describe('Nested Query Builder - Depth Tracking', () => {
 			]
 		};
 
-		const result = buildWhereClause(selector, mockSchema, 'test');
+	const result = buildWhereClause(selector, mockSchema, 'test');
 
-		expect(result.sql).toBe("json_extract(data, '$.verified') = ? AND json_extract(data, '$.status') = ? OR json_extract(data, '$.status') = ?");
-		expect(result.args).toEqual([true, 'active', 'trial']);
+	expect(result).not.toBeNull();
+	expect(result!.sql).toBe("json_extract(data, '$.verified') = ? AND json_extract(data, '$.status') = ? OR json_extract(data, '$.status') = ?");
+	expect(result!.args).toEqual([true, 'active', 'trial']);
 	});
 });

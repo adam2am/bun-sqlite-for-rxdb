@@ -23,8 +23,9 @@ describe('$or operator', () => {
 			]
 		}, testSchema, 'test');
 		
-		expect(result.sql).toBe('json_extract(data, \'$.age\') = ? OR json_extract(data, \'$.age\') = ?');
-		expect(result.args).toEqual([25, 30]);
+		expect(result).not.toBeNull();
+		expect(result!.sql).toBe('json_extract(data, \'$.age\') = ? OR json_extract(data, \'$.age\') = ?');
+		expect(result!.args).toEqual([25, 30]);
 	});
 
 	it('handles OR with nested AND', () => {
@@ -35,10 +36,11 @@ describe('$or operator', () => {
 			]
 		}, testSchema, 'test');
 		
-		expect(result.sql).toContain('json_extract(data, \'$.age\') > ?');
-		expect(result.sql).toContain('OR');
-		expect(result.sql).toContain('(json_extract(data, \'$.age\') = ? AND json_extract(data, \'$.status\') = ?)');
-		expect(result.args).toEqual([50, 50, 'active']);
+		expect(result).not.toBeNull();
+		expect(result!.sql).toContain('json_extract(data, \'$.age\') > ?');
+		expect(result!.sql).toContain('OR');
+		expect(result!.sql).toContain('(json_extract(data, \'$.age\') = ? AND json_extract(data, \'$.status\') = ?)');
+		expect(result!.args).toEqual([50, 50, 'active']);
 	});
 
 	it('handles complex nested OR with parentheses', () => {
@@ -61,8 +63,9 @@ describe('$or operator', () => {
 			]
 		}, testSchema, 'test');
 		
-		expect(result.sql).toContain('OR');
-		expect(result.sql).toContain('(');
-		expect(result.sql).toContain(')');
+		expect(result).not.toBeNull();
+		expect(result!.sql).toContain('OR');
+		expect(result!.sql).toContain('(');
+		expect(result!.sql).toContain(')');
 	});
 });

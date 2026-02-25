@@ -18,8 +18,9 @@ describe('$and operator', () => {
 		const implicit = buildWhereClause({ age: 25, status: 'active' }, testSchema, 'test');
 		const explicit = buildWhereClause({ $and: [{ age: 25 }, { status: 'active' }] }, testSchema, 'test');
 		
-		expect(explicit.sql).toBe('json_extract(data, \'$.age\') = ? AND json_extract(data, \'$.status\') = ?');
-		expect(explicit.args).toEqual([25, 'active']);
+		expect(explicit).not.toBeNull();
+		expect(explicit!.sql).toBe('json_extract(data, \'$.age\') = ? AND json_extract(data, \'$.status\') = ?');
+		expect(explicit!.args).toEqual([25, 'active']);
 	});
 
 	it('handles nested $and with operators', () => {
@@ -31,9 +32,10 @@ describe('$and operator', () => {
 			]
 		}, testSchema, 'test');
 		
-		expect(result.sql).toContain('json_extract(data, \'$.age\') > ?');
-		expect(result.sql).toContain('json_extract(data, \'$.age\') < ?');
-		expect(result.sql).toContain('json_extract(data, \'$.status\') = ?');
-		expect(result.args).toEqual([18, 65, 'active']);
+		expect(result).not.toBeNull();
+		expect(result!.sql).toContain('json_extract(data, \'$.age\') > ?');
+		expect(result!.sql).toContain('json_extract(data, \'$.age\') < ?');
+		expect(result!.sql).toContain('json_extract(data, \'$.status\') = ?');
+		expect(result!.args).toEqual([18, 65, 'active']);
 	});
 });
