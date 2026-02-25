@@ -8,9 +8,21 @@ export type QueryWithParams = {
 export class StatementManager {
 	private db: Database;
 	private staticStatements = new Map<string, Statement>();
+	private static readonly MAX_STATEMENTS = 500;
 
 	constructor(db: Database) {
 		this.db = db;
+	}
+
+	private evictOldest(): void {
+		if (this.staticStatements.size >= StatementManager.MAX_STATEMENTS) {
+			const firstKey = this.staticStatements.keys().next().value;
+			if (firstKey) {
+				const stmt = this.staticStatements.get(firstKey);
+				stmt?.finalize();
+				this.staticStatements.delete(firstKey);
+			}
+		}
 	}
 
 	all<T = unknown>(queryWithParams: QueryWithParams): T[] {
@@ -30,7 +42,12 @@ export class StatementManager {
 
 		if (this.isStaticSQL(query)) {
 			let stmt = this.staticStatements.get(query);
-			if (!stmt) {
+			if (stmt) {
+				// LRU: Move to end
+				this.staticStatements.delete(query);
+				this.staticStatements.set(query, stmt);
+			} else {
+				this.evictOldest();
 				stmt = this.db.query(query);
 				this.staticStatements.set(query, stmt);
 			}
