@@ -50,11 +50,13 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 		const result1 = buildWhereClause(hugeSelector, schema, 'test');
 		const time1 = performance.now() - start;
 		
-		const start2 = performance.now();
-		const result2 = buildWhereClause(hugeSelector, schema, 'test');
-		const time2 = performance.now() - start2;
-		
-	expect(result1.sql).toBe(result2.sql);
+	const start2 = performance.now();
+	const result2 = buildWhereClause(hugeSelector, schema, 'test');
+	const time2 = performance.now() - start2;
+	
+	expect(result1).not.toBeNull();
+	expect(result2).not.toBeNull();
+	expect(result1!.sql).toBe(result2!.sql);
 	expect(time2).toBeLessThanOrEqual(time1 * 1.5);
 	console.log(`  Huge selector: ${time1.toFixed(2)}ms → ${time2.toFixed(2)}ms (${(time1/time2).toFixed(1)}x faster cached)`);
 	});
@@ -80,22 +82,26 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 		const schema1 = { ...schema, version: 0 };
 		const result1 = buildWhereClause(selector, schema1, 'test');
 		
-		const schema2 = { ...schema, version: 1 };
-		const result2 = buildWhereClause(selector, schema2, 'test');
-		
-		expect(result1.sql).toBe(result2.sql);
-		console.log(`  Schema version change: cache invalidated correctly`);
+	const schema2 = { ...schema, version: 1 };
+	const result2 = buildWhereClause(selector, schema2, 'test');
+	
+	expect(result1).not.toBeNull();
+	expect(result2).not.toBeNull();
+	expect(result1!.sql).toBe(result2!.sql);
+	console.log(`  Schema version change: cache invalidated correctly`);
 	});
 
 	test('Edge Case 4: Identical selectors with different object order', () => {
 		const selector1: MangoQuerySelector<RxDocumentData<TestDoc>> = { age: { $gt: 30 }, name: { $eq: 'test' } };
 		const selector2: MangoQuerySelector<RxDocumentData<TestDoc>> = { name: { $eq: 'test' }, age: { $gt: 30 } };
 		
-		const result1 = buildWhereClause(selector1, schema, 'test');
-		const result2 = buildWhereClause(selector2, schema, 'test');
-		
-		expect(result1.sql).toBe(result2.sql);
-		console.log(`  Different object order: produces same SQL`);
+	const result1 = buildWhereClause(selector1, schema, 'test');
+	const result2 = buildWhereClause(selector2, schema, 'test');
+	
+	expect(result1).not.toBeNull();
+	expect(result2).not.toBeNull();
+	expect(result1!.sql).toBe(result2!.sql);
+	console.log(`  Different object order: produces same SQL`);
 	});
 
 	test('Edge Case 5: Deeply nested selectors', () => {
@@ -111,12 +117,14 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 		const result1 = buildWhereClause(deepSelector, schema, 'test');
 		const time1 = performance.now() - start;
 		
-		const start2 = performance.now();
-		const result2 = buildWhereClause(deepSelector, schema, 'test');
-		const time2 = performance.now() - start2;
-		
-		expect(result1.sql).toBe(result2.sql);
-		expect(time2).toBeLessThan(time1);
+	const start2 = performance.now();
+	const result2 = buildWhereClause(deepSelector, schema, 'test');
+	const time2 = performance.now() - start2;
+	
+	expect(result1).not.toBeNull();
+	expect(result2).not.toBeNull();
+	expect(result1!.sql).toBe(result2!.sql);
+	expect(time2).toBeLessThan(time1);
 		console.log(`  Deep nesting: ${time1.toFixed(2)}ms → ${time2.toFixed(2)}ms (${(time1/time2).toFixed(1)}x faster cached)`);
 	});
 
@@ -125,12 +133,14 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 			name: { $eq: 'test"with\'quotes\nand\ttabs' }
 		};
 		
-		const result1 = buildWhereClause(specialSelector, schema, 'test');
-		const result2 = buildWhereClause(specialSelector, schema, 'test');
-		
-		expect(result1.sql).toBe(result2.sql);
-		expect(result1.args).toEqual(result2.args);
-		console.log(`  Special characters: handled correctly`);
+	const result1 = buildWhereClause(specialSelector, schema, 'test');
+	const result2 = buildWhereClause(specialSelector, schema, 'test');
+	
+	expect(result1).not.toBeNull();
+	expect(result2).not.toBeNull();
+	expect(result1!.sql).toBe(result2!.sql);
+	expect(result1!.args).toEqual(result2!.args);
+	console.log(`  Special characters: handled correctly`);
 	});
 
 	test('Edge Case 7: Null and undefined values', () => {
@@ -138,17 +148,19 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 			name: { $eq: null as any }
 		};
 		
-		const result = buildWhereClause(nullSelector, schema, 'test');
-		expect(result.sql).toContain('IS NULL');
-		console.log(`  Null values: handled correctly`);
+	const result = buildWhereClause(nullSelector, schema, 'test');
+	expect(result).not.toBeNull();
+	expect(result!.sql).toContain('IS NULL');
+	console.log(`  Null values: handled correctly`);
 	});
 
 	test('Edge Case 8: Empty selector', () => {
 		const emptySelector: MangoQuerySelector<RxDocumentData<TestDoc>> = {};
 		
-		const result = buildWhereClause(emptySelector, schema, 'test');
-		expect(result.sql).toBe('1=1');
-		console.log(`  Empty selector: returns 1=1 (match all)`);
+	const result = buildWhereClause(emptySelector, schema, 'test');
+	expect(result).not.toBeNull();
+	expect(result!.sql).toBe('1=1');
+	console.log(`  Empty selector: returns 1=1 (match all)`);
 	});
 
 	test('Edge Case 9: Cache hit rate with repeated queries', () => {
@@ -205,13 +217,16 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 		
 		const selector: MangoQuerySelector<RxDocumentData<TestDoc>> = { age: { $gt: 30 } };
 		
-		const result1 = buildWhereClause(selector, schema1, 'test');
-		const result2 = buildWhereClause(selector, schema2, 'test');
-		const result3 = buildWhereClause(selector, schema3, 'test');
-		
-		expect(result1.sql).toBe(result2.sql);
-		expect(result2.sql).toBe(result3.sql);
-		console.log(`  Multiple schema versions: isolated correctly`);
+	const result1 = buildWhereClause(selector, schema1, 'test');
+	const result2 = buildWhereClause(selector, schema2, 'test');
+	const result3 = buildWhereClause(selector, schema3, 'test');
+	
+	expect(result1).not.toBeNull();
+	expect(result2).not.toBeNull();
+	expect(result3).not.toBeNull();
+	expect(result1!.sql).toBe(result2!.sql);
+	expect(result2!.sql).toBe(result3!.sql);
+	console.log(`  Multiple schema versions: isolated correctly`);
 	});
 
 	test('Production Scenario 2: High-frequency queries (10k/sec simulation)', () => {
