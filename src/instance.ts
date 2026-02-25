@@ -74,6 +74,14 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			this.db.run("PRAGMA wal_autocheckpoint = 1000");
 			this.db.run("PRAGMA cache_size = -32000");
 			this.db.run("PRAGMA analysis_limit = 400");
+			
+			const mmapSize = this.options.mmapSize ?? 268435456;
+			if (mmapSize > 0) {
+				this.db.run(`PRAGMA mmap_size = ${mmapSize}`);
+			}
+			
+			this.db.run("PRAGMA temp_store = MEMORY");
+			this.db.run("PRAGMA locking_mode = NORMAL");
 		}
 
 		this.db.run(`

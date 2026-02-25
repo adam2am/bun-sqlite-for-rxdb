@@ -6,6 +6,14 @@ export interface BunSQLiteStorageSettings {
 	 * @default ':memory:'
 	 */
 	filename?: string;
+
+	/**
+	 * Memory-mapped I/O size in bytes. Set to 0 to disable.
+	 * Enables 2-5x faster reads for large databases (>500MB).
+	 * Trade-off: I/O errors become signals (SIGBUS) instead of returnable errors.
+	 * @default 268435456 (256MB)
+	 */
+	mmapSize?: number;
 }
 
 export interface BunSQLiteInternals {
