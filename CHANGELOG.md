@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.2.5] - 2026-02-25
+
+### Performance 🔥
+- **Bounded statement cache: Prevents memory leaks**
+  - Added MAX_STATEMENTS = 500 with LRU eviction
+  - Calls finalize() on evicted statements to free resources
+  - No performance regression - cache hit path unchanged
+- **bulkWrite(100) optimization: 2.1x faster**
+  - 3.83ms → 1.82ms (Phase 1 PRAGMA optimizations showing impact at scale)
+
+### Changed
+- **Document cache removed** (Phase 2 Iteration 5)
+  - Industry research: PouchDB, Dexie, LokiJS, WatermelonDB don't use document-level caching
+  - SQLite page cache (PRAGMA cache_size = -32000) is sufficient
+  - Simpler architecture, no cache invalidation complexity
+
+### Fixed
+- **Timing test reliability on Windows**
+  - Switched from performance.now() to process.hrtime.bigint() for nanosecond precision
+  - Fixes flaky tests caused by ~1ms resolution on Windows
+  - Applied to "Production Scenario 3" and "Edge Case 13" tests
+
+### Added
+- bulkWrite(100) benchmark test to measure Phase 2 impact at scale
+
+### Technical Details
+- Statement cache bounded at 500 entries (prevents unbounded growth)
+- LRU eviction: moves accessed statements to end, evicts oldest
+- All 184 tests passing with reliable timing
+- No regressions in query or write performance
+
+---
+
 ## [1.2.4] - 2026-02-25
 
 ### Performance 🔥
