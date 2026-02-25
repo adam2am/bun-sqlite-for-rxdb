@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.2.3] - 2026-02-25
+
+### Changed
+- **Code Organization**
+  - Reorganized tests into unit/integration/benchmarks structure
+  - Added TypeScript path aliases ($app/* → src/*) for cleaner imports
+  - Updated all test imports to use path aliases
+  - Eliminated all `any` types from core modules (src/)
+  - Removed obsolete test files and old benchmark directory
+
+### Technical Details
+- Zero `any` types in src/ (instance.ts, rxdb-helpers.ts, statement-manager.ts, builder.ts)
+- Proper TypeScript types: `SQLQueryBindings[]`, `RxAttachmentData`, generic `all<T>()`
+- Test structure: test/unit/, test/unit/operators/, test/integration/, test/benchmarks/
+- Path aliases configured in tsconfig.json
+
+### Test Results
+- 181/184 tests passing (3 pre-existing regex bugs)
+- All type safety improvements verified
+
+---
+
 ## [1.2.2] - 2026-02-24
 
 ### Fixed
