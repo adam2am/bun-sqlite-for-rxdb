@@ -599,15 +599,20 @@ Improvement: 29.8% faster
 
 | Query Type | Avg | Min | Max | Median | StdDev | Route |
 |------------|-----|-----|-----|--------|--------|-------|
-| Simple $eq | 25.40ms | 23.75ms | 27.06ms | 25.46ms | 0.90ms | SQL |
-| Simple $regex | 12.66ms | 11.74ms | 14.43ms | 12.70ms | 0.72ms | SQL |
-| Complex $regex char class | 51.01ms | 47.23ms | 56.29ms | 50.60ms | 2.99ms | SQL |
-| Complex $regex case-insensitive | 43.08ms | 40.76ms | 46.09ms | 43.18ms | 1.45ms | SQL |
-| $elemMatch (simple) | 26.82ms | 23.95ms | 33.64ms | 26.40ms | 2.84ms | SQL |
-| **$elemMatch with $and** | **24.44ms** | **22.66ms** | **30.29ms** | **23.55ms** | **2.28ms** | **SQL** ✅ |
-| **$elemMatch with $or** | **25.23ms** | **24.06ms** | **28.12ms** | **24.82ms** | **1.25ms** | **SQL** ✅ |
-| **$elemMatch with $nor** | **25.33ms** | **24.40ms** | **27.39ms** | **25.03ms** | **0.83ms** | **SQL** ✅ |
-| $type array | 27.38ms | 24.67ms | 34.88ms | 26.62ms | 3.12ms | SQL |
+| Simple $eq | 27.15ms | 24.73ms | 29.61ms | 27.67ms | 1.32ms | SQL |
+| Simple $regex | 13.70ms | 12.54ms | 15.69ms | 13.40ms | 0.97ms | SQL |
+| Complex $regex char class | 47.30ms | 44.67ms | 55.10ms | 46.57ms | 2.78ms | SQL |
+| Complex $regex case-insensitive | 54.68ms | 49.04ms | 63.11ms | 54.86ms | 4.68ms | SQL |
+| $elemMatch (simple) | 28.98ms | 26.59ms | 35.52ms | 27.88ms | 2.92ms | SQL |
+| **$elemMatch with $and** | **25.04ms** | **23.98ms** | **28.19ms** | **24.50ms** | **1.29ms** | **SQL** ✅ |
+| **$elemMatch with $or** | **26.99ms** | **24.99ms** | **30.53ms** | **26.45ms** | **1.81ms** | **SQL** ✅ |
+| **$elemMatch with $nor** | **27.26ms** | **26.34ms** | **29.35ms** | **27.08ms** | **0.91ms** | **SQL** ✅ |
+| **$type array** | **24.92ms** | **23.77ms** | **27.27ms** | **24.63ms** | **1.06ms** | **SQL** ✅ |
+| **$type boolean** | **4.89ms** | **4.18ms** | **9.53ms** | **4.39ms** | **1.55ms** | **SQL** ✅ |
+| **$type object** | **14.05ms** | **12.54ms** | **16.34ms** | **13.95ms** | **0.98ms** | **SQL** ✅ |
+| **$type number** | **40.55ms** | **39.02ms** | **42.80ms** | **40.64ms** | **1.14ms** | **SQL** ✅ |
+| **$type string** | **48.81ms** | **45.58ms** | **58.40ms** | **47.84ms** | **3.61ms** | **SQL** ✅ |
+| **$type null** | **10.96ms** | **10.08ms** | **11.44ms** | **11.04ms** | **0.42ms** | **SQL** ✅ |
 
 **ourMemory Optimization (v1.2.0):** 6.1% faster than Mingo (35.11ms vs 37.41ms) ✅
 
@@ -651,10 +656,28 @@ Improvement: 29.8% faster
    - After: Pure SQL with EXISTS + combined WHERE clause
    - Implementation: 70 lines in operators.ts (buildElemMatchConditions helper)
    - Tests: 8/8 integration tests passing
-3. 📋 Fix $type with boolean/object/date (make it full SQL or custom implementation)
-   - Current: Mingo fallback for unsupported types
-   - Target: Pure SQL or custom matcher (no Mingo dependency)
-4. 📋 Deal with complex $regex patterns (character classes, etc.)
+3. ✅ Fix $type with custom matcher - DONE (v1.2.2)
+   - Before: SQL json_type() 3-8% slower than Mingo for most types
+   - After: Custom matchesType() matcher 5-19% faster than Mingo
+   - Implementation: Hybrid approach
+     - SQL for `$type: 'null'` (2.86x faster than Mingo, 2.93x faster than matchesType)
+     - matchesType for other 5 types (5-19% faster than Mingo)
+   - Benchmark Results (300k docs, 12 runs):
+     - boolean: 1303.75ms (1.12x faster than Mingo)
+     - number: 1305.61ms (1.19x faster than Mingo)
+     - string: 1250.98ms (1.05x faster than Mingo)
+     - array: 1255.71ms (1.06x faster than Mingo)
+     - object: 1255.56ms (1.08x faster than Mingo)
+     - null: 306.28ms SQL (2.86x faster than Mingo)
+   - Zero Mingo dependency for $type operator
+4. ✅ Test $elemMatch vs Mingo - DONE (v1.2.2)
+   - Benchmark Results (300k docs, 12 runs):
+     - Simple: SQL 937.91ms vs Mingo 2260.34ms (2.41x faster)
+     - With $and: SQL 1015.60ms vs Mingo 4885.55ms (4.81x faster)
+     - With $or: SQL 1299.98ms vs Mingo 5237.66ms (4.03x faster)
+     - With $nor: SQL 1797.20ms vs Mingo 5186.85ms (2.89x faster)
+   - Verdict: SQL is 2.4-4.8x faster, no custom matcher needed
+5. 📋 Deal with complex $regex patterns (character classes, etc.)
    - Current: Mingo fallback
    - Target: Custom SQLite REGEXP function or custom matcher
 
