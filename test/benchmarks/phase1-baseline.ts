@@ -99,7 +99,16 @@ async function benchmark10k() {
 		bulkWrite10: [] as number[],
 		bulkWrite100: [] as number[],
 		queryEq: [] as number[],
-		queryGt: [] as number[]
+		queryGt: [] as number[],
+		queryLt: [] as number[],
+		queryAnd: [] as number[],
+		queryOr: [] as number[],
+		queryRepeated: [] as number[],
+		findDocById1: [] as number[],
+		findDocById5: [] as number[],
+		findDocById10: [] as number[],
+		findDocById20: [] as number[],
+		findDocById50: [] as number[]
 	};
 
 	for (let run = 1; run <= 20; run++) {
@@ -148,6 +157,54 @@ async function benchmark10k() {
 			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
 		});
 		results.queryGt.push(performance.now() - start6);
+
+		const start6b = performance.now();
+		await instance.query({
+			query: { selector: { age: { $lt: 40 } }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		results.queryLt.push(performance.now() - start6b);
+
+		const start6c = performance.now();
+		await instance.query({
+			query: { selector: { $and: [{ age: { $gte: 25 } }, { age: { $lte: 35 } }] }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		results.queryAnd.push(performance.now() - start6c);
+
+		const start6d = performance.now();
+		await instance.query({
+			query: { selector: { $or: [{ status: { $eq: 'active' } }, { age: { $lt: 25 } }] }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		results.queryOr.push(performance.now() - start6d);
+
+		const start6e = performance.now();
+		await instance.query({
+			query: { selector: { status: { $eq: 'active' } }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		results.queryRepeated.push(performance.now() - start6e);
+
+		const start7 = performance.now();
+		await instance.findDocumentsById([`user${run}`], false);
+		results.findDocById1.push(performance.now() - start7);
+
+		const start8 = performance.now();
+		await instance.findDocumentsById([`user${run}`, `user${run+1}`, `user${run+2}`, `user${run+3}`, `user${run+4}`], false);
+		results.findDocById5.push(performance.now() - start8);
+
+		const start9 = performance.now();
+		await instance.findDocumentsById(Array.from({ length: 10 }, (_, i) => `user${run+i}`), false);
+		results.findDocById10.push(performance.now() - start9);
+
+		const start10 = performance.now();
+		await instance.findDocumentsById(Array.from({ length: 20 }, (_, i) => `user${run+i}`), false);
+		results.findDocById20.push(performance.now() - start10);
+
+		const start11 = performance.now();
+		await instance.findDocumentsById(Array.from({ length: 50 }, (_, i) => `user${run+i}`), false);
+		results.findDocById50.push(performance.now() - start11);
 
 		if (run % 5 === 0) console.log(`  Run ${run}/20 complete`);
 	}
@@ -220,7 +277,16 @@ async function main() {
 		bulkWrite10: [] as number[],
 		bulkWrite100: [] as number[],
 		queryEq: [] as number[],
-		queryGt: [] as number[]
+		queryGt: [] as number[],
+		queryLt: [] as number[],
+		queryAnd: [] as number[],
+		queryOr: [] as number[],
+		queryRepeated: [] as number[],
+		findDocById1: [] as number[],
+		findDocById5: [] as number[],
+		findDocById10: [] as number[],
+		findDocById20: [] as number[],
+		findDocById50: [] as number[]
 	};
 
 	const allResults100k = {
