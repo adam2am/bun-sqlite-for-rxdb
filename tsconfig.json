@@ -8,6 +8,10 @@
       "ES2021.WeakRef"
     ],
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "$app/*": ["src/*"]
+    },
     "types": [
       "bun-types"
     ],
@@ -17,11 +21,11 @@
     "forceConsistentCasingInFileNames": true,
     "declaration": true,
     "declarationMap": true,
-    "outDir": "./dist",
-    "rootDir": "./src"
+    "outDir": "./dist"
   },
   "include": [
-    "src/**/*"
+    "src/**/*",
+    "test/**/*"
   ],
   "exclude": [
     "node_modules",
