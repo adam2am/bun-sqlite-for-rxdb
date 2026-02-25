@@ -909,4 +909,286 @@ describe('$elemMatch and $type Fallback (TDD)', () => {
 
 		await boolInstance.remove();
 	});
+
+	it('handles $not with nested $and', async () => {
+		const docs: RxDocumentData<TestDocType>[] = [
+			{ id: 'user1', name: 'Alice', tags: ['a'], metadata: { active: true, count: 10 }, age: 30, _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
+			{ id: 'user2', name: 'Bob', tags: ['b'], metadata: { active: false, count: 5 }, age: 25, _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
+		];
+		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await instance.query({ 
+			query: { selector: { age: { $not: { $and: [{ $gt: 20 }, { $lt: 28 }] } } }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		
+		expect(result.documents).toHaveLength(1);
+		expect(result.documents[0].id).toBe('user1');
+		await instance.remove();
+	});
+
+	it('handles $not with nested $or', async () => {
+		const docs: RxDocumentData<TestDocType>[] = [
+			{ id: 'user1', name: 'Alice', tags: ['a'], metadata: { active: true, count: 10 }, age: 30, _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
+			{ id: 'user2', name: 'Bob', tags: ['b'], metadata: { active: false, count: 5 }, age: 25, _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
+		];
+		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await instance.query({ 
+			query: { selector: { age: { $not: { $or: [{ $eq: 25 }, { $eq: 35 }] } } }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		
+		expect(result.documents).toHaveLength(1);
+		expect(result.documents[0].id).toBe('user1');
+		await instance.remove();
+	});
+
+	it('handles $not with comparison operators', async () => {
+		const docs: RxDocumentData<TestDocType>[] = [
+			{ id: 'user1', name: 'Alice', tags: ['a'], metadata: { active: true, count: 10 }, age: 30, _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
+			{ id: 'user2', name: 'Bob', tags: ['b'], metadata: { active: false, count: 5 }, age: 25, _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
+		];
+		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await instance.query({ 
+			query: { selector: { age: { $not: { $gt: 28 } } }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		
+		expect(result.documents).toHaveLength(1);
+		expect(result.documents[0].id).toBe('user2');
+		await instance.remove();
+	});
+
+	it('handles deeply nested $and (3 levels)', async () => {
+		const docs: RxDocumentData<TestDocType>[] = [
+			{ id: 'user1', name: 'Alice', tags: ['a'], metadata: { active: true, count: 10 }, age: 30, _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
+			{ id: 'user2', name: 'Bob', tags: ['b'], metadata: { active: false, count: 5 }, age: 25, _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
+		];
+		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await instance.query({ 
+			query: { selector: { $and: [{ age: { $gt: 20 } }, { $and: [{ age: { $lt: 35 } }, { name: 'Alice' }] }] }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		
+		expect(result.documents).toHaveLength(1);
+		expect(result.documents[0].id).toBe('user1');
+		await instance.remove();
+	});
+
+	it('handles deeply nested $or (3 levels)', async () => {
+		const docs: RxDocumentData<TestDocType>[] = [
+			{ id: 'user1', name: 'Alice', tags: ['a'], metadata: { active: true, count: 10 }, age: 30, _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
+			{ id: 'user2', name: 'Bob', tags: ['b'], metadata: { active: false, count: 5 }, age: 25, _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
+		];
+		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await instance.query({ 
+			query: { selector: { $or: [{ age: 30 }, { $or: [{ age: 25 }, { name: 'Charlie' }] }] }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		
+		expect(result.documents).toHaveLength(2);
+		await instance.remove();
+	});
+
+	it('handles $elemMatch with $not + $eq', async () => {
+		const docs: RxDocumentData<TestDocType>[] = [
+			{ id: 'user1', name: 'Alice', tags: ['urgent', 'important'], metadata: { active: true, count: 5 }, age: 30, _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
+			{ id: 'user2', name: 'Bob', tags: ['normal', 'pending'], metadata: { active: false, count: 2 }, age: 25, _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
+		];
+		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await instance.query({ 
+			query: { selector: { tags: { $elemMatch: { $not: { $eq: 'urgent' } } } }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		
+		expect(result.documents).toHaveLength(2);
+		await instance.remove();
+	});
+
+	it('handles $elemMatch with $not + $gt', async () => {
+		interface DocWithNumbers {
+			id: string;
+			name: string;
+			scores: number[];
+			_deleted: boolean;
+			_attachments: Record<string, unknown>;
+			_rev: string;
+			_meta: { lwt: number };
+		}
+
+		const numInstance = await storage.createStorageInstance<DocWithNumbers>({
+			databaseInstanceToken: `test-token-${Date.now()}`,
+			databaseName: 'testdb',
+			collectionName: 'scores',
+			schema: {
+				version: 0,
+				primaryKey: 'id',
+				type: 'object',
+				properties: {
+					id: { type: 'string', maxLength: 100 },
+					name: { type: 'string' },
+					scores: { type: 'array' },
+					_deleted: { type: 'boolean' },
+					_attachments: { type: 'object' },
+					_rev: { type: 'string' },
+					_meta: { type: 'object', properties: { lwt: { type: 'number' } } }
+				},
+				required: ['id', '_deleted', '_attachments', '_rev', '_meta']
+			},
+			options: {},
+			multiInstance: false,
+			devMode: false
+		});
+
+		const docs: RxDocumentData<DocWithNumbers>[] = [
+			{ id: 'doc1', name: 'First', scores: [10, 20, 30], _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
+			{ id: 'doc2', name: 'Second', scores: [5, 15, 25], _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
+		];
+		await numInstance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await numInstance.query({ 
+			query: { selector: { scores: { $elemMatch: { $not: { $gt: 20 } } } }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		
+		expect(result.documents).toHaveLength(2);
+		await numInstance.remove();
+	});
+
+	it('handles mixed $and + $or (AND containing OR)', async () => {
+		const docs: RxDocumentData<TestDocType>[] = [
+			{ id: 'user1', name: 'Alice', tags: ['a'], metadata: { active: true, count: 10 }, age: 30, _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
+			{ id: 'user2', name: 'Bob', tags: ['b'], metadata: { active: false, count: 5 }, age: 25, _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
+		];
+		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await instance.query({ 
+			query: { selector: { $and: [{ age: { $gt: 20 } }, { $or: [{ name: 'Alice' }, { name: 'Bob' }] }] }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		
+		expect(result.documents).toHaveLength(2);
+		await instance.remove();
+	});
+
+	it('handles mixed $or + $and (OR containing AND)', async () => {
+		const docs: RxDocumentData<TestDocType>[] = [
+			{ id: 'user1', name: 'Alice', tags: ['a'], metadata: { active: true, count: 10 }, age: 30, _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
+			{ id: 'user2', name: 'Bob', tags: ['b'], metadata: { active: false, count: 5 }, age: 25, _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
+		];
+		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await instance.query({ 
+			query: { selector: { $or: [{ $and: [{ age: 30 }, { name: 'Alice' }] }, { age: 25 }] }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		
+		expect(result.documents).toHaveLength(2);
+		await instance.remove();
+	});
+
+	it('handles $nor with nested $and', async () => {
+		const docs: RxDocumentData<TestDocType>[] = [
+			{ id: 'user1', name: 'Alice', tags: ['a'], metadata: { active: true, count: 10 }, age: 30, _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
+			{ id: 'user2', name: 'Bob', tags: ['b'], metadata: { active: false, count: 5 }, age: 25, _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
+		];
+		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await instance.query({ 
+			query: { selector: { $nor: [{ $and: [{ age: 25 }, { name: 'Bob' }] }] }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		
+		expect(result.documents).toHaveLength(1);
+		expect(result.documents[0].id).toBe('user1');
+		await instance.remove();
+	});
+
+	it('handles $nor with multiple $and conditions', async () => {
+		const docs: RxDocumentData<TestDocType>[] = [
+			{ id: 'user1', name: 'Alice', tags: ['a'], metadata: { active: true, count: 10 }, age: 30, _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
+			{ id: 'user2', name: 'Bob', tags: ['b'], metadata: { active: false, count: 5 }, age: 25, _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
+		];
+		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await instance.query({ 
+			query: { selector: { $nor: [{ $and: [{ age: 25 }] }, { $and: [{ age: 35 }] }] }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		
+		expect(result.documents).toHaveLength(1);
+		expect(result.documents[0].id).toBe('user1');
+		await instance.remove();
+	});
+
+	it('handles triple nesting: $elemMatch with $and containing $or', async () => {
+		interface DocWithObjects {
+			id: string;
+			items: Array<{ type: string; status: string; priority: number }>;
+			_deleted: boolean;
+			_attachments: Record<string, unknown>;
+			_rev: string;
+			_meta: { lwt: number };
+		}
+
+		const tripleInstance = await storage.createStorageInstance<DocWithObjects>({
+			databaseInstanceToken: `test-token-${Date.now()}`,
+			databaseName: 'testdb',
+			collectionName: 'triple',
+			schema: {
+				version: 0,
+				primaryKey: 'id',
+				type: 'object',
+				properties: {
+					id: { type: 'string', maxLength: 100 },
+					items: { type: 'array' },
+					_deleted: { type: 'boolean' },
+					_attachments: { type: 'object' },
+					_rev: { type: 'string' },
+					_meta: { type: 'object', properties: { lwt: { type: 'number' } } }
+				},
+				required: ['id', '_deleted', '_attachments', '_rev', '_meta']
+			},
+			options: {},
+			multiInstance: false,
+			devMode: false
+		});
+
+		const docs: RxDocumentData<DocWithObjects>[] = [
+			{ id: 'doc1', items: [{ type: 'A', status: 'active', priority: 1 }], _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
+			{ id: 'doc2', items: [{ type: 'B', status: 'inactive', priority: 2 }], _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
+		];
+		await tripleInstance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await tripleInstance.query({ 
+			query: { selector: { items: { $elemMatch: { $and: [{ $or: [{ type: 'A' }, { type: 'B' }] }, { status: 'active' }] } } }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		
+		expect(result.documents).toHaveLength(1);
+		expect(result.documents[0].id).toBe('doc1');
+		await tripleInstance.remove();
+	});
+
+	it('handles triple nesting: $not with $or containing $and', async () => {
+		const docs: RxDocumentData<TestDocType>[] = [
+			{ id: 'user1', name: 'Alice', tags: ['a'], metadata: { active: true, count: 10 }, age: 30, _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
+			{ id: 'user2', name: 'Bob', tags: ['b'], metadata: { active: false, count: 5 }, age: 25, _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
+		];
+		await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await instance.query({ 
+			query: { selector: { age: { $not: { $or: [{ $and: [{ $gt: 20 }, { $lt: 28 }] }, { $eq: 35 }] } } }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		
+		expect(result.documents).toHaveLength(1);
+		expect(result.documents[0].id).toBe('user1');
+		await instance.remove();
+	});
 });
