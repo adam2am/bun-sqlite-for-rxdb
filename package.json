@@ -1,12 +1,15 @@
 {
   "name": "bun-sqlite-for-rxdb",
-	"version": "1.1.4",
+  "version": "1.1.4",
   "author": "adam2am",
   "repository": {
     "type": "git",
     "url": "https://github.com/adam2am/bun-sqlite-for-rxdb.git"
   },
   "main": "dist/index.js",
+  "dependencies": {
+    "fast-stable-stringify": "^1.0.0"
+  },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/bun": "latest",
@@ -44,9 +47,5 @@
     "typecheck": "tsc --noEmit"
   },
   "type": "module",
-  "types": "dist/index.d.ts",
-  "dependencies": {
-    "fast-stable-stringify": "^1.0.0",
-    "mingo": "^7.2.0"
-  }
+  "types": "dist/index.d.ts"
 }

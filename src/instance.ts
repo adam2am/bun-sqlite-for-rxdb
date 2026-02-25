@@ -1,7 +1,6 @@
 import { Database } from 'bun:sqlite';
 import type { SQLQueryBindings } from 'bun:sqlite';
 import { Subject, Observable } from 'rxjs';
-import { Query } from 'mingo';
 import { matchesRegex } from './query/regex-matcher';
 import type {
 	RxStorageInstance,
@@ -21,7 +20,7 @@ import type {
 	RxStorageDefaultCheckpoint
 } from 'rxdb';
 import type { BunSQLiteStorageSettings, BunSQLiteInternals } from './types';
-import { buildWhereClause, canTranslateToSQL } from './query/builder';
+import { buildWhereClause } from './query/builder';
 import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from './rxdb-helpers';
 import { StatementManager } from './statement-manager';
 import { getDatabase, releaseDatabase } from './connection-pool';
@@ -228,38 +227,12 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	}
 
 	async query(preparedQuery: PreparedQuery<RxDocType>): Promise<RxStorageQueryResult<RxDocType>> {
-		if (!canTranslateToSQL(preparedQuery.query.selector, this.schema)) {
-			if (isSimpleRegex(preparedQuery.query.selector)) {
-				return this.queryWithOurMemory(preparedQuery);
-			}
-			
-			if (process.env.DEBUG_QUERIES) {
-				console.log('[DEBUG_QUERIES] Query cannot be translated to SQL, using Mingo');
-			}
-			
-			const query = `SELECT json(data) as data FROM "${this.tableName}"`;
-			const rows = this.stmtManager.all({ query, params: [] }) as Array<{ data: string }>;
-			let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
-			
-			const mingoQuery = new Query(preparedQuery.query.selector);
-			documents = documents.filter(doc => mingoQuery.test(doc));
-
-			if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
-				documents = this.sortDocuments(documents, preparedQuery.query.sort);
-			}
-
-			if (preparedQuery.query.skip) {
-				documents = documents.slice(preparedQuery.query.skip);
-			}
-
-			if (preparedQuery.query.limit) {
-				documents = documents.slice(0, preparedQuery.query.limit);
-			}
-
-			return { documents };
+		const whereResult = buildWhereClause(preparedQuery.query.selector, this.schema, this.collectionName);
+		if (!whereResult) {
+			return this.queryWithOurMemory(preparedQuery);
 		}
 
-		const { sql: whereClause, args } = buildWhereClause(preparedQuery.query.selector, this.schema, this.collectionName);
+		const { sql: whereClause, args } = whereResult;
 
 		const sql = `
 		SELECT json(data) as data FROM "${this.tableName}"
@@ -331,12 +304,21 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	}
 
 	async count(preparedQuery: PreparedQuery<RxDocType>): Promise<RxStorageCountResult> {
-		const { sql, args } = buildWhereClause(
+		const whereResult = buildWhereClause(
 			preparedQuery.query.selector,
 			this.schema,
 			this.collectionName
 		);
 		
+		if (!whereResult) {
+			const allDocs = await this.queryWithOurMemory(preparedQuery);
+			return {
+				count: allDocs.documents.length,
+				mode: 'fast'
+			};
+		}
+		
+		const { sql, args } = whereResult;
 		const result = this.db.query(
 			`SELECT COUNT(*) as count FROM "${this.tableName}" WHERE (${sql})`
 		).get(...args) as { count: number } | undefined;
@@ -432,16 +414,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		const rows = this.stmtManager.all({ query, params: [] }) as Array<{ data: string }>;
 		let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 
-		const selector = preparedQuery.query.selector as Record<string, { $regex: string; $options?: string }>;
-		const field = Object.keys(selector)[0];
-		const value = selector[field];
-		const pattern = value.$regex;
-		const options = value.$options;
-
-		documents = documents.filter(doc => {
-			const fieldValue = this.getNestedValue(doc, field);
-			return matchesRegex(fieldValue, pattern, options);
-		});
+		documents = documents.filter(doc => this.matchesRegexSelector(doc, preparedQuery.query.selector));
 
 		if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
 			documents = this.sortDocuments(documents, preparedQuery.query.sort);
@@ -457,26 +430,19 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 		return { documents };
 	}
-}
 
-function isSimpleRegex(selector: MangoQuerySelector<RxDocumentData<unknown>>): boolean {
-	const fields = Object.keys(selector);
-	if (fields.length !== 1) return false;
-
-	const field = fields[0];
-	if (field.startsWith('$')) return false;
-
-	const selectorRecord = selector as Record<string, unknown>;
-	const value = selectorRecord[field];
-	if (typeof value !== 'object' || value === null) return false;
-
-	const ops = Object.keys(value);
-	if (!ops.includes('$regex')) return false;
-	if (ops.some(op => op !== '$regex' && op !== '$options')) return false;
-
-	const regexValue = value as { $regex?: unknown; $options?: unknown };
-	const options = regexValue.$options;
-	if (options && options !== 'i') return false;
-
-	return true;
+	private matchesRegexSelector(doc: RxDocumentData<RxDocType>, selector: MangoQuerySelector<RxDocumentData<RxDocType>>): boolean {
+		for (const [field, value] of Object.entries(selector)) {
+			if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+				const ops = value as Record<string, unknown>;
+				if (ops.$regex) {
+					const fieldValue = this.getNestedValue(doc, field);
+					const pattern = ops.$regex as string;
+					const options = ops.$options as string | undefined;
+					if (!matchesRegex(fieldValue, pattern, options)) return false;
+				}
+			}
+		}
+		return true;
+	}
 }
