@@ -4,32 +4,8 @@ import { translateEq, translateNe, translateGt, translateGte, translateLt, trans
 import type { SqlFragment, ElemMatchCriteria } from './operators';
 import stringify from 'fast-stable-stringify';
 
-const QUERY_CACHE = new Map<string, SqlFragment>();
+const QUERY_CACHE = new Map<string, SqlFragment | null>();
 const MAX_CACHE_SIZE = 1000;
-
-export function canTranslateToSQL<RxDocType>(
-	selector: MangoQuerySelector<RxDocumentData<RxDocType>>,
-	schema?: RxJsonSchema<RxDocumentData<RxDocType>>
-): boolean {
-	for (const [field, value] of Object.entries(selector)) {
-		if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-			for (const [op, opValue] of Object.entries(value)) {
-				if (op === '$regex') {
-					const options = (value as Record<string, unknown>).$options as string | undefined;
-					if (schema && !translateRegex(field, opValue as string, options, schema, field)) {
-						return false;
-					}
-				}
-				if (op === '$elemMatch') {
-					if (!translateElemMatch('_', opValue as ElemMatchCriteria)) {
-						return false;
-					}
-				}
-			}
-		}
-	}
-	return true;
-}
 
 export function getCacheSize(): number {
 	return QUERY_CACHE.size;
@@ -43,7 +19,7 @@ export function buildWhereClause<RxDocType>(
 	selector: MangoQuerySelector<RxDocumentData<RxDocType>>,
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	collectionName: string
-): SqlFragment {
+): SqlFragment | null {
 	const cacheKey = `v${schema.version}_${collectionName}_${stringify(selector)}`;
 
 	const cached = QUERY_CACHE.get(cacheKey);
@@ -54,6 +30,7 @@ export function buildWhereClause<RxDocType>(
 	}
 
 	const result = processSelector(selector, schema, 0);
+	if (!result) return null;
 
 	if (QUERY_CACHE.size >= MAX_CACHE_SIZE) {
 		const firstKey = QUERY_CACHE.keys().next().value;
@@ -69,14 +46,16 @@ function buildLogicalOperator<RxDocType>(
 	conditions: MangoQuerySelector<RxDocumentData<RxDocType>>[],
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	logicalDepth: number
-): SqlFragment {
+): SqlFragment | null {
 	if (conditions.length === 0) {
 		return { sql: '1=1', args: [] };
 	}
 
 	const fragments = conditions.map(subSelector => processSelector(subSelector, schema, logicalDepth + 1));
-	const sql = fragments.map(f => f.sql).join(' OR ');
-	const args = fragments.flatMap(f => f.args);
+	if (fragments.some(f => f === null)) return null;
+	
+	const sql = fragments.map(f => f!.sql).join(' OR ');
+	const args = fragments.flatMap(f => f!.args);
 
 	return operator === 'nor'
 		? { sql: `NOT(${sql})`, args }
@@ -87,23 +66,27 @@ function processSelector<RxDocType>(
 	selector: MangoQuerySelector<RxDocumentData<RxDocType>>,
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	logicalDepth: number
-): SqlFragment {
+): SqlFragment | null {
 	const conditions: string[] = [];
 	const args: (string | number | boolean | null)[] = [];
 
 	for (const [field, value] of Object.entries(selector)) {
 		if (field === '$and' && Array.isArray(value)) {
 			const andFragments = value.map(subSelector => processSelector(subSelector, schema, logicalDepth));
-			const andConditions = andFragments.map(f => f.sql);
+			if (andFragments.some(f => f === null)) return null;
+			
+			const andConditions = andFragments.map(f => f!.sql);
 			const needsParens = logicalDepth > 0 && andConditions.length > 1;
 			const joined = andConditions.join(' AND ');
 			conditions.push(needsParens ? `(${joined})` : joined);
-			andFragments.forEach(f => args.push(...f.args));
+			andFragments.forEach(f => args.push(...f!.args));
 			continue;
 		}
 
 		if (field === '$or' && Array.isArray(value)) {
 			const orFragment = buildLogicalOperator('or', value, schema, logicalDepth);
+			if (!orFragment) return null;
+			
 			const needsParens = logicalDepth > 0;
 			conditions.push(needsParens ? `(${orFragment.sql})` : orFragment.sql);
 			args.push(...orFragment.args);
@@ -112,6 +95,8 @@ function processSelector<RxDocType>(
 
 		if (field === '$nor' && Array.isArray(value)) {
 			const norFragment = buildLogicalOperator('nor', value, schema, logicalDepth);
+			if (!norFragment) return null;
+			
 			conditions.push(norFragment.sql);
 			args.push(...norFragment.args);
 			continue;
@@ -153,25 +138,25 @@ function processSelector<RxDocType>(
 					case '$exists':
 						fragment = translateExists(fieldName, opValue as boolean);
 						break;
-					case '$regex':
-						const options = (value as Record<string, unknown>).$options as string | undefined;
-						const regexFragment = translateRegex(fieldName, opValue as string, options, schema, actualFieldName);
-						if (!regexFragment) continue;
-						fragment = regexFragment;
-						break;
-					case '$elemMatch':
-						const elemMatchFragment = translateElemMatch(fieldName, opValue as ElemMatchCriteria);
-						if (!elemMatchFragment) continue;
-						fragment = elemMatchFragment;
-						break;
+				case '$regex':
+					const options = (value as Record<string, unknown>).$options as string | undefined;
+					const regexFragment = translateRegex(fieldName, opValue as string, options, schema, actualFieldName);
+					if (!regexFragment) return null;
+					fragment = regexFragment;
+					break;
+				case '$elemMatch':
+					const elemMatchFragment = translateElemMatch(fieldName, opValue as ElemMatchCriteria);
+					if (!elemMatchFragment) return null;
+					fragment = elemMatchFragment;
+					break;
 					case '$not':
 						fragment = translateNot(fieldName, opValue);
 						break;
-					case '$type':
-						const typeFragment = translateType('data', actualFieldName, opValue as string);
-						if (!typeFragment) continue;
-						fragment = typeFragment;
-						break;
+				case '$type':
+					const typeFragment = translateType('data', actualFieldName, opValue as string);
+					if (!typeFragment) return null;
+					fragment = typeFragment;
+					break;
 					case '$size':
 						fragment = translateSize(fieldName, opValue as number);
 						break;

@@ -49,6 +49,14 @@ function hasExpressionIndex<RxDocType>(
 	return hasLowerIndex;
 }
 
+function isComplexRegex(pattern: string): boolean {
+	return /[*+?()[\]{}|]/.test(pattern.replace(/\\\./g, ''));
+}
+
+function escapeForLike(str: string): string {
+	return str.replace(/[\\%_]/g, '\\$&');
+}
+
 export function smartRegexToLike<RxDocType>(
 	field: string,
 	pattern: string,
@@ -56,66 +64,48 @@ export function smartRegexToLike<RxDocType>(
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	fieldName: string
 ): SqlFragment | null {
-	const caseInsensitive = options?.includes('i');
+	const caseInsensitive = options?.includes('i') ?? false;
+	const hasLowerIndex = hasExpressionIndex(fieldName, schema);
+	
 	const startsWithAnchor = pattern.startsWith('^');
 	const endsWithAnchor = pattern.endsWith('$');
-	
 	let cleanPattern = pattern.replace(/^\^/, '').replace(/\$$/, '');
 	
-	if (startsWithAnchor && endsWithAnchor && !/[*+?()[\]{}|]/.test(cleanPattern)) {
-		const exact = cleanPattern.replace(/\\\./g, '.');
+	if (isComplexRegex(cleanPattern)) {
+		return null;
+	}
+	
+	const unescaped = cleanPattern.replace(/\\\./g, '.');
+	const escaped = escapeForLike(unescaped);
+	
+	if (startsWithAnchor && endsWithAnchor) {
 		if (caseInsensitive) {
-			const lowerExact = exact.toLowerCase();
-			if (hasExpressionIndex(fieldName, schema)) {
-				return { sql: `LOWER(${field}) = ?`, args: [lowerExact] };
-			}
-			return { sql: `${field} = ? COLLATE NOCASE`, args: [exact] };
+			return hasLowerIndex
+				? { sql: `LOWER(${field}) = ?`, args: [unescaped.toLowerCase()] }
+				: { sql: `${field} = ? COLLATE NOCASE`, args: [unescaped] };
 		}
-		return { sql: `${field} = ?`, args: [exact] };
+		return { sql: `${field} = ?`, args: [unescaped] };
 	}
 	
 	if (startsWithAnchor) {
-		const prefix = cleanPattern.replace(/\\\./g, '.');
-		if (!/[*+?()[\]{}|]/.test(prefix)) {
-			const escaped = prefix.replace(/%/g, '\\%').replace(/_/g, '\\_');
-			if (caseInsensitive) {
-				const lowerEscaped = escaped.toLowerCase();
-				if (hasExpressionIndex(fieldName, schema)) {
-					return { sql: `LOWER(${field}) LIKE ? ESCAPE '\\'`, args: [lowerEscaped + '%'] };
-				}
-				return { sql: `${field} LIKE ? COLLATE NOCASE ESCAPE '\\'`, args: [escaped + '%'] };
-			}
-			return { sql: `${field} LIKE ? ESCAPE '\\'`, args: [escaped + '%'] };
+		const suffix = caseInsensitive ? escaped.toLowerCase() : escaped;
+		if (caseInsensitive && hasLowerIndex) {
+			return { sql: `LOWER(${field}) LIKE ? ESCAPE '\\'`, args: [suffix + '%'] };
 		}
+		return { sql: `${field} LIKE ?${caseInsensitive ? ' COLLATE NOCASE' : ''} ESCAPE '\\'`, args: [suffix + '%'] };
 	}
 	
 	if (endsWithAnchor) {
-		const suffix = cleanPattern.replace(/\\\./g, '.');
-		if (!/[*+?()[\]{}|]/.test(suffix)) {
-			const escaped = suffix.replace(/%/g, '\\%').replace(/_/g, '\\_');
-			if (caseInsensitive) {
-				const lowerEscaped = escaped.toLowerCase();
-				if (hasExpressionIndex(fieldName, schema)) {
-					return { sql: `LOWER(${field}) LIKE ? ESCAPE '\\'`, args: ['%' + lowerEscaped] };
-				}
-				return { sql: `${field} LIKE ? COLLATE NOCASE ESCAPE '\\'`, args: ['%' + escaped] };
-			}
-			return { sql: `${field} LIKE ? ESCAPE '\\'`, args: ['%' + escaped] };
+		const prefix = caseInsensitive ? escaped.toLowerCase() : escaped;
+		if (caseInsensitive && hasLowerIndex) {
+			return { sql: `LOWER(${field}) LIKE ? ESCAPE '\\'`, args: ['%' + prefix] };
 		}
+		return { sql: `${field} LIKE ?${caseInsensitive ? ' COLLATE NOCASE' : ''} ESCAPE '\\'`, args: ['%' + prefix] };
 	}
 	
-	cleanPattern = cleanPattern.replace(/\\\./g, '.');
-	if (!/[*+?()[\]{}|^$]/.test(cleanPattern)) {
-		const escaped = cleanPattern.replace(/%/g, '\\%').replace(/_/g, '\\_');
-		if (caseInsensitive) {
-			const lowerEscaped = escaped.toLowerCase();
-			if (hasExpressionIndex(fieldName, schema)) {
-				return { sql: `LOWER(${field}) LIKE ? ESCAPE '\\'`, args: ['%' + lowerEscaped + '%'] };
-			}
-			return { sql: `${field} LIKE ? COLLATE NOCASE ESCAPE '\\'`, args: ['%' + escaped + '%'] };
-		}
-		return { sql: `${field} LIKE ? ESCAPE '\\'`, args: ['%' + escaped + '%'] };
+	const middle = caseInsensitive ? escaped.toLowerCase() : escaped;
+	if (caseInsensitive && hasLowerIndex) {
+		return { sql: `LOWER(${field}) LIKE ? ESCAPE '\\'`, args: ['%' + middle + '%'] };
 	}
-	
-	return null;
+	return { sql: `${field} LIKE ?${caseInsensitive ? ' COLLATE NOCASE' : ''} ESCAPE '\\'`, args: ['%' + middle + '%'] };
 }
