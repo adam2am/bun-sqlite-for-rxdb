@@ -9,9 +9,16 @@ export class StatementManager {
 	private db: Database;
 	private staticStatements = new Map<string, Statement>();
 	private static readonly MAX_STATEMENTS = 500;
+	private closed = false;
 
 	constructor(db: Database) {
 		this.db = db;
+	}
+
+	private checkClosed(): void {
+		if (this.closed) {
+			throw new Error('StatementManager is closed');
+		}
 	}
 
 	private evictOldest(): void {
@@ -26,18 +33,41 @@ export class StatementManager {
 	}
 
 	all<T = unknown>(queryWithParams: QueryWithParams): T[] {
+		this.checkClosed();
 		const { query, params } = queryWithParams;
-		const stmt = this.db.query(query);
+		
+		let stmt = this.staticStatements.get(query);
+		if (stmt) {
+			this.staticStatements.delete(query);
+			this.staticStatements.set(query, stmt);
+		} else {
+			this.evictOldest();
+			stmt = this.db.query(query);
+			this.staticStatements.set(query, stmt);
+		}
+		
 		return stmt.all(...params) as T[];
 	}
 
 	get(queryWithParams: QueryWithParams): unknown {
+		this.checkClosed();
 		const { query, params } = queryWithParams;
-		const stmt = this.db.query(query);
+		
+		let stmt = this.staticStatements.get(query);
+		if (stmt) {
+			this.staticStatements.delete(query);
+			this.staticStatements.set(query, stmt);
+		} else {
+			this.evictOldest();
+			stmt = this.db.query(query);
+			this.staticStatements.set(query, stmt);
+		}
+		
 		return stmt.get(...params);
 	}
 
 	run(queryWithParams: QueryWithParams): Changes {
+		this.checkClosed();
 		const { query, params } = queryWithParams;
 
 		if (this.isStaticSQL(query)) {
@@ -67,6 +97,7 @@ export class StatementManager {
 			stmt.finalize();
 		}
 		this.staticStatements.clear();
+		this.closed = true;
 	}
 
 	private isStaticSQL(query: string): boolean {
