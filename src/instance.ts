@@ -70,6 +70,9 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		if (filename !== ':memory:') {
 			this.db.run("PRAGMA journal_mode = WAL");
 			this.db.run("PRAGMA synchronous = NORMAL");
+			this.db.run("PRAGMA wal_autocheckpoint = 1000");
+			this.db.run("PRAGMA cache_size = -32000");
+			this.db.run("PRAGMA analysis_limit = 400");
 		}
 
 		this.db.run(`
@@ -317,9 +320,18 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	}
 
 	async count(preparedQuery: PreparedQuery<RxDocType>): Promise<RxStorageCountResult> {
-		const result = await this.query(preparedQuery);
+		const { sql, args } = buildWhereClause(
+			preparedQuery.query.selector,
+			this.schema,
+			this.collectionName
+		);
+		
+		const result = this.db.query(
+			`SELECT COUNT(*) as count FROM "${this.tableName}" WHERE (${sql})`
+		).get(...args) as { count: number } | undefined;
+		
 		return {
-			count: result.documents.length,
+			count: result?.count ?? 0,
 			mode: 'fast'
 		};
 	}
