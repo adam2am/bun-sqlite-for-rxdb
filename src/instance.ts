@@ -1,4 +1,5 @@
 import { Database } from 'bun:sqlite';
+import type { SQLQueryBindings } from 'bun:sqlite';
 import { Subject, Observable } from 'rxjs';
 import { Query } from 'mingo';
 import { matchesRegex } from './query/regex-matcher';
@@ -124,7 +125,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 		const categorized = categorizeBulkWriteRows(
 			this,
-			this.primaryPath as any,
+			this.primaryPath,
 			docsInDbMap,
 			documentWrites,
 			context
@@ -138,8 +139,8 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
 			try {
 				this.stmtManager.run({ query: insertQuery, params: [id, JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt] });
-			} catch (err: any) {
-				if (err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+		} catch (err: unknown) {
+			if (err && typeof err === 'object' && 'code' in err && (err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || err.code === 'SQLITE_CONSTRAINT_UNIQUE')) {
 					const documentInDb = docsInDbMap.get(id);
 					categorized.errors.push({
 						isError: true,
@@ -329,12 +330,8 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 	async cleanup(minimumDeletedTime: number): Promise<boolean> {
 		let query: string;
-		let params: unknown[];
-		
-		// RxDB contract: minimumDeletedTime is a DURATION (milliseconds), not a timestamp
-		// Calculation: currentTime - minimumDeletedTime = cutoffTimestamp
-		// When minimumDeletedTime = 0: now() - 0 = now() → delete ALL deleted documents
-		// This matches official Dexie implementation: const maxDeletionTime = now() - minimumDeletedTime
+		let params: SQLQueryBindings[];
+
 		if (minimumDeletedTime === 0) {
 			query = `DELETE FROM "${this.tableName}" WHERE deleted = 1`;
 			params = [];
@@ -399,7 +396,10 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		const documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 
 		const lastDoc = documents[documents.length - 1];
-		const newCheckpoint = lastDoc ? { id: (lastDoc as any)[this.primaryPath] as string, lwt: lastDoc._meta.lwt } : checkpoint ?? null;
+		const newCheckpoint = lastDoc ? { 
+			id: String(lastDoc[this.primaryPath as keyof RxDocumentData<RxDocType>]), 
+			lwt: lastDoc._meta.lwt 
+		} : checkpoint ?? null;
 
 		return { documents, checkpoint: newCheckpoint };
 	}
@@ -436,7 +436,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	}
 }
 
-function isSimpleRegex(selector: MangoQuerySelector<any>): boolean {
+function isSimpleRegex(selector: MangoQuerySelector<RxDocumentData<unknown>>): boolean {
 	const fields = Object.keys(selector);
 	if (fields.length !== 1) return false;
 

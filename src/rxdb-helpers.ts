@@ -1,13 +1,14 @@
 import type {
-  RxStorageInstance,
-  BulkWriteRow,
-  RxDocumentData,
-  RxStorageWriteError,
-  EventBulk,
-  RxStorageChangeEvent,
-  RxStorageInstanceCreationParams,
-  RxStorageDefaultCheckpoint,
-  RxAttachmentWriteData
+	RxDocumentData,
+	RxStorageWriteError,
+	BulkWriteRow,
+	RxAttachmentWriteData,
+	RxAttachmentData,
+	RxStorageInstance,
+	RxStorageInstanceCreationParams,
+	EventBulk,
+	RxStorageChangeEvent,
+	RxStorageDefaultCheckpoint
 } from 'rxdb';
 
 export interface AttachmentOperation {
@@ -35,7 +36,7 @@ export function getAttachmentSize(attachmentBase64String: string): number {
   return atob(attachmentBase64String).length;
 }
 
-export function attachmentWriteDataToNormalData(writeData: RxAttachmentWriteData): any {
+export function attachmentWriteDataToNormalData(writeData: RxAttachmentWriteData): RxAttachmentData {
   const data = writeData.data;
   if (!data) {
     return writeData;
@@ -110,7 +111,7 @@ export function categorizeBulkWriteRows<RxDocType>(
               status: 510,
               writeRow,
               attachmentId
-            } as any;
+            };
             attachmentError = error;
             errors.push(error);
           } else {
@@ -180,7 +181,7 @@ export function categorizeBulkWriteRows<RxDocType>(
                   status: 510,
                   writeRow,
                   attachmentId
-                } as any;
+                };
                 attachmentError = error;
               } else {
                 attachmentsAdd.push({

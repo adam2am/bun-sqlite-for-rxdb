@@ -167,11 +167,11 @@ function processSelector<RxDocType>(
 					case '$not':
 						fragment = translateNot(fieldName, opValue);
 						break;
-				case '$type':
-					const typeFragment = translateType('data', actualFieldName, opValue as string);
-					if (!typeFragment) continue;
-					fragment = typeFragment;
-					break;
+					case '$type':
+						const typeFragment = translateType('data', actualFieldName, opValue as string);
+						if (!typeFragment) continue;
+						fragment = typeFragment;
+						break;
 					case '$size':
 						fragment = translateSize(fieldName, opValue as number);
 						break;
