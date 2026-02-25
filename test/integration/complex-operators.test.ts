@@ -1191,4 +1191,153 @@ describe('$elemMatch and $type Fallback (TDD)', () => {
 		expect(result.documents[0].id).toBe('user1');
 		await instance.remove();
 	});
+
+	it('handles $elemMatch with $or containing multi-field object (implicit AND)', async () => {
+		interface DocWithItems {
+			id: string;
+			items: Array<{ type: string; status: string; priority: number }>;
+			_deleted: boolean;
+			_attachments: Record<string, unknown>;
+			_rev: string;
+			_meta: { lwt: number };
+		}
+
+		const multiFieldInstance = await storage.createStorageInstance<DocWithItems>({
+			databaseInstanceToken: `test-token-${Date.now()}`,
+			databaseName: 'testdb',
+			collectionName: 'multifield',
+			schema: {
+				version: 0,
+				primaryKey: 'id',
+				type: 'object',
+				properties: {
+					id: { type: 'string', maxLength: 100 },
+					items: { type: 'array' },
+					_deleted: { type: 'boolean' },
+					_attachments: { type: 'object' },
+					_rev: { type: 'string' },
+					_meta: { type: 'object', properties: { lwt: { type: 'number' } } }
+				},
+				required: ['id', '_deleted', '_attachments', '_rev', '_meta']
+			},
+			options: {},
+			multiInstance: false,
+			devMode: false
+		});
+
+		const docs: RxDocumentData<DocWithItems>[] = [
+			{ id: 'doc1', items: [{ type: 'A', status: 'active', priority: 1 }], _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
+			{ id: 'doc2', items: [{ type: 'A', status: 'inactive', priority: 2 }], _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } },
+			{ id: 'doc3', items: [{ type: 'B', status: 'active', priority: 3 }], _deleted: false, _attachments: {}, _rev: '1-c', _meta: { lwt: Date.now() } }
+		];
+		await multiFieldInstance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await multiFieldInstance.query({ 
+			query: { selector: { items: { $elemMatch: { $or: [{ type: 'A', status: 'active' }, { type: 'B' }] } } }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		
+		expect(result.documents).toHaveLength(2);
+		expect(result.documents[0].id).toBe('doc1');
+		expect(result.documents[1].id).toBe('doc3');
+		await multiFieldInstance.remove();
+	});
+
+	it('handles $elemMatch with nested object value (exact match)', async () => {
+		interface DocWithNestedItems {
+			id: string;
+			items: Array<{ config: { enabled: boolean; level: number } }>;
+			_deleted: boolean;
+			_attachments: Record<string, unknown>;
+			_rev: string;
+			_meta: { lwt: number };
+		}
+
+		const nestedInstance = await storage.createStorageInstance<DocWithNestedItems>({
+			databaseInstanceToken: `test-token-${Date.now()}`,
+			databaseName: 'testdb',
+			collectionName: 'nested',
+			schema: {
+				version: 0,
+				primaryKey: 'id',
+				type: 'object',
+				properties: {
+					id: { type: 'string', maxLength: 100 },
+					items: { type: 'array' },
+					_deleted: { type: 'boolean' },
+					_attachments: { type: 'object' },
+					_rev: { type: 'string' },
+					_meta: { type: 'object', properties: { lwt: { type: 'number' } } }
+				},
+				required: ['id', '_deleted', '_attachments', '_rev', '_meta']
+			},
+			options: {},
+			multiInstance: false,
+			devMode: false
+		});
+
+		const docs: RxDocumentData<DocWithNestedItems>[] = [
+			{ id: 'doc1', items: [{ config: { enabled: true, level: 5 } }], _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
+			{ id: 'doc2', items: [{ config: { enabled: false, level: 3 } }], _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
+		];
+		await nestedInstance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await nestedInstance.query({ 
+			query: { selector: { items: { $elemMatch: { config: { enabled: true, level: 5 } } } }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		
+		expect(result.documents).toHaveLength(1);
+		expect(result.documents[0].id).toBe('doc1');
+		await nestedInstance.remove();
+	});
+
+	it('handles $elemMatch with nested path (dot notation)', async () => {
+		interface DocWithNestedPath {
+			id: string;
+			items: Array<{ user: { profile: { name: string } } }>;
+			_deleted: boolean;
+			_attachments: Record<string, unknown>;
+			_rev: string;
+			_meta: { lwt: number };
+		}
+
+		const pathInstance = await storage.createStorageInstance<DocWithNestedPath>({
+			databaseInstanceToken: `test-token-${Date.now()}`,
+			databaseName: 'testdb',
+			collectionName: 'path',
+			schema: {
+				version: 0,
+				primaryKey: 'id',
+				type: 'object',
+				properties: {
+					id: { type: 'string', maxLength: 100 },
+					items: { type: 'array' },
+					_deleted: { type: 'boolean' },
+					_attachments: { type: 'object' },
+					_rev: { type: 'string' },
+					_meta: { type: 'object', properties: { lwt: { type: 'number' } } }
+				},
+				required: ['id', '_deleted', '_attachments', '_rev', '_meta']
+			},
+			options: {},
+			multiInstance: false,
+			devMode: false
+		});
+
+		const docs: RxDocumentData<DocWithNestedPath>[] = [
+			{ id: 'doc1', items: [{ user: { profile: { name: 'Alice' } } }], _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: Date.now() } },
+			{ id: 'doc2', items: [{ user: { profile: { name: 'Bob' } } }], _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: Date.now() } }
+		];
+		await pathInstance.bulkWrite(docs.map(doc => ({ document: doc })), 'test-context');
+		
+		const result = await pathInstance.query({ 
+			query: { selector: { items: { $elemMatch: { 'user.profile.name': 'Alice' } } }, sort: [{ id: 'asc' }], skip: 0 },
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+		
+		expect(result.documents).toHaveLength(1);
+		expect(result.documents[0].id).toBe('doc1');
+		await pathInstance.remove();
+	});
 });

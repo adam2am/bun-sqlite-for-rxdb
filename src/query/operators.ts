@@ -187,6 +187,11 @@ function processOperatorValue(field: string, value: unknown): SqlFragment {
 	if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
 		const [[op, opValue]] = Object.entries(value);
 
+		if (!op.startsWith('$')) {
+			const jsonPath = `json_extract(${field}, '$.${op}')`;
+			return translateEq(jsonPath, opValue);
+		}
+
 		switch (op) {
 			case '$eq': return translateEq(field, opValue);
 			case '$ne': return translateNe(field, opValue);
@@ -196,6 +201,32 @@ function processOperatorValue(field: string, value: unknown): SqlFragment {
 			case '$lte': return translateLte(field, opValue);
 			case '$in': return translateIn(field, opValue as unknown[]);
 			case '$nin': return translateNin(field, opValue as unknown[]);
+			case '$exists': return translateExists(field, opValue as boolean);
+			case '$size': return translateSize(field, opValue as number);
+			case '$mod': {
+				const result = translateMod(field, opValue);
+				if (!result) return translateEq(field, opValue);
+				return result;
+			}
+			case '$not': {
+				const result = translateNot(field, opValue);
+				if (!result) return translateEq(field, opValue);
+				return result;
+			}
+			case '$and': {
+				if (!Array.isArray(opValue)) return translateEq(field, opValue);
+				const fragments = opValue.map(v => processOperatorValue(field, v));
+				const sql = fragments.map(f => f.sql).join(' AND ');
+				const args = fragments.flatMap(f => f.args);
+				return { sql: `(${sql})`, args };
+			}
+			case '$or': {
+				if (!Array.isArray(opValue)) return translateEq(field, opValue);
+				const fragments = opValue.map(v => processOperatorValue(field, v));
+				const sql = fragments.map(f => f.sql).join(' OR ');
+				const args = fragments.flatMap(f => f.args);
+				return { sql: `(${sql})`, args };
+			}
 			default: return translateEq(field, opValue);
 		}
 	}
