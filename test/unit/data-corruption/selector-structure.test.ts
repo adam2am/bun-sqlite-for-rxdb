@@ -48,7 +48,7 @@ describe('Data Corruption - Selector Structure', () => {
 				'test'
 			);
 		expect(result).not.toBeNull();
-		expect(result?.sql).toContain('jsonb_extract');
+		expect(result?.sql).toContain('json_extract');
 		});
 
 		it('field with special characters', () => {

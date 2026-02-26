@@ -107,7 +107,7 @@ function processSelector<RxDocType>(
 		}
 
 	const columnInfo = getColumnInfo(field, schema);
-	const fieldName = columnInfo.column || `jsonb_extract(data, '${columnInfo.jsonPath}')`;
+	const fieldName = columnInfo.column || `json_extract(data, '${columnInfo.jsonPath}')`;
 	const actualFieldName = columnInfo.jsonPath?.replace(/^\$\./, '') || columnInfo.column || field;
 
 		if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
@@ -119,26 +119,26 @@ function processSelector<RxDocType>(
 						fragment = translateEq(fieldName, opValue, schema, actualFieldName);
 						break;
 					case '$ne':
-						fragment = translateNe(fieldName, opValue);
+						fragment = translateNe(fieldName, opValue, schema, actualFieldName);
 						break;
 					case '$gt':
-						fragment = translateGt(fieldName, opValue);
+						fragment = translateGt(fieldName, opValue, schema, actualFieldName);
 						break;
 					case '$gte':
-						fragment = translateGte(fieldName, opValue);
+						fragment = translateGte(fieldName, opValue, schema, actualFieldName);
 						break;
-					case '$lt':
-						fragment = translateLt(fieldName, opValue);
-						break;
+				case '$lt':
+					fragment = translateLt(fieldName, opValue, schema, actualFieldName);
+					break;
 					case '$lte':
-						fragment = translateLte(fieldName, opValue);
+						fragment = translateLte(fieldName, opValue, schema, actualFieldName);
 						break;
 					case '$in':
-						fragment = translateIn(fieldName, opValue as unknown[]);
+						fragment = translateIn(fieldName, opValue as unknown[], schema, actualFieldName);
 						break;
-					case '$nin':
-						fragment = translateNin(fieldName, opValue as unknown[]);
-						break;
+				case '$nin':
+					fragment = translateNin(fieldName, opValue as unknown[], schema, actualFieldName);
+					break;
 					case '$exists':
 						fragment = translateExists(fieldName, opValue as boolean);
 						break;

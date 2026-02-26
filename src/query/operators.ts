@@ -15,48 +15,128 @@ import { smartRegexToLike } from './smart-regex';
 export function translateEq<RxDocType>(
 	field: string, 
 	value: unknown,
-	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
-	actualFieldName: string
+	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
+	actualFieldName?: string
 ): SqlFragment {
 	if (value === null) {
 		return { sql: `${field} IS NULL`, args: [] };
 	}
 	
-	const columnInfo = getColumnInfo(actualFieldName, schema);
-	if (field !== 'value' && columnInfo.type === 'array') {
-		return {
-			sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value = ?)`,
-			args: [value as string | number | boolean]
-		};
+	if (schema && actualFieldName) {
+		const columnInfo = getColumnInfo(actualFieldName, schema);
+		if (field !== 'value' && columnInfo.type === 'array') {
+			return {
+				sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value = ?)`,
+				args: [value as string | number | boolean]
+			};
+		}
 	}
 	
 	return { sql: `${field} = ?`, args: [value as string | number | boolean] };
 }
 
-export function translateNe(field: string, value: unknown): SqlFragment {
+export function translateNe<RxDocType>(
+	field: string, 
+	value: unknown,
+	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
+	actualFieldName?: string
+): SqlFragment {
 	if (value === null) {
 		return { sql: `${field} IS NOT NULL`, args: [] };
 	}
-	return { sql: `${field} <> ?`, args: [value as string | number | boolean] };
+	
+	if (schema && actualFieldName) {
+		const columnInfo = getColumnInfo(actualFieldName, schema);
+		if (field !== 'value' && columnInfo.type === 'array') {
+			return {
+				sql: `NOT EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value = ?)`,
+				args: [value as string | number | boolean]
+			};
+		}
+	}
+	
+	return { sql: `(${field} <> ? OR ${field} IS NULL)`, args: [value as string | number | boolean] };
 }
 
-export function translateGt(field: string, value: unknown): SqlFragment {
+export function translateGt<RxDocType>(
+	field: string, 
+	value: unknown,
+	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
+	actualFieldName?: string
+): SqlFragment {
+	if (schema && actualFieldName) {
+		const columnInfo = getColumnInfo(actualFieldName, schema);
+		if (field !== 'value' && columnInfo.type === 'array') {
+			return {
+				sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value > ?)`,
+				args: [value as string | number]
+			};
+		}
+	}
 	return { sql: `${field} > ?`, args: [value as string | number] };
 }
 
-export function translateGte(field: string, value: unknown): SqlFragment {
+export function translateGte<RxDocType>(
+	field: string, 
+	value: unknown,
+	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
+	actualFieldName?: string
+): SqlFragment {
+	if (schema && actualFieldName) {
+		const columnInfo = getColumnInfo(actualFieldName, schema);
+		if (field !== 'value' && columnInfo.type === 'array') {
+			return {
+				sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value >= ?)`,
+				args: [value as string | number]
+			};
+		}
+	}
 	return { sql: `${field} >= ?`, args: [value as string | number] };
 }
 
-export function translateLt(field: string, value: unknown): SqlFragment {
+export function translateLt<RxDocType>(
+	field: string, 
+	value: unknown,
+	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
+	actualFieldName?: string
+): SqlFragment {
+	if (schema && actualFieldName) {
+		const columnInfo = getColumnInfo(actualFieldName, schema);
+		if (field !== 'value' && columnInfo.type === 'array') {
+			return {
+				sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value < ?)`,
+				args: [value as string | number]
+			};
+		}
+	}
+	
 	return { sql: `${field} < ?`, args: [value as string | number] };
 }
 
-export function translateLte(field: string, value: unknown): SqlFragment {
+export function translateLte<RxDocType>(
+	field: string, 
+	value: unknown,
+	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
+	actualFieldName?: string
+): SqlFragment {
+	if (schema && actualFieldName) {
+		const columnInfo = getColumnInfo(actualFieldName, schema);
+		if (field !== 'value' && columnInfo.type === 'array') {
+			return {
+				sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value <= ?)`,
+				args: [value as string | number]
+			};
+		}
+	}
 	return { sql: `${field} <= ?`, args: [value as string | number] };
 }
 
-export function translateIn(field: string, values: unknown[]): SqlFragment {
+export function translateIn<RxDocType>(
+	field: string,
+	values: unknown[],
+	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
+	actualFieldName?: string
+): SqlFragment {
 	if (!Array.isArray(values) || values.length === 0) {
 		return { sql: '1=0', args: [] };
 	}
@@ -66,6 +146,23 @@ export function translateIn(field: string, values: unknown[]): SqlFragment {
 
 	if (nonNullValues.length === 0) {
 		return { sql: `${field} IS NULL`, args: [] };
+	}
+
+	if (schema && actualFieldName) {
+		const columnInfo = getColumnInfo(actualFieldName, schema);
+		if (field !== 'value' && columnInfo.type === 'array') {
+			const inClause = `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value IN (SELECT value FROM json_each(?)))`;
+			const args = [JSON.stringify(nonNullValues)];
+
+			if (hasNull) {
+				return {
+					sql: `(${inClause} OR ${field} IS NULL)`,
+					args
+				};
+			}
+
+			return { sql: inClause, args };
+		}
 	}
 
 	const inClause = `${field} IN (SELECT value FROM json_each(?))`;
@@ -81,7 +178,12 @@ export function translateIn(field: string, values: unknown[]): SqlFragment {
 	return { sql: inClause, args };
 }
 
-export function translateNin(field: string, values: unknown[]): SqlFragment {
+export function translateNin<RxDocType>(
+	field: string,
+	values: unknown[],
+	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
+	actualFieldName?: string
+): SqlFragment {
 	if (!Array.isArray(values) || values.length === 0) {
 		return { sql: '1=1', args: [] };
 	}
@@ -91,6 +193,23 @@ export function translateNin(field: string, values: unknown[]): SqlFragment {
 
 	if (nonNullValues.length === 0) {
 		return { sql: `${field} IS NOT NULL`, args: [] };
+	}
+
+	if (schema && actualFieldName) {
+		const columnInfo = getColumnInfo(actualFieldName, schema);
+		if (field !== 'value' && columnInfo.type === 'array') {
+			const ninClause = `NOT EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value IN (SELECT value FROM json_each(?)))`;
+			const args = [JSON.stringify(nonNullValues)];
+
+			if (hasNull) {
+				return {
+					sql: `(${ninClause} AND ${field} IS NOT NULL)`,
+					args
+				};
+			}
+
+			return { sql: ninClause, args };
+		}
 	}
 
 	const ninClause = `${field} NOT IN (SELECT value FROM json_each(?))`;
@@ -220,18 +339,19 @@ function processOperatorValue<RxDocType>(
 
 		if (!op.startsWith('$')) {
 			const jsonPath = `json_extract(${field}, '$.${op}')`;
-			return translateEq(jsonPath, opValue, schema, actualFieldName);
+			const nestedFieldName = `${actualFieldName}.${op}`;
+			return translateEq(jsonPath, opValue, schema, nestedFieldName);
 		}
 
 		switch (op) {
-			case '$eq': return translateEq(field, opValue, schema, actualFieldName);
-			case '$ne': return translateNe(field, opValue);
-			case '$gt': return translateGt(field, opValue);
-			case '$gte': return translateGte(field, opValue);
-			case '$lt': return translateLt(field, opValue);
-			case '$lte': return translateLte(field, opValue);
-			case '$in': return translateIn(field, opValue as unknown[]);
-			case '$nin': return translateNin(field, opValue as unknown[]);
+		case '$eq': return translateEq(field, opValue, schema, actualFieldName);
+		case '$ne': return translateNe(field, opValue, schema, actualFieldName);
+		case '$gt': return translateGt(field, opValue, schema, actualFieldName);
+		case '$gte': return translateGte(field, opValue, schema, actualFieldName);
+			case '$lt': return translateLt(field, opValue, schema, actualFieldName);
+			case '$lte': return translateLte(field, opValue, schema, actualFieldName);
+			case '$in': return translateIn(field, opValue as unknown[], schema, actualFieldName);
+			case '$nin': return translateNin(field, opValue as unknown[], schema, actualFieldName);
 			case '$exists': return translateExists(field, opValue as boolean);
 			case '$size': return translateSize(field, opValue as number);
 		case '$mod': {
@@ -322,9 +442,13 @@ export function translateNot<RxDocType>(
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	actualFieldName: string
 ): SqlFragment | null {
-	// Only reject undefined and empty objects (data corruption)
-	// All other values (false, 0, "", null, etc.) are valid values to negate
-	if (criteria === undefined || (typeof criteria === 'object' && criteria !== null && Object.keys(criteria).length === 0)) {
+	// MongoDB requires $not to have an operator expression, not a primitive value
+	// Reject: undefined, null, primitives (false, 0, "", true, numbers, strings), empty objects
+	if (criteria === undefined || 
+	    criteria === null || 
+	    typeof criteria !== 'object' || 
+	    Array.isArray(criteria) ||
+	    Object.keys(criteria).length === 0) {
 		return { sql: '1=0', args: [] };
 	}
 	

@@ -60,7 +60,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 
 	expect(result).not.toBeNull();
 	expect(result!.sql).toBe(
-		"((jsonb_extract(data, '$.age') >= ? AND ((jsonb_extract(data, '$.status') = ?) OR (jsonb_extract(data, '$.status') = ?)))) OR (jsonb_extract(data, '$.age') < ?)"
+		"((json_extract(data, '$.age') >= ? AND ((json_extract(data, '$.status') = ?) OR (json_extract(data, '$.status') = ?)))) OR (json_extract(data, '$.age') < ?)"
 	);
 	expect(result!.args).toEqual([30, 'active', 'premium', 18]);
 	});
@@ -87,7 +87,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 
 	expect(result).not.toBeNull();
 	expect(result!.sql).toBe(
-		"jsonb_extract(data, '$.name') IS NOT NULL AND (((jsonb_extract(data, '$.age') >= ? AND jsonb_extract(data, '$.status') = ?)) OR (jsonb_extract(data, '$.role') = ?))"
+		"json_extract(data, '$.name') IS NOT NULL AND (((json_extract(data, '$.age') >= ? AND json_extract(data, '$.status') = ?)) OR (json_extract(data, '$.role') = ?))"
 	);
 	expect(result!.args).toEqual([21, 'verified', 'admin']);
 	});
@@ -109,7 +109,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 
 	expect(result).not.toBeNull();
 	expect(result!.sql).toBe(
-		"((jsonb_extract(data, '$.age') IN (SELECT value FROM json_each(?))) OR (jsonb_extract(data, '$.status') = ?)) AND jsonb_extract(data, '$.verified') = ?"
+		"((json_extract(data, '$.age') IN (SELECT value FROM json_each(?))) OR (json_extract(data, '$.status') = ?)) AND json_extract(data, '$.verified') = ?"
 	);
 	expect(result!.args).toEqual(['[18,19,20]', 'student', true]);
 	});
@@ -141,7 +141,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 
 	expect(result).not.toBeNull();
 	expect(result!.sql).toBe(
-		"((jsonb_extract(data, '$.country') = ? AND (((jsonb_extract(data, '$.age') >= ? AND jsonb_extract(data, '$.age') <= ?)) OR (jsonb_extract(data, '$.status') = ?)))) OR (jsonb_extract(data, '$.role') = ?)"
+		"((json_extract(data, '$.country') = ? AND (((json_extract(data, '$.age') >= ? AND json_extract(data, '$.age') <= ?)) OR (json_extract(data, '$.status') = ?)))) OR (json_extract(data, '$.role') = ?)"
 	);
 	expect(result!.args).toEqual(['US', 18, 65, 'exempt', 'admin']);
 	});
@@ -163,7 +163,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 
 	expect(result).not.toBeNull();
 	expect(result!.sql).toBe(
-		"((jsonb_extract(data, '$.status') NOT IN (SELECT value FROM json_each(?)) AND jsonb_extract(data, '$.age') > ?)) OR (jsonb_extract(data, '$.role') IN (SELECT value FROM json_each(?)))"
+		"((json_extract(data, '$.status') NOT IN (SELECT value FROM json_each(?)) AND json_extract(data, '$.age') > ?)) OR (json_extract(data, '$.role') IN (SELECT value FROM json_each(?)))"
 	);
 	expect(result!.args).toEqual(['["banned","suspended"]', 21, '["admin","moderator"]']);
 	});
@@ -179,7 +179,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 	const result = buildWhereClause(selector, mockSchema, 'test');
 
 	expect(result).not.toBeNull();
-	expect(result!.sql).toBe("(jsonb_extract(data, '$.age') < ?) OR (jsonb_extract(data, '$.age') > ?)");
+	expect(result!.sql).toBe("(json_extract(data, '$.age') < ?) OR (json_extract(data, '$.age') > ?)");
 	expect(result!.args).toEqual([18, 65]);
 	});
 
@@ -199,7 +199,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 	const result = buildWhereClause(selector, mockSchema, 'test');
 
 	expect(result).not.toBeNull();
-	expect(result!.sql).toBe("jsonb_extract(data, '$.verified') = ? AND ((jsonb_extract(data, '$.status') = ?) OR (jsonb_extract(data, '$.status') = ?))");
+	expect(result!.sql).toBe("json_extract(data, '$.verified') = ? AND ((json_extract(data, '$.status') = ?) OR (json_extract(data, '$.status') = ?))");
 	expect(result!.args).toEqual([true, 'active', 'trial']);
 	});
 });

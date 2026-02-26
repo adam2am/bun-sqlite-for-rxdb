@@ -24,7 +24,7 @@ describe('$or operator', () => {
 		}, testSchema, 'test');
 		
 		expect(result).not.toBeNull();
-		expect(result!.sql).toBe('(jsonb_extract(data, \'$.age\') = ?) OR (jsonb_extract(data, \'$.age\') = ?)');
+		expect(result!.sql).toBe('(json_extract(data, \'$.age\') = ?) OR (json_extract(data, \'$.age\') = ?)');
 		expect(result!.args).toEqual([25, 30]);
 	});
 
@@ -37,9 +37,9 @@ describe('$or operator', () => {
 		}, testSchema, 'test');
 		
 		expect(result).not.toBeNull();
-		expect(result!.sql).toContain('jsonb_extract(data, \'$.age\') > ?');
+		expect(result!.sql).toContain('json_extract(data, \'$.age\') > ?');
 		expect(result!.sql).toContain('OR');
-		expect(result!.sql).toContain('(jsonb_extract(data, \'$.age\') = ? AND jsonb_extract(data, \'$.status\') = ?)');
+		expect(result!.sql).toContain('(json_extract(data, \'$.age\') = ? AND json_extract(data, \'$.status\') = ?)');
 		expect(result!.args).toEqual([50, 50, 'active']);
 	});
 

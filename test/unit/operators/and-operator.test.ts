@@ -19,7 +19,7 @@ describe('$and operator', () => {
 		const explicit = buildWhereClause({ $and: [{ age: 25 }, { status: 'active' }] }, testSchema, 'test');
 		
 		expect(explicit).not.toBeNull();
-		expect(explicit!.sql).toBe('jsonb_extract(data, \'$.age\') = ? AND jsonb_extract(data, \'$.status\') = ?');
+		expect(explicit!.sql).toBe('json_extract(data, \'$.age\') = ? AND json_extract(data, \'$.status\') = ?');
 		expect(explicit!.args).toEqual([25, 'active']);
 	});
 
@@ -33,9 +33,9 @@ describe('$and operator', () => {
 		}, testSchema, 'test');
 		
 		expect(result).not.toBeNull();
-		expect(result!.sql).toContain('jsonb_extract(data, \'$.age\') > ?');
-		expect(result!.sql).toContain('jsonb_extract(data, \'$.age\') < ?');
-		expect(result!.sql).toContain('jsonb_extract(data, \'$.status\') = ?');
+		expect(result!.sql).toContain('json_extract(data, \'$.age\') > ?');
+		expect(result!.sql).toContain('json_extract(data, \'$.age\') < ?');
+		expect(result!.sql).toContain('json_extract(data, \'$.status\') = ?');
 		expect(result!.args).toEqual([18, 65, 'active']);
 	});
 });
