@@ -10,7 +10,7 @@ describe('Data Corruption - Type Operators', () => {
 				mockSchema,
 				'test'
 			);
-			expect(result).toBeNull();
+			expect(result).toEqual({ sql: '1=0', args: [] });
 		});
 
 		it('numeric type value', () => {
@@ -19,7 +19,7 @@ describe('Data Corruption - Type Operators', () => {
 				mockSchema,
 				'test'
 			);
-			expect(result).toBeNull();
+			expect(result).toEqual({ sql: '1=0', args: [] });
 		});
 
 		it('null type value', () => {

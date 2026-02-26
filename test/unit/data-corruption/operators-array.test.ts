@@ -10,7 +10,7 @@ describe('Data Corruption - Array Operators', () => {
 				mockSchema,
 				'test'
 			);
-			expect(result).toBeNull();
+			expect(result).toEqual({ sql: '1=0', args: [] });
 		});
 
 		it('null criteria', () => {
