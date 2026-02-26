@@ -2,26 +2,7 @@ import type { RxJsonSchema, MangoQuerySelector, RxDocumentData } from 'rxdb';
 import { getColumnInfo } from './schema-mapper';
 import { translateEq, translateNe, translateGt, translateGte, translateLt, translateLte, translateIn, translateNin, translateExists, translateRegex, translateElemMatch, translateNot, translateType, translateSize, translateMod } from './operators';
 import type { SqlFragment, ElemMatchCriteria } from './operators';
-
-function safeStringify(obj: unknown): string {
-	const seen = new WeakSet();
-	return JSON.stringify(obj, (key, value) => {
-		if (typeof value === 'object' && value !== null) {
-			if (seen.has(value)) return '[Circular]';
-			seen.add(value);
-			// Sort object keys for deterministic output
-			if (!Array.isArray(value)) {
-				const sorted: Record<string, any> = {};
-				Object.keys(value).sort().forEach(k => {
-					sorted[k] = value[k];
-				});
-				return sorted;
-			}
-		}
-		if (typeof value === 'symbol' || typeof value === 'function') return undefined;
-		return value;
-	});
-}
+import { stableStringify } from '../utils/stable-stringify';
 
 const QUERY_CACHE = new Map<string, SqlFragment | null>();
 const MAX_CACHE_SIZE = 1000;
@@ -41,7 +22,7 @@ export function buildWhereClause<RxDocType>(
 ): SqlFragment | null {
 	if (!selector || typeof selector !== 'object') return null;
 	
-	const cacheKey = `v${schema.version}_${collectionName}_${safeStringify(selector)}`;
+	const cacheKey = `v${schema.version}_${collectionName}_${stableStringify(selector)}`;
 
 	const cached = QUERY_CACHE.get(cacheKey);
 	if (cached) {

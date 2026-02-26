@@ -1,6 +1,6 @@
 /**
  * Bun-optimized deterministic JSON stringification.
- * Phase 1: Basic implementation with core optimizations.
+ * Phase 1: Basic implementation with core optimizations + edge case handling.
  * 
  * Performance target: >21,000 ops/sec (baseline)
  * Optimizations:
@@ -8,9 +8,11 @@
  * - Custom insertion sort for small arrays (<200 elements)
  * - String escape fast path
  * - Direct string concatenation
+ * - Circular reference detection
+ * - BigInt support
+ * - Non-plain object handling (Date, RegExp, Error)
  */
 
-// Fast path for simple strings (< 5000 chars, no escape sequences)
 const strEscapeRegex = /[\u0000-\u001f\u0022\u005c\ud800-\udfff]/;
 
 function strEscape(str: string): string {
@@ -20,13 +22,11 @@ function strEscape(str: string): string {
 	return JSON.stringify(str);
 }
 
-// Custom insertion sort for small arrays (better cache locality)
 function sortKeys(keys: string[]): string[] {
 	if (keys.length > 200) {
-		return keys.sort(); // Native sort for large arrays
+		return keys.sort();
 	}
 	
-	// Insertion sort for small arrays
 	for (let i = 1; i < keys.length; i++) {
 		const current = keys[i];
 		let pos = i;
@@ -40,7 +40,10 @@ function sortKeys(keys: string[]): string[] {
 }
 
 export function stableStringify(value: unknown): string {
-	// Primitives
+	return _stringify(value, []);
+}
+
+function _stringify(value: unknown, stack: unknown[]): string {
 	if (value === null) return 'null';
 	if (value === true) return 'true';
 	if (value === false) return 'false';
@@ -49,30 +52,55 @@ export function stableStringify(value: unknown): string {
 	if (type === 'string') return strEscape(value as string);
 	if (type === 'number') return isFinite(value as number) ? String(value) : 'null';
 	if (type === 'undefined') return 'null';
+	if (type === 'bigint') return String(value);
 	
 	if (Array.isArray(value)) {
+		if (stack.indexOf(value) !== -1) return '"[Circular]"';
+		stack.push(value);
+		
 		let res = '[';
 		for (let i = 0; i < value.length; i++) {
 			if (i > 0) res += ',';
-			res += stableStringify(value[i]);
+			res += _stringify(value[i], stack);
 		}
+		
+		stack.pop();
 		return res + ']';
 	}
 	
 	if (type === 'object') {
 		const obj = value as Record<string, unknown>;
 		
+		if (stack.indexOf(value) !== -1) return '"[Circular]"';
+		stack.push(value);
+		
 		if ('toJSON' in obj && typeof obj.toJSON === 'function') {
-			return stableStringify(obj.toJSON());
+			const result = _stringify(obj.toJSON(), stack);
+			stack.pop();
+			return result;
+		}
+		
+		const objType = Object.prototype.toString.call(obj);
+		if (objType !== '[object Object]') {
+			const result = JSON.stringify(obj);
+			stack.pop();
+			return result;
 		}
 		
 		const keys = sortKeys(Object.keys(obj));
 		let res = '{';
+		let first = true;
 		for (let i = 0; i < keys.length; i++) {
-			if (i > 0) res += ',';
 			const key = keys[i];
-			res += strEscape(key) + ':' + stableStringify(obj[key]);
+			const val = obj[key];
+			if (val === undefined) continue;
+			
+			if (!first) res += ',';
+			first = false;
+			res += strEscape(key) + ':' + _stringify(val, stack);
 		}
+		
+		stack.pop();
 		return res + '}';
 	}
 	

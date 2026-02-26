@@ -100,7 +100,7 @@ describe('stableStringify - Objects', () => {
 
 	it('should handle objects with various value types', () => {
 		const obj = { a: 1, b: 'hello', c: true, d: null, e: undefined };
-		expect(stableStringify(obj)).toBe('{"a":1,"b":"hello","c":true,"d":null,"e":null}');
+		expect(stableStringify(obj)).toBe('{"a":1,"b":"hello","c":true,"d":null}');
 	});
 
 	it('should handle objects with many keys', () => {
@@ -191,14 +191,53 @@ describe('stableStringify - Edge Cases', () => {
 	it('should handle Date objects', () => {
 		const date = new Date('2026-02-26T00:00:00.000Z');
 		const result = stableStringify(date);
-		// Date.toJSON() returns ISO string
-		expect(result).toContain('2026-02-26');
+		expect(result).toBe('"2026-02-26T00:00:00.000Z"');
+	});
+
+	it('should handle RegExp objects', () => {
+		const regex = /test/gi;
+		const result = stableStringify(regex);
+		expect(result).toBe('{}');
+	});
+
+	it('should handle Error objects', () => {
+		const error = new Error('test error');
+		const result = stableStringify(error);
+		expect(result).toBe('{}');
+	});
+
+	it('should handle BigInt', () => {
+		expect(stableStringify(BigInt(123))).toBe('123');
+		expect(stableStringify({ a: BigInt(999) })).toBe('{"a":999}');
+	});
+
+	it('should handle circular references in objects', () => {
+		const circular: any = { name: 'test' };
+		circular.self = circular;
+		const result = stableStringify(circular);
+		expect(result).toContain('[Circular]');
+		expect(result).toContain('"name":"test"');
+	});
+
+	it('should handle circular references in arrays', () => {
+		const circular: any = [1, 2];
+		circular.push(circular);
+		const result = stableStringify(circular);
+		expect(result).toContain('[Circular]');
+		expect(result).toContain('1');
+		expect(result).toContain('2');
+	});
+
+	it('should handle deeply nested circular references', () => {
+		const obj: any = { a: { b: { c: {} } } };
+		obj.a.b.c.loop = obj;
+		const result = stableStringify(obj);
+		expect(result).toContain('[Circular]');
 	});
 
 	it('should handle objects with numeric keys', () => {
 		const obj = { '1': 'a', '10': 'b', '2': 'c' };
 		const result = stableStringify(obj);
-		// Keys should be sorted lexicographically
 		expect(result).toBe('{"1":"a","10":"b","2":"c"}');
 	});
 });

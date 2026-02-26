@@ -266,7 +266,7 @@ async function benchmark100k() {
 }
 
 async function main() {
-	console.log('🏴‍☠️ Phase 1 Baseline Benchmark (10 full runs)\n');
+	console.log('🏴‍☠️ Phase 1 Baseline Benchmark (15 full runs)\n');
 	console.log('Testing: count(), bulkWrite(), query()');
 	console.log('Scales: 10k (20 runs), 100k (10 runs)\n');
 
@@ -294,9 +294,9 @@ async function main() {
 		countComplex: [] as number[]
 	};
 
-	for (let fullRun = 1; fullRun <= 10; fullRun++) {
+	for (let fullRun = 1; fullRun <= 15; fullRun++) {
 		console.log(`\n${'='.repeat(70)}`);
-		console.log(`FULL RUN ${fullRun}/10`);
+		console.log(`FULL RUN ${fullRun}/15`);
 		console.log('='.repeat(70));
 
 		const results10k = await benchmark10k();
@@ -312,10 +312,10 @@ async function main() {
 	}
 
 	console.log('\n' + '='.repeat(70));
-	console.log('📊 AGGREGATED RESULTS (10 full runs)');
+	console.log('📊 AGGREGATED RESULTS (15 full runs)');
 	console.log('='.repeat(70));
 
-	console.log('\n10k Documents (200 total runs):');
+	console.log('\n10k Documents (300 total runs):');
 	console.log('| Operation | Avg | Min | Max | Median | StdDev |');
 	console.log('|-----------|-----|-----|-----|--------|--------|');
 	for (const [key, values] of Object.entries(allResults10k)) {
@@ -323,7 +323,7 @@ async function main() {
 		console.log(`| ${key} | ${stats.avg.toFixed(2)}ms | ${stats.min.toFixed(2)}ms | ${stats.max.toFixed(2)}ms | ${stats.median.toFixed(2)}ms | ${stats.stdDev.toFixed(2)}ms |`);
 	}
 
-	console.log('\n100k Documents (100 total runs):');
+	console.log('\n100k Documents (150 total runs):');
 	console.log('| Operation | Avg | Min | Max | Median | StdDev |');
 	console.log('|-----------|-----|-----|-----|--------|--------|');
 	for (const [key, values] of Object.entries(allResults100k)) {
