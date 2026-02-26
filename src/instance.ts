@@ -19,6 +19,7 @@ import type {
 	MangoQuerySortPart,
 	RxStorageDefaultCheckpoint
 } from 'rxdb';
+import { getQueryMatcher } from 'rxdb';
 import type { BunSQLiteStorageSettings, BunSQLiteInternals } from './types';
 import { buildWhereClause } from './query/builder';
 import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from './rxdb-helpers';
@@ -435,7 +436,8 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		const rows = this.stmtManager.all({ query, params: [] }) as Array<{ data: string }>;
 		let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 
-		documents = documents.filter(doc => this.matchesRegexSelector(doc, preparedQuery.query.selector));
+		const queryMatcher = getQueryMatcher(this.schema, preparedQuery.query);
+		documents = documents.filter(doc => queryMatcher(doc));
 
 		if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
 			documents = this.sortDocuments(documents, preparedQuery.query.sort);
