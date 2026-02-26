@@ -27,40 +27,38 @@ const schema: RxJsonSchema<RxDocumentData<TestDoc>> = {
 };
 
 describe('$not operator with primitive values', () => {
-	it('should handle $not with boolean false', () => {
+	it('should reject $not with boolean false (MongoDB requires operator expressions)', () => {
 		const result = buildWhereClause({ active: { $not: false } }, schema, 'test');
 		expect(result).not.toBeNull();
-		expect(result!.sql).toContain('NOT');
-		expect(result!.sql).toContain('jsonb_extract(data, \'$.active\')');
-		expect(result!.args).toContain(false);
+		expect(result!.sql).toBe('1=0');
+		expect(result!.args).toEqual([]);
 	});
 
-	it('should handle $not with boolean true', () => {
+	it('should reject $not with boolean true (MongoDB requires operator expressions)', () => {
 		const result = buildWhereClause({ active: { $not: true } }, schema, 'test');
 		expect(result).not.toBeNull();
-		expect(result!.sql).toContain('NOT');
-		expect(result!.args).toContain(true);
+		expect(result!.sql).toBe('1=0');
+		expect(result!.args).toEqual([]);
 	});
 
-	it('should handle $not with number 0', () => {
+	it('should reject $not with number 0 (MongoDB requires operator expressions)', () => {
 		const result = buildWhereClause({ count: { $not: 0 } }, schema, 'test');
 		expect(result).not.toBeNull();
-		expect(result!.sql).toContain('NOT');
-		expect(result!.args).toContain(0);
+		expect(result!.sql).toBe('1=0');
+		expect(result!.args).toEqual([]);
 	});
 
-	it('should handle $not with empty string', () => {
+	it('should reject $not with empty string (MongoDB requires operator expressions)', () => {
 		const result = buildWhereClause({ name: { $not: '' } }, schema, 'test');
 		expect(result).not.toBeNull();
-		expect(result!.sql).toContain('NOT');
-		expect(result!.args).toContain('');
+		expect(result!.sql).toBe('1=0');
+		expect(result!.args).toEqual([]);
 	});
 
-	it('should handle $not with null', () => {
+	it('should reject $not with null (MongoDB requires operator expressions)', () => {
 		const result = buildWhereClause({ name: { $not: null } }, schema, 'test');
 		expect(result).not.toBeNull();
-		expect(result!.sql).toContain('NOT');
-		expect(result!.sql).toContain('IS NULL');
+		expect(result!.sql).toBe('1=0');
 		expect(result!.args).toEqual([]);
 	});
 

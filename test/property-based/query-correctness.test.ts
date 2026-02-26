@@ -12,15 +12,21 @@ interface TestDocType {
 	tags: string[];
 	active: boolean;
 	score: number;
+	optional?: string;
+	items: Array<{
+		name: string;
+		category: string;
+		price: number;
+		tags: string[];
+	}>;
 }
 
-// Mock documents for testing
 const mockDocs: RxDocumentData<TestDocType>[] = [
-	{ id: '1', name: 'Alice', age: 30, tags: ['admin', 'user'], active: true, score: 95.5, _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: 1000 } },
-	{ id: '2', name: 'Bob', age: 25, tags: ['user'], active: false, score: 80.0, _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: 2000 } },
-	{ id: '3', name: 'Charlie', age: 35, tags: ['admin', 'moderator'], active: true, score: 88.3, _deleted: false, _attachments: {}, _rev: '1-c', _meta: { lwt: 3000 } },
-	{ id: '4', name: 'David', age: 28, tags: ['user', 'moderator'], active: true, score: 92.1, _deleted: false, _attachments: {}, _rev: '1-d', _meta: { lwt: 4000 } },
-	{ id: '5', name: 'Eve', age: 22, tags: [], active: false, score: 75.0, _deleted: false, _attachments: {}, _rev: '1-e', _meta: { lwt: 5000 } },
+	{ id: '1', name: 'Alice', age: 30, tags: ['admin', 'user'], active: true, score: 95.5, optional: 'present', items: [{ name: 'item1', category: 'A', price: 100, tags: ['new'] }, { name: 'item2', category: 'B', price: 200, tags: ['sale'] }], _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: 1000 } },
+	{ id: '2', name: 'Bob', age: 25, tags: ['user'], active: false, score: 80.0, items: [{ name: 'item3', category: 'A', price: 150, tags: [] }], _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: 2000 } },
+	{ id: '3', name: 'Charlie', age: 35, tags: ['admin', 'moderator'], active: true, score: 88.3, optional: 'value', items: [{ name: 'item4', category: 'C', price: 300, tags: ['premium', 'new'] }], _deleted: false, _attachments: {}, _rev: '1-c', _meta: { lwt: 3000 } },
+	{ id: '4', name: 'David', age: 28, tags: ['user', 'moderator'], active: true, score: 92.1, items: [], _deleted: false, _attachments: {}, _rev: '1-d', _meta: { lwt: 4000 } },
+	{ id: '5', name: 'Eve', age: 22, tags: [], active: false, score: 75.0, optional: undefined, items: [{ name: 'item5', category: 'B', price: 50, tags: ['clearance'] }], _deleted: false, _attachments: {}, _rev: '1-e', _meta: { lwt: 5000 } },
 ];
 
 // Arbitrary generators for Mango query operators
@@ -98,7 +104,8 @@ const MangoQueryArbitrary = () => {
 		value: fc.tuple(fc.integer({ min: 2, max: 5 }), fc.integer({ min: 0, max: 4 }))
 	});
 	
-	// Simple regex (SQL LIKE compatible)
+	// Regex patterns: Only simple patterns that convert to SQL LIKE (^A, e$, substring)
+	// Complex patterns (alternation, quantifiers, character classes) use in-memory filtering
 	const regexArb = fc.record({
 		field: fc.constantFrom('name'),
 		op: fc.constant('$regex'),
@@ -111,27 +118,50 @@ const MangoQueryArbitrary = () => {
 		value: fc.constantFrom('string', 'number', 'boolean', 'array')
 	});
 	
-	// $elemMatch with nested operators (THE BUG WE FIXED!)
-	const elemMatchArb = fc.record({
+	const elemMatchSimpleArb = fc.record({
 		field: fc.constant('tags'),
 		op: fc.constant('$elemMatch'),
 		value: fc.oneof(
-			// Nested $regex
-			fc.record({ $regex: fc.constantFrom('admin', 'user', 'mod', '^a', 'r$') }),
-			// Nested $type
-			fc.record({ $type: fc.constantFrom('string', 'number') }),
-			// Nested $eq
-			fc.record({ $eq: stringValueArb }),
-			// Nested $ne
-			fc.record({ $ne: stringValueArb })
+			fc.constantFrom('admin', 'user', 'mod', '^a', 'r$').map(v => ({ $regex: v })),
+			fc.constantFrom('string', 'number').map(v => ({ $type: v })),
+			stringValueArb.map(v => ({ $eq: v })),
+			stringValueArb.map(v => ({ $ne: v })),
+			fc.constantFrom('a', 'm', 'z').map(v => ({ $gt: v })),
+			fc.constantFrom('a', 'm', 'z').map(v => ({ $lt: v }))
 		)
 	});
 	
-	// Single operator query
+	const elemMatchComplexArb = fc.record({
+		field: fc.constant('items'),
+		op: fc.constant('$elemMatch'),
+		value: fc.oneof(
+			fc.constantFrom('item1', 'item2', 'item3', 'item4', 'item5').map(v => ({ name: { $eq: v } })),
+			fc.constantFrom(['A'], ['B'], ['A', 'C']).map(v => ({ category: { $in: v } })),
+			fc.integer({ min: 50, max: 250 }).map(v => ({ price: { $gt: v } })),
+			fc.constantFrom('A', 'B', 'C').chain(cat => 
+				fc.integer({ min: 100, max: 200 }).map(price => ({
+					$and: [
+						{ category: { $eq: cat } },
+						{ price: { $gte: price } }
+					]
+				}))
+			),
+			fc.constantFrom('item', '^item').chain(regex =>
+				fc.integer({ min: 0, max: 2 }).map(size => ({
+					$or: [
+						{ name: { $regex: regex } },
+						{ tags: { $size: size } }
+					]
+				}))
+			)
+		)
+	});
+	
 	const singleOpArb = fc.oneof(
 		eqArb, neArb, gtArb, gteArb, ltArb, lteArb, 
 		inArb, ninArb, existsArb, sizeArb, modArb, regexArb, typeArb,
-		elemMatchArb  // ← ADDED: Test nested operators!
+		elemMatchSimpleArb,
+		elemMatchComplexArb
 	);
 	
 	// Convert operator object to Mango query
@@ -160,16 +190,42 @@ const MangoQueryArbitrary = () => {
 	}));
 	
 	const notArb = singleOpArb.map(op => ({
-		[op.field]: { $not: op.op === '$eq' ? op.value : { [op.op]: op.value } }
+		[op.field]: { $not: { [op.op]: op.value } }
 	}));
 	
-	// Combine all query types
+	const orWithNullArb = fc.array(
+		fc.oneof(
+			fc.constantFrom('present', 'value').map(v => ({ optional: v })),
+			fc.constantFrom('present', 'value').map(v => ({ optional: { $ne: v } })),
+			stringValueArb.map(v => ({ name: { $eq: v } }))
+		),
+		{ minLength: 2, maxLength: 3 }
+	).map(arr => ({ $or: arr }));
+	
+	const deepNestedArb = fc.tuple(
+		numberValueArb,
+		numberValueArb,
+		booleanValueArb
+	).map(([age, score, active]) => ({
+		$and: [
+			{
+				$or: [
+					{ age: { $gt: age } },
+					{ score: { $lt: score } }
+				]
+			},
+			{ active }
+		]
+	}));
+	
 	return fc.oneof(
 		singleOpArb.map(toMangoQuery),
 		andArb,
 		orArb,
 		norArb,
-		notArb
+		notArb,
+		orWithNullArb,
+		deepNestedArb
 	);
 };
 
@@ -194,6 +250,19 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 					tags: { type: 'array', items: { type: 'string' } },
 					active: { type: 'boolean' },
 					score: { type: 'number' },
+					optional: { type: 'string' },
+					items: {
+						type: 'array',
+						items: {
+							type: 'object',
+							properties: {
+								name: { type: 'string' },
+								category: { type: 'string' },
+								price: { type: 'number' },
+								tags: { type: 'array', items: { type: 'string' } }
+							}
+						}
+					},
 					_deleted: { type: 'boolean' },
 					_attachments: { type: 'object' },
 					_rev: { type: 'string' },
@@ -253,12 +322,47 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 				expect(sqlIds).toEqual(mingoIds);
 			}),
 			{ 
-				numRuns: 1000,  // ← INCREASED: 10x more coverage
+				numRuns: 1000,
 				verbose: true,
-				seed: 42 // Reproducible results
+				seed: 42
 			}
 		);
-	}, 120000); // 2 minute timeout for 1000 runs
+	}, 120000);
+
+	it('STRESS TEST: 10k random queries', async () => {
+		await fc.assert(
+			fc.asyncProperty(MangoQueryArbitrary(), async (mangoQuery) => {
+				const mingoQuery = new Query<TestDocType>(mangoQuery);
+				const mingoResults = mingoQuery.find<TestDocType>(mockDocs).all();
+				const mingoIds = mingoResults.map(doc => doc.id).sort();
+				
+				const sqlResults = await instance.query({
+					query: {
+						selector: mangoQuery,
+						sort: [{ id: 'asc' }],
+						skip: 0
+					},
+					queryPlan: {
+						index: ['id'],
+						sortSatisfiedByIndex: false,
+						selectorSatisfiedByIndex: false,
+						startKeys: [],
+						endKeys: [],
+						inclusiveStart: true,
+						inclusiveEnd: true
+					}
+				});
+				const sqlIds = sqlResults.documents.map(doc => doc.id).sort();
+				
+				expect(sqlIds).toEqual(mingoIds);
+			}),
+			{ 
+				numRuns: 10000,
+				verbose: false,
+				seed: 1337
+			}
+		);
+	}, 300000);
 	
 	it('handles edge cases: empty results', async () => {
 		const query = { age: { $gt: 100 } }; // No matches
