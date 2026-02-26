@@ -240,4 +240,15 @@ describe('stableStringify - Edge Cases', () => {
 		const result = stableStringify(obj);
 		expect(result).toBe('{"1":"a","10":"b","2":"c"}');
 	});
+
+	it('should handle toJSON that throws', () => {
+		const obj = {
+			name: 'test',
+			toJSON() {
+				throw new Error('boom');
+			}
+		};
+		const result = stableStringify(obj);
+		expect(result).toBe('"[Error: boom]"');
+	});
 });

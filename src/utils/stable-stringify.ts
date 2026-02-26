@@ -22,6 +22,14 @@ function strEscape(str: string): string {
 	return JSON.stringify(str);
 }
 
+function callSafe(method: () => unknown, thisArg: object): unknown {
+	try {
+		return method.call(thisArg);
+	} catch (error) {
+		return `[Error: ${error instanceof Error ? error.message : String(error)}]`;
+	}
+}
+
 function sortKeys(keys: string[]): string[] {
 	if (keys.length > 100) {
 		return keys.sort();
@@ -79,7 +87,7 @@ function _stringify(value: unknown, stack: unknown[]): string {
 		stack.push(value);
 		
 		if ('toJSON' in obj && typeof obj.toJSON === 'function') {
-			const result = _stringify(obj.toJSON(), stack);
+			const result = _stringify(callSafe(obj.toJSON as () => unknown, obj), stack);
 			stack.pop();
 			return result;
 		}
