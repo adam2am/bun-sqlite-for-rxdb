@@ -19,7 +19,7 @@ describe('$not Operator', () => {
 	it('negates IN operator', () => {
 		const result = translateNot('status', { $in: ['active', 'pending'] });
 		expect(result).not.toBeNull();
-		expect(result!.sql).toBe('NOT(status IN (?, ?))');
-		expect(result!.args).toEqual(['active', 'pending']);
+		expect(result!.sql).toBe('NOT(status IN (SELECT value FROM json_each(?)))');
+		expect(result!.args).toEqual(['["active","pending"]']);
 	});
 });

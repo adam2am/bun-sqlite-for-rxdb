@@ -109,9 +109,9 @@ describe('Nested Query Builder - Depth Tracking', () => {
 
 	expect(result).not.toBeNull();
 	expect(result!.sql).toBe(
-		"(json_extract(data, '$.age') IN (?, ?, ?) OR json_extract(data, '$.status') = ?) AND json_extract(data, '$.verified') = ?"
+		"(json_extract(data, '$.age') IN (SELECT value FROM json_each(?)) OR json_extract(data, '$.status') = ?) AND json_extract(data, '$.verified') = ?"
 	);
-	expect(result!.args).toEqual([18, 19, 20, 'student', true]);
+	expect(result!.args).toEqual(['[18,19,20]', 'student', true]);
 	});
 
 	test('four-level nesting with mixed operators', () => {
@@ -163,9 +163,9 @@ describe('Nested Query Builder - Depth Tracking', () => {
 
 	expect(result).not.toBeNull();
 	expect(result!.sql).toBe(
-		"(json_extract(data, '$.status') NOT IN (?, ?) AND json_extract(data, '$.age') > ?) OR json_extract(data, '$.role') IN (?, ?)"
+		"(json_extract(data, '$.status') NOT IN (SELECT value FROM json_each(?)) AND json_extract(data, '$.age') > ?) OR json_extract(data, '$.role') IN (SELECT value FROM json_each(?))"
 	);
-	expect(result!.args).toEqual(['banned', 'suspended', 21, 'admin', 'moderator']);
+	expect(result!.args).toEqual(['["banned","suspended"]', 21, '["admin","moderator"]']);
 	});
 
 	test('parentheses placement with single $or at root', () => {

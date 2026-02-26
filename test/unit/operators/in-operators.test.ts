@@ -4,14 +4,14 @@ import { translateIn, translateNin } from '$app/query/operators';
 describe('$in operator', () => {
 	it('generates IN clause for array of values', () => {
 		const result = translateIn('age', [25, 30, 35]);
-		expect(result.sql).toBe('age IN (?, ?, ?)');
-		expect(result.args).toEqual([25, 30, 35]);
+		expect(result.sql).toBe('age IN (SELECT value FROM json_each(?))');
+		expect(result.args).toEqual(['[25,30,35]']);
 	});
 
 	it('handles NULL in array with OR IS NULL', () => {
 		const result = translateIn('status', ['active', null, 'pending']);
-		expect(result.sql).toBe('(status IN (?, ?) OR status IS NULL)');
-		expect(result.args).toEqual(['active', 'pending']);
+		expect(result.sql).toBe('(status IN (SELECT value FROM json_each(?)) OR status IS NULL)');
+		expect(result.args).toEqual(['["active","pending"]']);
 	});
 
 	it('handles array with only NULL', () => {
@@ -30,14 +30,14 @@ describe('$in operator', () => {
 describe('$nin operator', () => {
 	it('generates NOT IN clause for array of values', () => {
 		const result = translateNin('age', [25, 30, 35]);
-		expect(result.sql).toBe('age NOT IN (?, ?, ?)');
-		expect(result.args).toEqual([25, 30, 35]);
+		expect(result.sql).toBe('age NOT IN (SELECT value FROM json_each(?))');
+		expect(result.args).toEqual(['[25,30,35]']);
 	});
 
 	it('handles NULL in array with AND IS NOT NULL', () => {
 		const result = translateNin('status', ['archived', null, 'deleted']);
-		expect(result.sql).toBe('(status NOT IN (?, ?) AND status IS NOT NULL)');
-		expect(result.args).toEqual(['archived', 'deleted']);
+		expect(result.sql).toBe('(status NOT IN (SELECT value FROM json_each(?)) AND status IS NOT NULL)');
+		expect(result.args).toEqual(['["archived","deleted"]']);
 	});
 
 	it('handles array with only NULL', () => {
