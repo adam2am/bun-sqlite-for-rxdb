@@ -43,14 +43,14 @@ export function buildWhereClause<RxDocType>(
 	return result;
 }
 
-function buildLogicalOperator<RxDocType>(
-	operator: 'or' | 'nor',
+export function buildLogicalOperator<RxDocType>(
+	operator: 'or' | 'nor' | 'and',
 	conditions: MangoQuerySelector<RxDocumentData<RxDocType>>[],
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	logicalDepth: number
 ): SqlFragment | null {
 	if (conditions.length === 0) {
-		return { sql: '1=1', args: [] };
+		return { sql: operator === 'or' ? '1=0' : '1=1', args: [] };
 	}
 
 	const fragments = conditions.map(subSelector => processSelector(subSelector, schema, logicalDepth + 1));

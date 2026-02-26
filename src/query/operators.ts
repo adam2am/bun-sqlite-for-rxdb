@@ -174,7 +174,7 @@ export function translateElemMatch(field: string, criteria: ElemMatchCriteria): 
 
 	const fragment = buildElemMatchConditions(criteria as Record<string, unknown>);
 	if (fragment.sql === '1=1') {
-		return null;
+		return { sql: '1=0', args: [] };
 	}
 
 	return {
@@ -235,7 +235,7 @@ function processOperatorValue(field: string, value: unknown): SqlFragment {
 }
 
 export function translateNot(field: string, criteria: unknown): SqlFragment | null {
-	if (!criteria || (typeof criteria === 'object' && Object.keys(criteria).length === 0)) return null;
+	if (!criteria || (typeof criteria === 'object' && Object.keys(criteria).length === 0)) return { sql: '1=0', args: [] };
 	const inner = processOperatorValue(field, criteria);
 	return {
 		sql: `NOT(${inner.sql})`,
@@ -257,7 +257,7 @@ export function translateType(
 		case 'string': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'text'`, args: [] };
 		case 'array': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'array'`, args: [] };
 		case 'object': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'object'`, args: [] };
-		default: return null;
+		default: return { sql: '1=0', args: [] };
 	}
 }
 
@@ -269,7 +269,7 @@ export function translateSize(field: string, size: number): SqlFragment {
 }
 
 export function translateMod(field: string, value: unknown): SqlFragment | null {
-	if (!Array.isArray(value) || value.length !== 2) return null;
+	if (!Array.isArray(value) || value.length !== 2) return { sql: '1=0', args: [] };
 	const [divisor, remainder] = value;
 	return {
 		sql: `${field} % ? = ?`,
