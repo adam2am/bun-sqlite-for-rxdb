@@ -143,34 +143,50 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 				context
 			);
 
-			const insertQuery = `INSERT INTO "${this.tableName}" (id, data, deleted, rev, mtime_ms) VALUES (?, jsonb(?), ?, ?, ?)`;
 			const updateQuery = `UPDATE "${this.tableName}" SET data = jsonb(?), deleted = ?, rev = ?, mtime_ms = ? WHERE id = ?`;
 
-			for (const row of categorized.bulkInsertDocs) {
-				const doc = row.document;
-				const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
+			const BATCH_SIZE = 100;
+			for (let i = 0; i < categorized.bulkInsertDocs.length; i += BATCH_SIZE) {
+				const batch = categorized.bulkInsertDocs.slice(i, i + BATCH_SIZE);
+				const placeholders = batch.map(() => '(?, jsonb(?), ?, ?, ?)').join(', ');
+				const insertQuery = `INSERT INTO "${this.tableName}" (id, data, deleted, rev, mtime_ms) VALUES ${placeholders}`;
+				const params: any[] = [];
+				
+				for (const row of batch) {
+					const doc = row.document;
+					const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
+					params.push(id, JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt);
+				}
+				
 				try {
-					this.stmtManager.run({ query: insertQuery, params: [id, JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt] });
-			} catch (err: unknown) {
-				if (err && typeof err === 'object' && 'code' in err && (err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || err.code === 'SQLITE_CONSTRAINT_UNIQUE')) {
-						const documentInDb = docsInDbMap.get(id);
-						categorized.errors.push({
-							isError: true,
-							status: 409,
-							documentId: id,
-							writeRow: row,
-							documentInDb: documentInDb || doc
-						});
+					this.stmtManager.run({ query: insertQuery, params });
+				} catch (err: unknown) {
+					if (err && typeof err === 'object' && 'code' in err && (err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || err.code === 'SQLITE_CONSTRAINT_UNIQUE')) {
+						for (const row of batch) {
+							const doc = row.document;
+							const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
+							const documentInDb = docsInDbMap.get(id);
+							categorized.errors.push({
+								isError: true,
+								status: 409,
+								documentId: id,
+								writeRow: row,
+								documentInDb: documentInDb || doc
+							});
+						}
 					} else {
 						throw err;
 					}
 				}
 			}
 
-			for (const row of categorized.bulkUpdateDocs) {
-				const doc = row.document;
-				const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
-				this.stmtManager.run({ query: updateQuery, params: [JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt, id] });
+			for (let i = 0; i < categorized.bulkUpdateDocs.length; i += BATCH_SIZE) {
+				const batch = categorized.bulkUpdateDocs.slice(i, i + BATCH_SIZE);
+				for (const row of batch) {
+					const doc = row.document;
+					const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
+					this.stmtManager.run({ query: updateQuery, params: [JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt, id] });
+				}
 			}
 
 			const insertAttQuery = `INSERT OR REPLACE INTO "${this.tableName}_attachments" (id, data, digest) VALUES (?, ?, ?)`;
@@ -234,33 +250,38 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 		const { sql: whereClause, args } = whereResult;
 
-		const sql = `
-		SELECT json(data) as data FROM "${this.tableName}"
-			WHERE (${whereClause})
-		`;
-
-		if (process.env.DEBUG_QUERIES) {
-			const explainSql = `EXPLAIN QUERY PLAN ${sql}`;
-			const plan = this.stmtManager.all({ query: explainSql, params: args });
-			console.log('[DEBUG_QUERIES] Query plan:', JSON.stringify(plan, null, 2));
-			console.log('[DEBUG_QUERIES] SQL:', sql);
-			console.log('[DEBUG_QUERIES] Args:', args);
-		}
-
-		const rows = this.stmtManager.all({ query: sql, params: args }) as Array<{ data: string }>;
-		let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
+		let sql = `SELECT json(data) as data FROM "${this.tableName}" WHERE (${whereClause})`;
+		const queryArgs = [...args];
 
 		if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
-			documents = this.sortDocuments(documents, preparedQuery.query.sort);
-		}
-
-		if (preparedQuery.query.skip) {
-			documents = documents.slice(preparedQuery.query.skip);
+			const orderBy = preparedQuery.query.sort.map(sortField => {
+				const [field, direction] = Object.entries(sortField)[0];
+				const dir = direction === 'asc' ? 'ASC' : 'DESC';
+				return `json_extract(data, '$.${field}') ${dir}`;
+			}).join(', ');
+			sql += ` ORDER BY ${orderBy}`;
 		}
 
 		if (preparedQuery.query.limit) {
-			documents = documents.slice(0, preparedQuery.query.limit);
+			sql += ` LIMIT ?`;
+			queryArgs.push(preparedQuery.query.limit);
 		}
+
+		if (preparedQuery.query.skip) {
+			sql += ` OFFSET ?`;
+			queryArgs.push(preparedQuery.query.skip);
+		}
+
+		if (process.env.DEBUG_QUERIES) {
+			const explainSql = `EXPLAIN QUERY PLAN ${sql}`;
+			const plan = this.stmtManager.all({ query: explainSql, params: queryArgs });
+			console.log('[DEBUG_QUERIES] Query plan:', JSON.stringify(plan, null, 2));
+			console.log('[DEBUG_QUERIES] SQL:', sql);
+			console.log('[DEBUG_QUERIES] Args:', queryArgs);
+		}
+
+		const rows = this.stmtManager.all({ query: sql, params: queryArgs }) as Array<{ data: string }>;
+		const documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 
 		return { documents };
 	}
