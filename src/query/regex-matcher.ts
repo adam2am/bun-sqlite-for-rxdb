@@ -1,6 +1,5 @@
 interface RegexCacheEntry {
 	regex: RegExp;
-	lastUsed: number;
 }
 
 const REGEX_CACHE = new Map<string, RegexCacheEntry>();
@@ -11,29 +10,19 @@ function compileRegex(pattern: string, options?: string): RegExp {
 
 	const cached = REGEX_CACHE.get(cacheKey);
 	if (cached) {
-		cached.lastUsed = Date.now();
 		return cached.regex;
 	}
 
 	const regex = new RegExp(pattern, options);
 
 	if (REGEX_CACHE.size >= MAX_REGEX_CACHE_SIZE) {
-		let oldestKey: string | null = null;
-		let oldestTime = Infinity;
-
-		for (const [key, entry] of REGEX_CACHE.entries()) {
-			if (entry.lastUsed < oldestTime) {
-				oldestTime = entry.lastUsed;
-				oldestKey = key;
-			}
-		}
-
-		if (oldestKey) {
-			REGEX_CACHE.delete(oldestKey);
+		const firstKey = REGEX_CACHE.keys().next().value;
+		if (firstKey) {
+			REGEX_CACHE.delete(firstKey);
 		}
 	}
 
-	REGEX_CACHE.set(cacheKey, { regex, lastUsed: Date.now() });
+	REGEX_CACHE.set(cacheKey, { regex });
 	return regex;
 }
 
