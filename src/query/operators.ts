@@ -53,17 +53,17 @@ export function translateIn(field: string, values: unknown[]): SqlFragment {
 		return { sql: `${field} IS NULL`, args: [] };
 	}
 
-	const placeholders = nonNullValues.map(() => '?').join(', ');
-	const inClause = `${field} IN (${placeholders})`;
+	const inClause = `${field} IN (SELECT value FROM json_each(?))`;
+	const args = [JSON.stringify(nonNullValues)];
 
 	if (hasNull) {
 		return {
 			sql: `(${inClause} OR ${field} IS NULL)`,
-			args: nonNullValues
+			args
 		};
 	}
 
-	return { sql: inClause, args: nonNullValues };
+	return { sql: inClause, args };
 }
 
 export function translateNin(field: string, values: unknown[]): SqlFragment {
@@ -78,17 +78,17 @@ export function translateNin(field: string, values: unknown[]): SqlFragment {
 		return { sql: `${field} IS NOT NULL`, args: [] };
 	}
 
-	const placeholders = nonNullValues.map(() => '?').join(', ');
-	const ninClause = `${field} NOT IN (${placeholders})`;
+	const ninClause = `${field} NOT IN (SELECT value FROM json_each(?))`;
+	const args = [JSON.stringify(nonNullValues)];
 
 	if (hasNull) {
 		return {
 			sql: `(${ninClause} AND ${field} IS NOT NULL)`,
-			args: nonNullValues
+			args
 		};
 	}
 
-	return { sql: ninClause, args: nonNullValues };
+	return { sql: ninClause, args };
 }
 
 export function translateExists(field: string, exists: boolean): SqlFragment {
