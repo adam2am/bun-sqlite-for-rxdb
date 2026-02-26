@@ -23,7 +23,7 @@ function strEscape(str: string): string {
 }
 
 function sortKeys(keys: string[]): string[] {
-	if (keys.length > 200) {
+	if (keys.length > 100) {
 		return keys.sort();
 	}
 	
@@ -58,10 +58,14 @@ function _stringify(value: unknown, stack: unknown[]): string {
 		if (stack.indexOf(value) !== -1) return '"[Circular]"';
 		stack.push(value);
 		
-		let res = '[';
-		for (let i = 0; i < value.length; i++) {
-			if (i > 0) res += ',';
-			res += _stringify(value[i], stack);
+		if (value.length === 0) {
+			stack.pop();
+			return '[]';
+		}
+		
+		let res = '[' + _stringify(value[0], stack);
+		for (let i = 1; i < value.length; i++) {
+			res += ',' + _stringify(value[i], stack);
 		}
 		
 		stack.pop();
@@ -89,15 +93,14 @@ function _stringify(value: unknown, stack: unknown[]): string {
 		
 		const keys = sortKeys(Object.keys(obj));
 		let res = '{';
-		let first = true;
+		let separator = '';
 		for (let i = 0; i < keys.length; i++) {
 			const key = keys[i];
 			const val = obj[key];
 			if (val === undefined) continue;
 			
-			if (!first) res += ',';
-			first = false;
-			res += strEscape(key) + ':' + _stringify(val, stack);
+			res += separator + strEscape(key) + ':' + _stringify(val, stack);
+			separator = ',';
 		}
 		
 		stack.pop();
