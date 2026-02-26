@@ -1,4 +1,5 @@
 import type { RxJsonSchema, RxDocumentData } from 'rxdb';
+import { getColumnInfo } from './schema-mapper';
 
 export interface SqlFragment {
 	sql: string;
@@ -11,10 +12,24 @@ export type ElemMatchCriteria = QueryValue | OperatorExpression;
 
 import { smartRegexToLike } from './smart-regex';
 
-export function translateEq(field: string, value: unknown): SqlFragment {
+export function translateEq<RxDocType>(
+	field: string, 
+	value: unknown,
+	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
+	actualFieldName: string
+): SqlFragment {
 	if (value === null) {
 		return { sql: `${field} IS NULL`, args: [] };
 	}
+	
+	const columnInfo = getColumnInfo(actualFieldName, schema);
+	if (field !== 'value' && columnInfo.type === 'array') {
+		return {
+			sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value = ?)`,
+			args: [value as string | number | boolean]
+		};
+	}
+	
 	return { sql: `${field} = ?`, args: [value as string | number | boolean] };
 }
 
@@ -111,18 +126,23 @@ export function translateRegex<RxDocType>(
 	return null;
 }
 
-function buildElemMatchConditions(criteria: Record<string, unknown>): SqlFragment {
+function buildElemMatchConditions<RxDocType>(
+	criteria: Record<string, unknown>,
+	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
+	baseFieldName: string
+): SqlFragment {
 	const conditions: string[] = [];
 	const args: (string | number | boolean | null)[] = [];
 
 	for (const [key, value] of Object.entries(criteria)) {
 		if (key.startsWith('$')) {
-			const fragment = processOperatorValue('json_each.value', { [key]: value });
+			const fragment = processOperatorValue('value', { [key]: value }, schema, baseFieldName);
 			conditions.push(fragment.sql);
 			args.push(...fragment.args);
 		} else {
-			const propertyField = `json_extract(json_each.value, '$.${key}')`;
-			const fragment = processOperatorValue(propertyField, value);
+			const propertyField = `json_extract(value, '$.${key}')`;
+			const nestedFieldName = `${baseFieldName}.${key}`;
+			const fragment = processOperatorValue(propertyField, value, schema, nestedFieldName);
 			conditions.push(fragment.sql);
 			args.push(...fragment.args);
 		}
@@ -134,66 +154,77 @@ function buildElemMatchConditions(criteria: Record<string, unknown>): SqlFragmen
 	};
 }
 
-export function translateElemMatch(field: string, criteria: ElemMatchCriteria): SqlFragment | null {
+export function translateElemMatch<RxDocType>(
+	field: string, 
+	criteria: ElemMatchCriteria,
+	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
+	actualFieldName: string
+): SqlFragment | null {
+	// Empty criteria is data corruption - fail fast
+	if (typeof criteria === 'object' && criteria !== null && !Array.isArray(criteria) && Object.keys(criteria).length === 0) {
+		return { sql: '1=0', args: [] };
+	}
+	
 	if (typeof criteria !== 'object' || criteria === null) {
 		return {
-			sql: `EXISTS (SELECT 1 FROM json_each(${field}) WHERE json_each.value = ?)`,
-			args: [criteria as string | number | boolean]
+			sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value = ?)`,
+			args: [criteria]
 		};
 	}
 
 	if (criteria.$and && Array.isArray(criteria.$and)) {
-		const fragments = criteria.$and.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond));
+		const fragments = criteria.$and.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond, schema, actualFieldName));
 		const sql = fragments.map(f => f.sql).join(' AND ');
 		const args = fragments.flatMap(f => f.args);
 		return {
-			sql: `EXISTS (SELECT 1 FROM json_each(${field}) WHERE ${sql})`,
+			sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE ${sql})`,
 			args
 		};
 	}
 
 	if (criteria.$or && Array.isArray(criteria.$or)) {
-		const fragments = criteria.$or.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond));
+		const fragments = criteria.$or.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond, schema, actualFieldName));
 		const sql = fragments.map(f => f.sql).join(' OR ');
 		const args = fragments.flatMap(f => f.args);
 		return {
-			sql: `EXISTS (SELECT 1 FROM json_each(${field}) WHERE ${sql})`,
+			sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE ${sql})`,
 			args
 		};
 	}
 
 	if (criteria.$nor && Array.isArray(criteria.$nor)) {
-		const fragments = criteria.$nor.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond));
+		const fragments = criteria.$nor.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond, schema, actualFieldName));
 		const sql = fragments.map(f => f.sql).join(' OR ');
 		const args = fragments.flatMap(f => f.args);
 		return {
-			sql: `EXISTS (SELECT 1 FROM json_each(${field}) WHERE NOT (${sql}))`,
+			sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE NOT (${sql}))`,
 			args
 		};
 	}
 
-	const fragment = buildElemMatchConditions(criteria as Record<string, unknown>);
-	if (fragment.sql === '1=1') {
-		return { sql: '1=0', args: [] };
-	}
-
+	const fragment = buildElemMatchConditions(criteria as Record<string, unknown>, schema, actualFieldName);
 	return {
-		sql: `EXISTS (SELECT 1 FROM json_each(${field}) WHERE ${fragment.sql})`,
+		sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE ${fragment.sql})`,
 		args: fragment.args
 	};
 }
 
-function processOperatorValue(field: string, value: unknown): SqlFragment {
+function processOperatorValue<RxDocType>(
+	field: string, 
+	value: unknown,
+	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
+	actualFieldName: string
+): SqlFragment {
 	if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
 		const [[op, opValue]] = Object.entries(value);
 
 		if (!op.startsWith('$')) {
 			const jsonPath = `json_extract(${field}, '$.${op}')`;
-			return translateEq(jsonPath, opValue);
+			return translateEq(jsonPath, opValue, schema, actualFieldName);
 		}
 
 		switch (op) {
-			case '$eq': return translateEq(field, opValue);
+			case '$eq': return translateEq(field, opValue, schema, actualFieldName);
 			case '$ne': return translateNe(field, opValue);
 			case '$gt': return translateGt(field, opValue);
 			case '$gte': return translateGte(field, opValue);
@@ -203,42 +234,103 @@ function processOperatorValue(field: string, value: unknown): SqlFragment {
 			case '$nin': return translateNin(field, opValue as unknown[]);
 			case '$exists': return translateExists(field, opValue as boolean);
 			case '$size': return translateSize(field, opValue as number);
-			case '$mod': {
-				const result = translateMod(field, opValue);
-				if (!result) return translateEq(field, opValue);
-				return result;
+		case '$mod': {
+			const result = translateMod(field, opValue);
+			if (!result) return translateEq(field, opValue, schema, actualFieldName);
+			return result;
+		}
+		case '$regex': {
+			const options = (value as Record<string, unknown>).$options as string | undefined;
+			const regexFragment = translateRegex(field, opValue as string, options, schema, actualFieldName);
+			return regexFragment || { sql: '1=0', args: [] };
+		}
+		case '$type': {
+			let jsonCol = 'data';
+			let path = `$.${actualFieldName}`;
+			let useDirectType = false;
+			
+		if (field === 'value') {
+			jsonCol = 'value';
+			path = '';
+			useDirectType = true;
+		} else if (field.startsWith('json_extract(')) {
+			const match = field.match(/json_extract\(([^,]+),\s*'([^']+)'\)/);
+			if (match) {
+				jsonCol = match[1];
+				path = match[2];
 			}
-			case '$not': {
-				const result = translateNot(field, opValue);
-				if (!result) return translateEq(field, opValue);
-				return result;
+		}
+		
+		if (useDirectType) {
+			const typeMap: Record<string, string> = {
+				'null': 'null',
+				'boolean': 'true',
+				'number': 'integer',
+				'string': 'text',
+				'array': 'array',
+				'object': 'object'
+			};
+			const sqlType = typeMap[opValue as string];
+			if (!sqlType) return { sql: '1=0', args: [] };
+			
+			if (opValue === 'boolean') {
+				return { sql: `(type IN ('true', 'false'))`, args: [] };
 			}
-			case '$and': {
-				if (!Array.isArray(opValue)) return translateEq(field, opValue);
-				const fragments = opValue.map(v => processOperatorValue(field, v));
-				const sql = fragments.map(f => f.sql).join(' AND ');
-				const args = fragments.flatMap(f => f.args);
-				return { sql: `(${sql})`, args };
+			if (opValue === 'number') {
+				return { sql: `(type IN ('integer', 'real'))`, args: [] };
 			}
-			case '$or': {
-				if (!Array.isArray(opValue)) return translateEq(field, opValue);
-				const fragments = opValue.map(v => processOperatorValue(field, v));
-				const sql = fragments.map(f => f.sql).join(' OR ');
-				const args = fragments.flatMap(f => f.args);
-				return { sql: `(${sql})`, args };
-			}
-			default: return translateEq(field, opValue);
+			
+			return { sql: `type = '${sqlType}'`, args: [] };
+		}
+		
+		const typeFragment = translateType(jsonCol, path, opValue as string, true);
+		return typeFragment || { sql: '1=0', args: [] };
+	}
+		case '$elemMatch': {
+			const elemMatchFragment = translateElemMatch(field, opValue as ElemMatchCriteria, schema, actualFieldName);
+			return elemMatchFragment || { sql: '1=0', args: [] };
+		}
+		case '$not': {
+			const result = translateNot(field, opValue, schema, actualFieldName);
+			if (!result) return translateEq(field, opValue, schema, actualFieldName);
+			return result;
+		}
+		case '$and': {
+			if (!Array.isArray(opValue)) return translateEq(field, opValue, schema, actualFieldName);
+			const fragments = opValue.map(v => processOperatorValue(field, v, schema, actualFieldName));
+			const sql = fragments.map(f => f.sql).join(' AND ');
+			const args = fragments.flatMap(f => f.args);
+			return { sql: `(${sql})`, args };
+		}
+		case '$or': {
+			if (!Array.isArray(opValue)) return translateEq(field, opValue, schema, actualFieldName);
+			const fragments = opValue.map(v => processOperatorValue(field, v, schema, actualFieldName));
+			const sql = fragments.map(f => f.sql).join(' OR ');
+			const args = fragments.flatMap(f => f.args);
+			return { sql: `(${sql})`, args };
+		}
+			default: return translateEq(field, opValue, schema, actualFieldName);
 		}
 	}
 
-	return translateEq(field, value);
+	return translateEq(field, value, schema, actualFieldName);
 }
 
-export function translateNot(field: string, criteria: unknown): SqlFragment | null {
-	if (!criteria || (typeof criteria === 'object' && Object.keys(criteria).length === 0)) return { sql: '1=0', args: [] };
-	const inner = processOperatorValue(field, criteria);
+export function translateNot<RxDocType>(
+	field: string, 
+	criteria: unknown,
+	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
+	actualFieldName: string
+): SqlFragment | null {
+	// Only reject undefined and empty objects (data corruption)
+	// All other values (false, 0, "", null, etc.) are valid values to negate
+	if (criteria === undefined || (typeof criteria === 'object' && criteria !== null && Object.keys(criteria).length === 0)) {
+		return { sql: '1=0', args: [] };
+	}
+	
+	const inner = processOperatorValue(field, criteria, schema, actualFieldName);
 	return {
-		sql: `NOT(${inner.sql})`,
+		sql: `NOT (${inner.sql})`,
 		args: inner.args
 	};
 }
@@ -246,9 +338,10 @@ export function translateNot(field: string, criteria: unknown): SqlFragment | nu
 export function translateType(
 	jsonColumn: string,
 	fieldName: string,
-	type: string
+	type: string,
+	isDirectPath: boolean = false
 ): SqlFragment | null {
-	const jsonPath = `$.${fieldName}`;
+	const jsonPath = isDirectPath ? fieldName : `$.${fieldName}`;
 
 	switch (type) {
 		case 'null': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'null'`, args: [] };
@@ -271,8 +364,10 @@ export function translateSize(field: string, size: number): SqlFragment {
 export function translateMod(field: string, value: unknown): SqlFragment | null {
 	if (!Array.isArray(value) || value.length !== 2) return { sql: '1=0', args: [] };
 	const [divisor, remainder] = value;
+	// SQLite's % operator casts to INTEGER, but MongoDB's $mod preserves decimals
+	// Use: value - (CAST(value / divisor AS INTEGER) * divisor) = remainder
 	return {
-		sql: `${field} % ? = ?`,
-		args: [divisor, remainder]
+		sql: `(${field} - (CAST(${field} / ? AS INTEGER) * ?)) = ?`,
+		args: [divisor, divisor, remainder]
 	};
 }

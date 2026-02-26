@@ -3,7 +3,7 @@ import type { RxJsonSchema, RxDocumentData } from 'rxdb';
 export interface ColumnInfo {
 	column?: string;
 	jsonPath?: string;
-	type: 'string' | 'number' | 'boolean' | 'unknown';
+	type: 'string' | 'number' | 'boolean' | 'array' | 'unknown';
 }
 
 export function getColumnInfo<RxDocType>(path: string, schema: RxJsonSchema<RxDocumentData<RxDocType>>): ColumnInfo {
@@ -21,6 +21,14 @@ export function getColumnInfo<RxDocType>(path: string, schema: RxJsonSchema<RxDo
 	
 	if (path === schema.primaryKey) {
 		return { column: 'id', type: 'string' };
+	}
+	
+	const properties = schema.properties as Record<string, { type?: string; items?: unknown } | undefined>;
+	const fieldSchema = properties?.[path];
+	if (fieldSchema && typeof fieldSchema === 'object' && 'type' in fieldSchema) {
+		if (fieldSchema.type === 'array') {
+			return { jsonPath: `$.${path}`, type: 'array' };
+		}
 	}
 	
 	return { jsonPath: `$.${path}`, type: 'unknown' };

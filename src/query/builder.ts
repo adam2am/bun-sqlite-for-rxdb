@@ -56,7 +56,7 @@ export function buildLogicalOperator<RxDocType>(
 	const fragments = conditions.map(subSelector => processSelector(subSelector, schema, logicalDepth + 1));
 	if (fragments.some(f => f === null)) return null;
 	
-	const sql = fragments.map(f => f!.sql).join(' OR ');
+	const sql = fragments.map(f => `(${f!.sql})`).join(' OR ');
 	const args = fragments.flatMap(f => f!.args);
 
 	return operator === 'nor'
@@ -106,9 +106,9 @@ function processSelector<RxDocType>(
 			continue;
 		}
 
-		const columnInfo = getColumnInfo(field, schema);
-		const fieldName = columnInfo.column || `json_extract(data, '${columnInfo.jsonPath}')`;
-		const actualFieldName = columnInfo.jsonPath?.replace(/^\$\./, '') || columnInfo.column || field;
+	const columnInfo = getColumnInfo(field, schema);
+	const fieldName = columnInfo.column || `jsonb_extract(data, '${columnInfo.jsonPath}')`;
+	const actualFieldName = columnInfo.jsonPath?.replace(/^\$\./, '') || columnInfo.column || field;
 
 		if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
 			for (const [op, opValue] of Object.entries(value)) {
@@ -116,7 +116,7 @@ function processSelector<RxDocType>(
 
 				switch (op) {
 					case '$eq':
-						fragment = translateEq(fieldName, opValue);
+						fragment = translateEq(fieldName, opValue, schema, actualFieldName);
 						break;
 					case '$ne':
 						fragment = translateNe(fieldName, opValue);
@@ -149,12 +149,12 @@ function processSelector<RxDocType>(
 					fragment = regexFragment;
 					break;
 				case '$elemMatch':
-					const elemMatchFragment = translateElemMatch(fieldName, opValue as ElemMatchCriteria);
+					const elemMatchFragment = translateElemMatch(fieldName, opValue as ElemMatchCriteria, schema, actualFieldName);
 					if (!elemMatchFragment) return null;
 					fragment = elemMatchFragment;
 					break;
 				case '$not': {
-					const notResult = translateNot(fieldName, opValue);
+					const notResult = translateNot(fieldName, opValue, schema, actualFieldName);
 					if (!notResult) return null;
 					fragment = notResult;
 					break;
@@ -181,7 +181,7 @@ function processSelector<RxDocType>(
 				args.push(...fragment.args);
 			}
 		} else {
-			const fragment = translateEq(fieldName, value);
+			const fragment = translateEq(fieldName, value, schema, actualFieldName);
 			conditions.push(fragment.sql);
 			args.push(...fragment.args);
 		}
