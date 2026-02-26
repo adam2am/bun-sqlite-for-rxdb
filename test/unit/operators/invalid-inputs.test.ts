@@ -48,36 +48,36 @@ describe('Invalid Operator Inputs (TDD)', () => {
 			expect(result).toEqual({ sql: '1=0', args: [] });
 		});
 
-		it('should work correctly for valid $mod format', () => {
-			const result = translateMod('age', [5, 0]);
-			expect(result?.sql).toBe('age % ? = ?');
-			expect(result?.args).toEqual([5, 0]);
-		});
+	it('should work correctly for valid $mod format', () => {
+		const result = translateMod('score', [5, 2]);
+		expect(result?.sql).toBe('(score - (CAST(score / ? AS INTEGER) * ?)) = ?');
+		expect(result?.args).toEqual([5, 5, 2]);
+	});
 	});
 
 	describe('$elemMatch with empty criteria', () => {
 		it('should return 1=0 for empty object criteria', () => {
-			const result = translateElemMatch('tags', {});
+			const result = translateElemMatch('tags', {}, mockSchema, 'tags');
 			expect(result).toEqual({ sql: '1=0', args: [] });
 		});
 	});
 
 	describe('$not with empty/invalid criteria', () => {
 		it('should return 1=0 for empty object', () => {
-			const result = translateNot('age', {});
+			const result = translateNot('age', {}, mockSchema, 'age');
 			expect(result).toEqual({ sql: '1=0', args: [] });
 		});
 
 		it('should return 1=0 for null criteria', () => {
-			const result = translateNot('age', null);
+			const result = translateNot('age', null, mockSchema, 'age');
 			expect(result).toEqual({ sql: '1=0', args: [] });
 		});
 
-		it('should work correctly for valid $not criteria', () => {
-			const result = translateNot('age', { $gt: 30 });
-			expect(result?.sql).toBe('NOT(age > ?)');
-			expect(result?.args).toEqual([30]);
-		});
+	it('should work correctly for valid $not criteria', () => {
+		const result = translateNot('age', { $gt: 30 }, mockSchema, 'age');
+		expect(result?.sql).toBe('NOT (age > ?)');
+		expect(result?.args).toEqual([30]);
+	});
 	});
 
 	describe('Empty $or array', () => {
