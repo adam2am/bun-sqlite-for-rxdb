@@ -91,8 +91,7 @@ function processSelector<RxDocType>(
 			const orFragment = buildLogicalOperator('or', value, schema, logicalDepth);
 			if (!orFragment) return null;
 			
-			const needsParens = logicalDepth > 0;
-			conditions.push(needsParens ? `(${orFragment.sql})` : orFragment.sql);
+			conditions.push(`(${orFragment.sql})`);
 			args.push(...orFragment.args);
 			continue;
 		}
@@ -110,8 +109,12 @@ function processSelector<RxDocType>(
 	const fieldName = columnInfo.column || `json_extract(data, '${columnInfo.jsonPath}')`;
 	const actualFieldName = columnInfo.jsonPath?.replace(/^\$\./, '') || columnInfo.column || field;
 
-		if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-			for (const [op, opValue] of Object.entries(value)) {
+	if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+		if (Object.keys(value).length === 0) {
+			return { sql: '1=0', args: [] };
+		}
+		
+		for (const [op, opValue] of Object.entries(value)) {
 				let fragment: SqlFragment;
 
 				switch (op) {

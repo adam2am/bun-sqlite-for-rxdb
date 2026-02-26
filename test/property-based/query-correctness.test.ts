@@ -218,6 +218,22 @@ const MangoQueryArbitrary = () => {
 		]
 	}));
 	
+	const orPrecedenceArb = fc.tuple(
+		stringValueArb,
+		stringValueArb,
+		stringValueArb
+	).map(([name, val1, val2]) => ({
+		name: { $eq: name },
+		$or: [
+			{ optional: { $ne: val1 } },
+			{ optional: { $ne: val2 } }
+		]
+	}));
+	
+	const emptyObjectArb = fc.constantFrom('optional', 'name', 'age').map(field => ({
+		[field]: {}
+	}));
+	
 	return fc.oneof(
 		singleOpArb.map(toMangoQuery),
 		andArb,
@@ -225,7 +241,9 @@ const MangoQueryArbitrary = () => {
 		norArb,
 		notArb,
 		orWithNullArb,
-		deepNestedArb
+		deepNestedArb,
+		orPrecedenceArb,
+		emptyObjectArb
 	);
 };
 
