@@ -35,8 +35,10 @@
   "license": "MIT",
   "files": [
     "dist/",
+    "!dist/test/",
     "!dist/**/*.test.d.ts",
     "!dist/**/*.test.d.ts.map",
+    "!dist/**/*.d.ts.map",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"
