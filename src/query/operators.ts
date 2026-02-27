@@ -13,7 +13,7 @@ export type ElemMatchCriteria = QueryValue | OperatorExpression;
 import { smartRegexToLike } from './smart-regex';
 
 export function translateEq<RxDocType>(
-	field: string, 
+	field: string,
 	value: unknown,
 	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
 	actualFieldName?: string
@@ -21,7 +21,7 @@ export function translateEq<RxDocType>(
 	if (value === null) {
 		return { sql: `${field} IS NULL`, args: [] };
 	}
-	
+
 	if (schema && actualFieldName) {
 		const columnInfo = getColumnInfo(actualFieldName, schema);
 		if (field !== 'value' && columnInfo.type === 'array') {
@@ -31,12 +31,12 @@ export function translateEq<RxDocType>(
 			};
 		}
 	}
-	
+
 	return { sql: `${field} = ?`, args: [value as string | number | boolean] };
 }
 
 export function translateNe<RxDocType>(
-	field: string, 
+	field: string,
 	value: unknown,
 	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
 	actualFieldName?: string
@@ -44,7 +44,7 @@ export function translateNe<RxDocType>(
 	if (value === null) {
 		return { sql: `${field} IS NOT NULL`, args: [] };
 	}
-	
+
 	if (schema && actualFieldName) {
 		const columnInfo = getColumnInfo(actualFieldName, schema);
 		if (field !== 'value' && columnInfo.type === 'array') {
@@ -54,12 +54,12 @@ export function translateNe<RxDocType>(
 			};
 		}
 	}
-	
+
 	return { sql: `(${field} <> ? OR ${field} IS NULL)`, args: [value as string | number | boolean] };
 }
 
 export function translateGt<RxDocType>(
-	field: string, 
+	field: string,
 	value: unknown,
 	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
 	actualFieldName?: string
@@ -77,7 +77,7 @@ export function translateGt<RxDocType>(
 }
 
 export function translateGte<RxDocType>(
-	field: string, 
+	field: string,
 	value: unknown,
 	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
 	actualFieldName?: string
@@ -95,7 +95,7 @@ export function translateGte<RxDocType>(
 }
 
 export function translateLt<RxDocType>(
-	field: string, 
+	field: string,
 	value: unknown,
 	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
 	actualFieldName?: string
@@ -109,12 +109,12 @@ export function translateLt<RxDocType>(
 			};
 		}
 	}
-	
+
 	return { sql: `${field} < ?`, args: [value as string | number] };
 }
 
 export function translateLte<RxDocType>(
-	field: string, 
+	field: string,
 	value: unknown,
 	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
 	actualFieldName?: string
@@ -208,7 +208,7 @@ export function translateNin<RxDocType>(
 				};
 			}
 
-			return { sql: ninClause, args };
+			return { sql: `(${field} IS NULL OR ${ninClause})`, args };
 		}
 	}
 
@@ -222,7 +222,7 @@ export function translateNin<RxDocType>(
 		};
 	}
 
-	return { sql: ninClause, args };
+	return { sql: `(${field} IS NULL OR ${ninClause})`, args };
 }
 
 export function translateExists(field: string, exists: boolean): SqlFragment {
@@ -254,16 +254,32 @@ function buildElemMatchConditions<RxDocType>(
 	const args: (string | number | boolean | null)[] = [];
 
 	for (const [key, value] of Object.entries(criteria)) {
-		if (key.startsWith('$')) {
-			const fragment = processOperatorValue('value', { [key]: value }, schema, baseFieldName);
+		if (key === '$not') {
+			if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+				const [[innerOp, innerVal]] = Object.entries(value);
+				const innerFrag = translateLeafOperator(innerOp, 'value', innerVal, schema, baseFieldName);
+				conditions.push(`NOT (${innerFrag.sql})`);
+				args.push(...innerFrag.args);
+			}
+		} else if (key.startsWith('$')) {
+			const fragment = translateLeafOperator(key, 'value', value, schema, baseFieldName);
 			conditions.push(fragment.sql);
 			args.push(...fragment.args);
 		} else {
 			const propertyField = `json_extract(value, '$.${key}')`;
 			const nestedFieldName = `${baseFieldName}.${key}`;
-			const fragment = processOperatorValue(propertyField, value, schema, nestedFieldName);
-			conditions.push(fragment.sql);
-			args.push(...fragment.args);
+
+			if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+				for (const [op, opValue] of Object.entries(value)) {
+					const fragment = translateLeafOperator(op, propertyField, opValue, schema, nestedFieldName);
+					conditions.push(fragment.sql);
+					args.push(...fragment.args);
+				}
+			} else {
+				const fragment = translateLeafOperator('$eq', propertyField, value, schema, nestedFieldName);
+				conditions.push(fragment.sql);
+				args.push(...fragment.args);
+			}
 		}
 	}
 
@@ -274,7 +290,7 @@ function buildElemMatchConditions<RxDocType>(
 }
 
 export function translateElemMatch<RxDocType>(
-	field: string, 
+	field: string,
 	criteria: ElemMatchCriteria,
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	actualFieldName: string
@@ -283,7 +299,7 @@ export function translateElemMatch<RxDocType>(
 	if (typeof criteria === 'object' && criteria !== null && !Array.isArray(criteria) && Object.keys(criteria).length === 0) {
 		return { sql: '1=0', args: [] };
 	}
-	
+
 	if (typeof criteria !== 'object' || criteria === null) {
 		return {
 			sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value = ?)`,
@@ -328,136 +344,100 @@ export function translateElemMatch<RxDocType>(
 	};
 }
 
-function processOperatorValue<RxDocType>(
-	field: string, 
+export function translateLeafOperator<RxDocType>(
+	op: string,
+	field: string,
 	value: unknown,
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	actualFieldName: string
 ): SqlFragment {
-	if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-		const [[op, opValue]] = Object.entries(value);
-
-		if (!op.startsWith('$')) {
-			const jsonPath = `json_extract(${field}, '$.${op}')`;
-			const nestedFieldName = `${actualFieldName}.${op}`;
-			return translateEq(jsonPath, opValue, schema, nestedFieldName);
-		}
-
-		switch (op) {
-		case '$eq': return translateEq(field, opValue, schema, actualFieldName);
-		case '$ne': return translateNe(field, opValue, schema, actualFieldName);
-		case '$gt': return translateGt(field, opValue, schema, actualFieldName);
-		case '$gte': return translateGte(field, opValue, schema, actualFieldName);
-			case '$lt': return translateLt(field, opValue, schema, actualFieldName);
-			case '$lte': return translateLte(field, opValue, schema, actualFieldName);
-			case '$in': return translateIn(field, opValue as unknown[], schema, actualFieldName);
-			case '$nin': return translateNin(field, opValue as unknown[], schema, actualFieldName);
-			case '$exists': return translateExists(field, opValue as boolean);
-			case '$size': return translateSize(field, opValue as number);
+	switch (op) {
+		case '$eq': return translateEq(field, value, schema, actualFieldName);
+		case '$ne': return translateNe(field, value, schema, actualFieldName);
+		case '$gt': return translateGt(field, value, schema, actualFieldName);
+		case '$gte': return translateGte(field, value, schema, actualFieldName);
+		case '$lt': return translateLt(field, value, schema, actualFieldName);
+		case '$lte': return translateLte(field, value, schema, actualFieldName);
+		case '$in': return translateIn(field, value as unknown[], schema, actualFieldName);
+		case '$nin': return translateNin(field, value as unknown[], schema, actualFieldName);
+		case '$exists': return translateExists(field, value as boolean);
+		case '$size': return translateSize(field, value as number);
 		case '$mod': {
-			const result = translateMod(field, opValue);
-			if (!result) return translateEq(field, opValue, schema, actualFieldName);
+			const result = translateMod(field, value);
+			if (!result) return translateEq(field, value, schema, actualFieldName);
 			return result;
 		}
 		case '$regex': {
-			const options = (value as Record<string, unknown>).$options as string | undefined;
-			const regexFragment = translateRegex(field, opValue as string, options, schema, actualFieldName);
+			let options: string | undefined;
+			let pattern: string;
+
+			if (typeof value === 'string') {
+				pattern = value;
+			} else if (typeof value === 'object' && value !== null) {
+				const regexObj = value as Record<string, unknown>;
+				pattern = regexObj.pattern as string || regexObj.$regex as string;
+				options = regexObj.$options as string | undefined;
+			} else {
+				return { sql: '1=0', args: [] };
+			}
+
+			const regexFragment = translateRegex(field, pattern, options, schema, actualFieldName);
 			return regexFragment || { sql: '1=0', args: [] };
 		}
 		case '$type': {
 			let jsonCol = 'data';
 			let path = `$.${actualFieldName}`;
 			let useDirectType = false;
-			
-		if (field === 'value') {
-			jsonCol = 'value';
-			path = '';
-			useDirectType = true;
-		} else if (field.startsWith('json_extract(')) {
-			const match = field.match(/json_extract\(([^,]+),\s*'([^']+)'\)/);
-			if (match) {
-				jsonCol = match[1];
-				path = match[2];
-			}
-		}
-		
-		if (useDirectType) {
-			const typeMap: Record<string, string> = {
-				'null': 'null',
-				'boolean': 'true',
-				'number': 'integer',
-				'string': 'text',
-				'array': 'array',
-				'object': 'object'
-			};
-			const sqlType = typeMap[opValue as string];
-			if (!sqlType) return { sql: '1=0', args: [] };
-			
-			if (opValue === 'boolean') {
-				return { sql: `(type IN ('true', 'false'))`, args: [] };
-			}
-			if (opValue === 'number') {
-				return { sql: `(type IN ('integer', 'real'))`, args: [] };
-			}
-			
-			return { sql: `type = '${sqlType}'`, args: [] };
-		}
-		
-		const typeFragment = translateType(jsonCol, path, opValue as string, true);
-		return typeFragment || { sql: '1=0', args: [] };
-	}
-		case '$elemMatch': {
-			const elemMatchFragment = translateElemMatch(field, opValue as ElemMatchCriteria, schema, actualFieldName);
-			return elemMatchFragment || { sql: '1=0', args: [] };
-		}
-		case '$not': {
-			const result = translateNot(field, opValue, schema, actualFieldName);
-			if (!result) return translateEq(field, opValue, schema, actualFieldName);
-			return result;
-		}
-		case '$and': {
-			if (!Array.isArray(opValue)) return translateEq(field, opValue, schema, actualFieldName);
-			const fragments = opValue.map(v => processOperatorValue(field, v, schema, actualFieldName));
-			const sql = fragments.map(f => f.sql).join(' AND ');
-			const args = fragments.flatMap(f => f.args);
-			return { sql: `(${sql})`, args };
-		}
-		case '$or': {
-			if (!Array.isArray(opValue)) return translateEq(field, opValue, schema, actualFieldName);
-			const fragments = opValue.map(v => processOperatorValue(field, v, schema, actualFieldName));
-			const sql = fragments.map(f => f.sql).join(' OR ');
-			const args = fragments.flatMap(f => f.args);
-			return { sql: `(${sql})`, args };
-		}
-			default: return translateEq(field, opValue, schema, actualFieldName);
-		}
-	}
 
-	return translateEq(field, value, schema, actualFieldName);
+			if (field === 'value') {
+				jsonCol = 'value';
+				path = '';
+				useDirectType = true;
+			} else if (field.startsWith('json_extract(')) {
+				const match = field.match(/json_extract\(([^,]+),\s*'([^']+)'\)/);
+				if (match && match[1] && match[2]) {
+					jsonCol = match[1];
+					path = match[2];
+				}
+			}
+
+			if (useDirectType) {
+				const typeMap: Record<string, string> = {
+					'null': 'null',
+					'boolean': 'true',
+					'number': 'integer',
+					'string': 'text',
+					'array': 'array',
+					'object': 'object'
+				};
+				const sqlType = typeMap[value as string];
+				if (!sqlType) return { sql: '1=0', args: [] };
+
+				if (value === 'boolean') {
+					return { sql: `(type IN ('true', 'false'))`, args: [] };
+				}
+				if (value === 'number') {
+					return { sql: `(type IN ('integer', 'real'))`, args: [] };
+				}
+
+				return { sql: `type = '${sqlType}'`, args: [] };
+			}
+
+			const typeFragment = translateType(jsonCol, path, value as string, true);
+			return typeFragment || { sql: '1=0', args: [] };
+		}
+		default:
+			return translateEq(field, value, schema, actualFieldName);
+	}
 }
 
-export function translateNot<RxDocType>(
-	field: string, 
-	criteria: unknown,
-	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
-	actualFieldName: string
-): SqlFragment | null {
-	// MongoDB requires $not to have an operator expression, not a primitive value
-	// Reject: undefined, null, primitives (false, 0, "", true, numbers, strings), empty objects
-	if (criteria === undefined || 
-	    criteria === null || 
-	    typeof criteria !== 'object' || 
-	    Array.isArray(criteria) ||
-	    Object.keys(criteria).length === 0) {
-		return { sql: '1=0', args: [] };
-	}
-	
-	const inner = processOperatorValue(field, criteria, schema, actualFieldName);
+export function wrapWithNot(innerFragment: SqlFragment): SqlFragment {
 	return {
-		sql: `NOT (${inner.sql})`,
-		args: inner.args
+		sql: `NOT (${innerFragment.sql})`,
+		args: innerFragment.args
 	};
 }
+
 
 export function translateType(
 	jsonColumn: string,

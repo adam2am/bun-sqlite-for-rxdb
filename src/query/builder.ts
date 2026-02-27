@@ -1,6 +1,6 @@
 import type { RxJsonSchema, MangoQuerySelector, RxDocumentData } from 'rxdb';
 import { getColumnInfo } from './schema-mapper';
-import { translateEq, translateNe, translateGt, translateGte, translateLt, translateLte, translateIn, translateNin, translateExists, translateRegex, translateElemMatch, translateNot, translateType, translateSize, translateMod } from './operators';
+import { translateLeafOperator, wrapWithNot, translateElemMatch } from './operators';
 import type { SqlFragment, ElemMatchCriteria } from './operators';
 import { stableStringify } from '../utils/stable-stringify';
 
@@ -118,81 +118,112 @@ function processSelector<RxDocType>(
 			return { sql: '1=0', args: [] };
 		}
 		
+		const fieldFragments: SqlFragment[] = [];
+		
 		for (const [op, opValue] of Object.entries(value)) {
-				let fragment: SqlFragment;
+			let fragment: SqlFragment;
 
-				switch (op) {
-					case '$eq':
-						fragment = translateEq(fieldName, opValue, schema, actualFieldName);
-						break;
-					case '$ne':
-						fragment = translateNe(fieldName, opValue, schema, actualFieldName);
-						break;
-					case '$gt':
-						fragment = translateGt(fieldName, opValue, schema, actualFieldName);
-						break;
-					case '$gte':
-						fragment = translateGte(fieldName, opValue, schema, actualFieldName);
-						break;
-				case '$lt':
-					fragment = translateLt(fieldName, opValue, schema, actualFieldName);
-					break;
-					case '$lte':
-						fragment = translateLte(fieldName, opValue, schema, actualFieldName);
-						break;
-					case '$in':
-						fragment = translateIn(fieldName, opValue as unknown[], schema, actualFieldName);
-						break;
-				case '$nin':
-					fragment = translateNin(fieldName, opValue as unknown[], schema, actualFieldName);
-					break;
-					case '$exists':
-						fragment = translateExists(fieldName, opValue as boolean);
-						break;
-				case '$regex':
-					const options = (value as Record<string, unknown>).$options as string | undefined;
-					const regexFragment = translateRegex(fieldName, opValue as string, options, schema, actualFieldName);
-					if (!regexFragment) return null;
-					fragment = regexFragment;
-					break;
-				case '$elemMatch':
-					const elemMatchFragment = translateElemMatch(fieldName, opValue as ElemMatchCriteria, schema, actualFieldName);
-					if (!elemMatchFragment) return null;
-					fragment = elemMatchFragment;
-					break;
-				case '$not': {
-					const notResult = translateNot(fieldName, opValue, schema, actualFieldName);
-					if (!notResult) return null;
-					fragment = notResult;
-					break;
+			if (op === '$not') {
+				// TOLERANT READER PATTERN (Postel's Law: Be liberal in what you accept)
+				// MongoDB spec: $not requires operator expressions, rejects primitives
+				// Mingo behavior: Auto-wraps primitives with $eq (more permissive)
+				// Our choice: Follow Mingo to maintain RxDB ecosystem compatibility
+				// Rationale: Don't break user space when switching from Memory to SQLite storage
+				
+				// 1. Handle Primitives, null, and Arrays (Mingo compatibility)
+				// Examples: { $not: false } → { $not: { $eq: false } }
+				//           { $not: null } → { $not: { $eq: null } }
+				//           { $not: [1,2] } → { $not: { $eq: [1,2] } }
+				if (typeof opValue !== 'object' || opValue === null || Array.isArray(opValue)) {
+					const eqFrag = translateLeafOperator('$eq', fieldName, opValue, schema, actualFieldName);
+					fragment = wrapWithNot(eqFrag);
+				
+				// 2. Handle Date objects (Mingo compatibility)
+				// Example: { $not: new Date('2024-01-01') } → { $not: { $eq: date } }
+				} else if (opValue instanceof Date) {
+					const eqFrag = translateLeafOperator('$eq', fieldName, opValue, schema, actualFieldName);
+					fragment = wrapWithNot(eqFrag);
+				
+				// 3. Handle RegExp objects (Mingo compatibility)
+				// Example: { $not: /pattern/i } → { $not: { $regex: /pattern/i } }
+				} else if (opValue instanceof RegExp) {
+					const regexFrag = translateLeafOperator('$regex', fieldName, opValue, schema, actualFieldName);
+					fragment = wrapWithNot(regexFrag);
+				
+				// 4. Handle Objects (operator expressions, plain objects, empty objects)
+				} else {
+					const opValueObj = opValue as Record<string, unknown>;
+					const innerKeys = Object.keys(opValueObj);
+					
+					// 5. Reject Empty Objects (Corrupted Data)
+					// Example: { $not: {} } → No operators to negate → Impossible condition
+					if (innerKeys.length === 0) {
+						fragment = { sql: '1=0', args: [] };
+					
+					// 6. Handle Nested Logical Operators ($and/$or/$nor)
+					// Example: { $not: { $and: [...] } } → Unwrap and negate
+					} else if (innerKeys.some(k => k === '$and' || k === '$or' || k === '$nor')) {
+						const innerFragment = processSelector(opValueObj as MangoQuerySelector<RxDocumentData<RxDocType>>, schema, logicalDepth + 1);
+						if (!innerFragment) return null;
+						fragment = wrapWithNot(innerFragment);
+					
+					// 7. Handle $elemMatch
+					// Example: { $not: { $elemMatch: {...} } } → Negate array match
+					} else if (innerKeys.length === 1 && innerKeys[0] === '$elemMatch') {
+						const elemMatchFragment = translateElemMatch(fieldName, opValueObj.$elemMatch as ElemMatchCriteria, schema, actualFieldName);
+						if (!elemMatchFragment) return null;
+						fragment = wrapWithNot(elemMatchFragment);
+					
+					// 8. Distinguish: Operator Expressions vs Plain Objects
+					} else {
+						const hasOperators = innerKeys.some(k => k.startsWith('$'));
+						if (!hasOperators) {
+							// Plain object without operators → Wrap with $eq (Mingo compatibility)
+							// Example: { $not: { a: 1 } } → NOT (field = {a:1})
+							const eqFrag = translateLeafOperator('$eq', fieldName, opValueObj, schema, actualFieldName);
+							fragment = wrapWithNot(eqFrag);
+						} else {
+							// Has operators → Process normally
+							// Example: { $not: { $gt: 5 } } → NOT (field > 5)
+							const [[innerOp, innerVal]] = Object.entries(opValueObj);
+							const innerFrag = translateLeafOperator(innerOp, fieldName, innerVal, schema, actualFieldName);
+							fragment = wrapWithNot(innerFrag);
+						}
+					}
 				}
-				case '$type':
-					const typeFragment = translateType('data', actualFieldName, opValue as string);
-					if (!typeFragment) return null;
-					fragment = typeFragment;
-					break;
-					case '$size':
-						fragment = translateSize(fieldName, opValue as number);
-						break;
-				case '$mod': {
-					const modResult = translateMod(fieldName, opValue);
-					if (!modResult) return null;
-					fragment = modResult;
-					break;
-				}
-					default:
-						continue;
-				}
-
-				conditions.push(fragment.sql);
-				args.push(...fragment.args);
+			} else if (op === '$elemMatch') {
+				const elemMatchFragment = translateElemMatch(fieldName, opValue as ElemMatchCriteria, schema, actualFieldName);
+				if (!elemMatchFragment) return null;
+				fragment = elemMatchFragment;
+			} else if (!op.startsWith('$')) {
+				const jsonPath = `json_extract(${fieldName}, '$.${op}')`;
+				const nestedFieldName = `${actualFieldName}.${op}`;
+				fragment = translateLeafOperator('$eq', jsonPath, opValue, schema, nestedFieldName);
+			} else {
+				fragment = translateLeafOperator(op, fieldName, opValue, schema, actualFieldName);
 			}
-		} else {
-			const fragment = translateEq(fieldName, value, schema, actualFieldName);
-			conditions.push(fragment.sql);
-			args.push(...fragment.args);
+
+			if (fieldFragments.length > 0) {
+				const prev = fieldFragments.pop()!;
+				fieldFragments.push({
+					sql: `(${prev.sql} AND ${fragment.sql})`,
+					args: [...prev.args, ...fragment.args]
+				});
+			} else {
+				fieldFragments.push(fragment);
+			}
 		}
+		
+		fieldFragments.forEach(f => {
+			conditions.push(f.sql);
+			args.push(...f.args);
+		});
+	} else {
+		const fragment = translateLeafOperator('$eq', fieldName, value, schema, actualFieldName);
+		conditions.push(fragment.sql);
+		args.push(...fragment.args);
 	}
+}
 
 	const where = conditions.length > 0 ? conditions.join(' AND ') : '1=1';
 	return { sql: where, args };
