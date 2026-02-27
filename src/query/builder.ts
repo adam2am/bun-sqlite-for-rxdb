@@ -91,6 +91,10 @@ function processSelector<RxDocType>(
 			const orFragment = buildLogicalOperator('or', value, schema, logicalDepth);
 			if (!orFragment) return null;
 			
+			// Wrap OR in parentheses to ensure correct precedence
+			// SQL: AND (level 6) > OR (level 7)
+			// Without parens: "A AND B OR C" = "(A AND B) OR C" (WRONG!)
+			// With parens: "A AND (B OR C)" (CORRECT)
 			conditions.push(`(${orFragment.sql})`);
 			args.push(...orFragment.args);
 			continue;
