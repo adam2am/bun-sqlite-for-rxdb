@@ -30,7 +30,7 @@ describe('$in operator', () => {
 describe('$nin operator', () => {
 	it('generates NOT IN clause for array of values', () => {
 		const result = translateNin('age', [25, 30, 35]);
-		expect(result.sql).toBe('age NOT IN (SELECT value FROM json_each(?))');
+		expect(result.sql).toBe('(age IS NULL OR age NOT IN (SELECT value FROM json_each(?)))');
 		expect(result.args).toEqual(['[25,30,35]']);
 	});
 

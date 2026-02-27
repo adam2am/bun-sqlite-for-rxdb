@@ -56,7 +56,7 @@ describe('Statement Cache Optimization (Issue #1)', () => {
 		it('should use json_each() to prevent statement cache thrashing', () => {
 			const result = translateNin('age', [25, 30, 35]);
 			
-			expect(result.sql).toBe('age NOT IN (SELECT value FROM json_each(?))');
+			expect(result.sql).toBe('(age IS NULL OR age NOT IN (SELECT value FROM json_each(?)))');
 			expect(result.args).toEqual(['[25,30,35]']);
 		});
 
@@ -67,7 +67,7 @@ describe('Statement Cache Optimization (Issue #1)', () => {
 
 			expect(result1.sql).toBe(result2.sql);
 			expect(result2.sql).toBe(result3.sql);
-			expect(result1.sql).toBe('id NOT IN (SELECT value FROM json_each(?))');
+			expect(result1.sql).toBe('(id IS NULL OR id NOT IN (SELECT value FROM json_each(?)))');
 		});
 
 		it('should handle NULL values with json_each()', () => {
