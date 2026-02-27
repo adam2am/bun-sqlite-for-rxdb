@@ -19,9 +19,9 @@ import type {
 	MangoQuerySortPart,
 	RxStorageDefaultCheckpoint
 } from 'rxdb';
-import { getQueryMatcher } from 'rxdb';
 import type { BunSQLiteStorageSettings, BunSQLiteInternals } from './types';
 import { buildWhereClause } from './query/builder';
+import { matchesSelector } from './query/lightweight-matcher';
 import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from './rxdb-helpers';
 import { StatementManager } from './statement-manager';
 import { getDatabase, releaseDatabase } from './connection-pool';
@@ -269,6 +269,9 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		}
 
 		if (preparedQuery.query.skip) {
+			if (!preparedQuery.query.limit) {
+				sql += ` LIMIT -1`;
+			}
 			sql += ` OFFSET ?`;
 			queryArgs.push(preparedQuery.query.skip);
 		}
@@ -287,25 +290,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		return { documents };
 	}
 
-	private matchesSelector(doc: RxDocumentData<RxDocType>, selector: MangoQuerySelector<RxDocumentData<RxDocType>>): boolean {
-		for (const [key, value] of Object.entries(selector)) {
-			const docValue = this.getNestedValue(doc, key);
 
-			if (typeof value === 'object' && value !== null) {
-				for (const [op, opValue] of Object.entries(value)) {
-					if (op === '$eq' && docValue !== opValue) return false;
-					if (op === '$ne' && docValue === opValue) return false;
-					if (op === '$gt' && !((docValue as number) > (opValue as number))) return false;
-					if (op === '$gte' && !((docValue as number) >= (opValue as number))) return false;
-					if (op === '$lt' && !((docValue as number) < (opValue as number))) return false;
-					if (op === '$lte' && !((docValue as number) <= (opValue as number))) return false;
-				}
-			} else {
-				if (docValue !== value) return false;
-			}
-		}
-		return true;
-	}
 
 	private sortDocuments(docs: RxDocumentData<RxDocType>[], sort: MangoQuerySortPart<RxDocType>[]): RxDocumentData<RxDocType>[] {
 		return docs.sort((a, b) => {
@@ -433,22 +418,47 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 	private queryWithOurMemory(preparedQuery: PreparedQuery<RxDocType>): RxStorageQueryResult<RxDocType> {
 		const query = `SELECT json(data) as data FROM "${this.tableName}"`;
-		const rows = this.stmtManager.all({ query, params: [] }) as Array<{ data: string }>;
-		let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
+		const selector = preparedQuery.query.selector;
+		const hasSort = preparedQuery.query.sort && preparedQuery.query.sort.length > 0;
 
-		const queryMatcher = getQueryMatcher(this.schema, preparedQuery.query);
-		documents = documents.filter(doc => queryMatcher(doc));
-
-		if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
+		if (hasSort) {
+			const rows = this.stmtManager.all({ query, params: [] }) as Array<{ data: string }>;
+			let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
+			documents = documents.filter(doc => matchesSelector(doc, selector));
 			documents = this.sortDocuments(documents, preparedQuery.query.sort);
+
+			if (preparedQuery.query.skip) {
+				documents = documents.slice(preparedQuery.query.skip);
+			}
+
+			if (preparedQuery.query.limit) {
+				documents = documents.slice(0, preparedQuery.query.limit);
+			}
+
+			return { documents };
 		}
 
-		if (preparedQuery.query.skip) {
-			documents = documents.slice(preparedQuery.query.skip);
-		}
+		const stmt = this.db.prepare(query);
+		const documents: RxDocumentData<RxDocType>[] = [];
+		const skip = preparedQuery.query.skip || 0;
+		const limit = preparedQuery.query.limit;
+		let skipped = 0;
 
-		if (preparedQuery.query.limit) {
-			documents = documents.slice(0, preparedQuery.query.limit);
+		for (const row of stmt.iterate() as IterableIterator<{ data: string }>) {
+			const doc = JSON.parse(row.data) as RxDocumentData<RxDocType>;
+
+			if (matchesSelector(doc, selector)) {
+				if (skipped < skip) {
+					skipped++;
+					continue;
+				}
+
+				documents.push(doc);
+
+				if (limit && documents.length >= limit) {
+					break;
+				}
+			}
 		}
 
 		return { documents };
