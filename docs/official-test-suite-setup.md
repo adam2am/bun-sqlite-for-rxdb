@@ -277,6 +277,7 @@ DEFAULT_STORAGE=custom NODE_ENV=fast bun run ./node_modules/mocha/bin/mocha test
 
 # Test with native bun test (55/56 pass)
 DEFAULT_STORAGE=custom bun test test_tmp/unit/rx-storage-implementations.test.js
+cd "C:\OPPROJ\bun-sqlite-for-rxdb\.ignoreFolder\rxdb" && DEFAULT_STORAGE=custom bun test "test_tmp\unit\rx-storage-query-correctness.test.ts"
 
 # Test specific storage (from package.json)
 npm run test:bun:dexie
