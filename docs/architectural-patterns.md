@@ -2,6 +2,9 @@
 
 Key design patterns and decisions for `bun-sqlite-for-rxdb` development.
 
+- builder.ts: Parser (structure → SQL refs)
+- operators.ts: Dictionary (operator → SQL condition)
+- Clear contract, no mixing
 
 ## Quick Reference
 
@@ -22,7 +25,6 @@ Key design patterns and decisions for `bun-sqlite-for-rxdb` development.
 | FTS5 NOT worth it | v0.3.0+ | 1.79x slower at 100k scale |
 | JSONB storage | v0.3.0+ | 1.57x faster complex queries |
 | Storage layer architecture | v0.3.0+ | Return ALL documents |
-| Bun console.log issue | v0.3.0+ | Use console.error |
 | Connection pooling | v0.3.0+ | Multi-instance support |
 | Official multi-instance | v0.3.0+ | Use RxDB's implementation |
 | Composite primary key | v0.3.0+ | Handle both formats |
