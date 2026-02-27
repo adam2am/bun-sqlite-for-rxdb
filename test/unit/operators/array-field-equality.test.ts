@@ -28,7 +28,7 @@ const schema: RxJsonSchema<RxDocumentData<TestDoc>> = {
 
 describe('Array field direct equality (MongoDB behavior)', () => {
 	it('should match documents where array contains the value', () => {
-		const result = buildWhereClause({ tags: 'moderator' }, schema, 'test');
+		const result = buildWhereClause({ tags: { $eq: 'moderator' } }, schema, 'test');
 		expect(result).not.toBeNull();
 		expect(result!.sql).toContain('jsonb_each');
 		expect(result!.sql).toContain('value = ?');
@@ -36,14 +36,14 @@ describe('Array field direct equality (MongoDB behavior)', () => {
 	});
 
 	it('should match documents where array contains "admin"', () => {
-		const result = buildWhereClause({ tags: 'admin' }, schema, 'test');
+		const result = buildWhereClause({ tags: { $eq: 'admin' } }, schema, 'test');
 		expect(result).not.toBeNull();
 		expect(result!.sql).toContain('jsonb_each');
 		expect(result!.args).toContain('admin');
 	});
 
 	it('should handle non-existent value in array', () => {
-		const result = buildWhereClause({ tags: 'nonexistent' }, schema, 'test');
+		const result = buildWhereClause({ tags: { $eq: 'nonexistent' } }, schema, 'test');
 		expect(result).not.toBeNull();
 		expect(result!.sql).toContain('jsonb_each');
 		expect(result!.args).toContain('nonexistent');
