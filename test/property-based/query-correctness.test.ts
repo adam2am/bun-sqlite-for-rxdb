@@ -104,12 +104,27 @@ const MangoQueryArbitrary = () => {
 		value: fc.tuple(fc.integer({ min: 2, max: 5 }), fc.integer({ min: 0, max: 4 }))
 	});
 	
-	// Regex patterns: Only simple patterns that convert to SQL LIKE (^A, e$, substring)
-	// Complex patterns (alternation, quantifiers, character classes) use in-memory filtering
+	// Regex patterns: Simple patterns (SQL LIKE) + Complex patterns (in-memory)
 	const regexArb = fc.record({
 		field: fc.constantFrom('name'),
 		op: fc.constant('$regex'),
 		value: fc.constantFrom('Alice', 'Bob', 'lie', 'vid', '^A', 'e$')
+	});
+	
+	// Complex regex patterns (character classes, quantifiers, alternation)
+	const complexRegexArb = fc.record({
+		field: fc.constantFrom('name', 'optional'),
+		op: fc.constant('$regex'),
+		value: fc.constantFrom(
+			'(Alice|Bob)',           // Alternation
+			'[A-Z][a-z]+',          // Character classes
+			'A+',                    // Quantifiers
+			'.*e$',                  // Wildcards
+			'^[A-Z]{3,5}',          // Bounded quantifiers
+			'\\w+',                  // Shorthands
+			'(a|e){2,}'             // Complex combination
+		),
+		options: fc.option(fc.constantFrom('i', 'im', 'g'), { nil: undefined })
 	});
 	
 	const typeArb = fc.record({
@@ -231,7 +246,58 @@ const MangoQueryArbitrary = () => {
 	}));
 	
 	const emptyObjectArb = fc.constantFrom('optional', 'name', 'age').map(field => ({
-		[field]: {}
+		field: {}
+	}));
+	
+	// NEW: $not with nested $and/$or
+	const notNestedArb = fc.tuple(numberValueArb, numberValueArb).map(([age1, age2]) => ({
+		age: {
+			$not: {
+				$and: [
+					{ age: { $gt: Math.min(age1, age2) } },
+					{ age: { $lt: Math.max(age1, age2) } }
+				]
+			}
+		}
+	}));
+	
+	// NEW: Empty array edge cases
+	const emptyArrayArb = fc.constantFrom(
+		{ age: { $in: [] } },      // Should match nothing
+		{ age: { $nin: [] } },     // Should match everything
+		{ tags: { $in: [] } },     // Should match nothing
+		{ tags: { $nin: [] } }     // Should match everything
+	);
+	
+	// NEW: NULL in $in/$nin
+	const nullInArrayArb = fc.constantFrom(
+		{ optional: { $in: ['present', 'value'] } },
+		{ optional: { $nin: ['present'] } },
+		{ optional: { $in: [null] } }
+	);
+	
+	// NEW: $elemMatch with $not inside
+	const elemMatchNotArb = fc.constantFrom(
+		{ tags: { $elemMatch: { $not: { $regex: '^a' } } } },
+		{ tags: { $elemMatch: { $not: { $eq: 'admin' } } } },
+		{ items: { $elemMatch: { price: { $not: { $gt: 150 } } } } }
+	);
+	
+	// NEW: Multiple operators on same field
+	const multiOpArb = fc.tuple(numberValueArb, numberValueArb).map(([min, max]) => ({
+		age: {
+			$gte: Math.min(min, max),
+			$lte: Math.max(min, max)
+		}
+	}));
+	
+	// NEW: Complex regex with options
+	const complexRegexWithOptionsArb = fc.record({
+		field: fc.constantFrom('name'),
+		pattern: fc.constantFrom('(alice|bob)', '[a-z]+', '\\w{3,}'),
+		options: fc.constantFrom('i', 'im')
+	}).map(({ field, pattern, options }) => ({
+		[field]: { $regex: pattern, $options: options }
 	}));
 	
 	return fc.oneof(
@@ -243,7 +309,15 @@ const MangoQueryArbitrary = () => {
 		orWithNullArb,
 		deepNestedArb,
 		orPrecedenceArb,
-		emptyObjectArb
+		emptyObjectArb,
+		// NEW: Edge cases and complex scenarios
+		notNestedArb,
+		emptyArrayArb,
+		nullInArrayArb,
+		elemMatchNotArb,
+		multiOpArb,
+		complexRegexArb.map(op => ({ [op.field]: { $regex: op.value, ...(op.options ? { $options: op.options } : {}) } })),
+		complexRegexWithOptionsArb
 	);
 };
 
