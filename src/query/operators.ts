@@ -12,6 +12,26 @@ export type ElemMatchCriteria = QueryValue | OperatorExpression;
 
 import { smartRegexToLike } from './smart-regex';
 
+/**
+ * Normalizes values for SQLite binding compatibility.
+ * SQLite only accepts: string | number | boolean | null | bigint | TypedArray
+ * 
+ * @param value - Value to normalize
+ * @returns SQLite-compatible value
+ */
+function normalizeValueForSQLite(value: unknown): string | number | boolean | null {
+	if (value instanceof Date) {
+		return value.toISOString();
+	}
+	if (value instanceof RegExp) {
+		return JSON.stringify({ source: value.source, flags: value.flags });
+	}
+	if (value === undefined) {
+		return null;
+	}
+	return value as string | number | boolean | null;
+}
+
 export function translateEq<RxDocType>(
 	field: string,
 	value: unknown,
@@ -27,12 +47,12 @@ export function translateEq<RxDocType>(
 		if (field !== 'value' && columnInfo.type === 'array') {
 			return {
 				sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value = ?)`,
-				args: [value as string | number | boolean]
+				args: [normalizeValueForSQLite(value)]
 			};
 		}
 	}
 
-	return { sql: `${field} = ?`, args: [value as string | number | boolean] };
+	return { sql: `${field} = ?`, args: [normalizeValueForSQLite(value)] };
 }
 
 export function translateNe<RxDocType>(
@@ -50,12 +70,12 @@ export function translateNe<RxDocType>(
 		if (field !== 'value' && columnInfo.type === 'array') {
 			return {
 				sql: `NOT EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value = ?)`,
-				args: [value as string | number | boolean]
+				args: [normalizeValueForSQLite(value)]
 			};
 		}
 	}
 
-	return { sql: `(${field} <> ? OR ${field} IS NULL)`, args: [value as string | number | boolean] };
+	return { sql: `(${field} <> ? OR ${field} IS NULL)`, args: [normalizeValueForSQLite(value)] };
 }
 
 export function translateGt<RxDocType>(
@@ -69,11 +89,11 @@ export function translateGt<RxDocType>(
 		if (field !== 'value' && columnInfo.type === 'array') {
 			return {
 				sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value > ?)`,
-				args: [value as string | number]
+				args: [normalizeValueForSQLite(value)]
 			};
 		}
 	}
-	return { sql: `${field} > ?`, args: [value as string | number] };
+	return { sql: `${field} > ?`, args: [normalizeValueForSQLite(value)] };
 }
 
 export function translateGte<RxDocType>(
@@ -87,11 +107,11 @@ export function translateGte<RxDocType>(
 		if (field !== 'value' && columnInfo.type === 'array') {
 			return {
 				sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value >= ?)`,
-				args: [value as string | number]
+				args: [normalizeValueForSQLite(value)]
 			};
 		}
 	}
-	return { sql: `${field} >= ?`, args: [value as string | number] };
+	return { sql: `${field} >= ?`, args: [normalizeValueForSQLite(value)] };
 }
 
 export function translateLt<RxDocType>(
@@ -105,12 +125,12 @@ export function translateLt<RxDocType>(
 		if (field !== 'value' && columnInfo.type === 'array') {
 			return {
 				sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value < ?)`,
-				args: [value as string | number]
+				args: [normalizeValueForSQLite(value)]
 			};
 		}
 	}
 
-	return { sql: `${field} < ?`, args: [value as string | number] };
+	return { sql: `${field} < ?`, args: [normalizeValueForSQLite(value)] };
 }
 
 export function translateLte<RxDocType>(
@@ -124,11 +144,11 @@ export function translateLte<RxDocType>(
 		if (field !== 'value' && columnInfo.type === 'array') {
 			return {
 				sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value <= ?)`,
-				args: [value as string | number]
+				args: [normalizeValueForSQLite(value)]
 			};
 		}
 	}
-	return { sql: `${field} <= ?`, args: [value as string | number] };
+	return { sql: `${field} <= ?`, args: [normalizeValueForSQLite(value)] };
 }
 
 export function translateIn<RxDocType>(
@@ -142,7 +162,7 @@ export function translateIn<RxDocType>(
 	}
 
 	const hasNull = values.includes(null);
-	const nonNullValues = values.filter(v => v !== null) as (string | number | boolean)[];
+	const nonNullValues = values.filter(v => v !== null).map(v => normalizeValueForSQLite(v));
 
 	if (nonNullValues.length === 0) {
 		return { sql: `${field} IS NULL`, args: [] };
@@ -189,7 +209,7 @@ export function translateNin<RxDocType>(
 	}
 
 	const hasNull = values.includes(null);
-	const nonNullValues = values.filter(v => v !== null) as (string | number | boolean)[];
+	const nonNullValues = values.filter(v => v !== null).map(v => normalizeValueForSQLite(v));
 
 	if (nonNullValues.length === 0) {
 		return { sql: `${field} IS NOT NULL`, args: [] };
@@ -371,7 +391,10 @@ export function translateLeafOperator<RxDocType>(
 			let options: string | undefined;
 			let pattern: string;
 
-			if (typeof value === 'string') {
+			if (value instanceof RegExp) {
+				pattern = value.source;
+				options = value.flags;
+			} else if (typeof value === 'string') {
 				pattern = value;
 			} else if (typeof value === 'object' && value !== null) {
 				const regexObj = value as Record<string, unknown>;
