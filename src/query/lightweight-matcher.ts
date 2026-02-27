@@ -1,3 +1,4 @@
+import type { RxDocumentData, MangoQuerySelector, MangoQueryOperators } from 'rxdb';
 import { matchesRegex } from './regex-matcher';
 
 type Operator = (docValue: any, queryValue: any) => boolean;
@@ -24,22 +25,28 @@ const operators: Record<string, Operator> = {
 	$size: (a, b) => Array.isArray(a) && a.length === b,
 };
 
-function getNestedValue(obj: any, path: string): any {
-	return path.split('.').reduce((current, key) => current?.[key], obj);
+function getNestedValue<T>(obj: T, path: string): unknown {
+	return path.split('.').reduce(
+		(current, key) => (current as Record<string, unknown>)?.[key],
+		obj as unknown
+	);
 }
 
-export function matchesSelector(doc: any, selector: any): boolean {
+export function matchesSelector<RxDocType>(
+	doc: RxDocumentData<RxDocType>,
+	selector: MangoQuerySelector<RxDocumentData<RxDocType>>
+): boolean {
 	if (!selector || typeof selector !== 'object') return true;
 
 	// Handle logical operators first
 	if (selector.$and) {
-		return Array.isArray(selector.$and) && selector.$and.every((s: any) => matchesSelector(doc, s));
+		return Array.isArray(selector.$and) && selector.$and.every(s => matchesSelector(doc, s));
 	}
 	if (selector.$or) {
-		return Array.isArray(selector.$or) && selector.$or.some((s: any) => matchesSelector(doc, s));
+		return Array.isArray(selector.$or) && selector.$or.some(s => matchesSelector(doc, s));
 	}
 	if (selector.$nor) {
-		return Array.isArray(selector.$nor) && !selector.$nor.some((s: any) => matchesSelector(doc, s));
+		return Array.isArray(selector.$nor) && !selector.$nor.some(s => matchesSelector(doc, s));
 	}
 
 	// Handle field operators
@@ -55,7 +62,7 @@ export function matchesSelector(doc: any, selector: any): boolean {
 		// Handle operators
 		for (const [op, opValue] of Object.entries(condition)) {
 			if (op === '$regex') {
-				const options = (condition as any).$options;
+				const options = (condition as MangoQueryOperators<unknown, unknown>).$options;
 				if (!matchesRegex(value, opValue as string, options)) return false;
 				continue;
 			}
@@ -67,7 +74,9 @@ export function matchesSelector(doc: any, selector: any): boolean {
 
 			if (op === '$elemMatch') {
 				if (!Array.isArray(value)) return false;
-				const hasMatch = value.some(item => matchesSelector(item, opValue));
+				const hasMatch = value.some(item => 
+					matchesSelector(item, opValue as MangoQuerySelector<RxDocumentData<RxDocType>>)
+				);
 				if (!hasMatch) return false;
 				continue;
 			}
@@ -83,14 +92,14 @@ export function matchesSelector(doc: any, selector: any): boolean {
 	return true;
 }
 
-function matchesOperator(value: any, operator: any): boolean {
+function matchesOperator(value: unknown, operator: unknown | MangoQueryOperators<unknown, unknown>): boolean {
 	if (typeof operator !== 'object' || operator === null) {
 		return value === operator;
 	}
 
 	for (const [op, opValue] of Object.entries(operator)) {
 		if (op === '$regex') {
-			const options = (operator as any).$options;
+			const options = (operator as MangoQueryOperators<unknown, unknown>).$options;
 			return matchesRegex(value, opValue as string, options);
 		}
 
