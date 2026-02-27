@@ -163,7 +163,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 
 	expect(result).not.toBeNull();
 	expect(result!.sql).toBe(
-		"(((json_extract(data, '$.status') NOT IN (SELECT value FROM json_each(?)) AND json_extract(data, '$.age') > ?)) OR (json_extract(data, '$.role') IN (SELECT value FROM json_each(?))))"
+		"((((json_extract(data, '$.status') IS NULL OR json_extract(data, '$.status') NOT IN (SELECT value FROM json_each(?))) AND json_extract(data, '$.age') > ?)) OR (json_extract(data, '$.role') IN (SELECT value FROM json_each(?))))"
 	);
 	expect(result!.args).toEqual(['["banned","suspended"]', 21, '["admin","moderator"]']);
 	});
