@@ -1,6 +1,6 @@
 {
   "name": "bun-sqlite-for-rxdb",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "author": "adam2am",
   "repository": {
     "type": "git",
@@ -43,8 +43,7 @@
     "!dist/**/*.test.d.ts.map",
     "!dist/**/*.d.ts.map",
     "README.md",
-    "LICENSE",
-    "CHANGELOG.md"
+    "LICENSE"
   ],
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target bun && tsc --emitDeclarationOnly --declaration --outDir dist",

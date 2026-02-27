@@ -1,5 +1,60 @@
 # Changelog
 
+## [1.4.0] - 2026-02-27
+
+### Performance 🔥
+- **Lazy iteration: 244x speedup for LIMIT queries without sort**
+  - LIMIT 10 on 10k docs: 38.99ms → 0.16ms (244x faster)
+  - Smart routing: lazy path for simple queries, eager path for sort queries
+  - No regression for queries with ORDER BY (preserved eager path)
+- **Statement cache optimization**
+  - json_each() for $in/$nin operators prevents cache thrashing
+  - Single SQL for all array lengths: `IN (SELECT value FROM json_each(?))`
+  - Eliminates cache pollution from dynamic array lengths
+
+### Fixed 🔥
+- **Critical query bugs**
+  - Removed duplicate broken `matchesSelector` method (only handled 6 operators)
+  - Fixed OFFSET without LIMIT SQL syntax error (now adds `LIMIT -1`)
+  - Fixed $not operator to handle primitives (false, 0, "", null)
+  - Fixed $ne operator to match NULL/missing fields (MongoDB spec)
+  - Fixed array field equality: `{tags: "value"}` now matches arrays containing value
+  - Fixed empty selector `{}` to return 1=0 (match nothing) instead of ALL rows
+  - Fixed $or precedence: always wrap in parentheses to prevent SQL parsing issues
+  - Fixed invalid inputs: return 1=0 instead of null (which triggered fallback returning ALL docs)
+
+### Added
+- **Lightweight matcher** (103 lines)
+  - Custom implementation replacing RxDB's heavy getQueryMatcher
+  - Handles only operators needed for in-memory filtering
+  - Fixed RxDB's incorrect $mod type: `number` → `[number, number]`
+  - 206 lines of tests
+- **Property-based testing infrastructure**
+  - fast-check + Mingo + Sift.js for differential testing
+  - 1000 random queries validated against MongoDB reference implementations
+  - Found multiple correctness bugs that unit tests missed
+  - 3000+ assertions across all test suites
+- **Comprehensive test coverage** (1,754 new lines)
+  - Query execution correctness tests (297 lines)
+  - Operator unit tests for arrays and $elemMatch (226 lines)
+  - Regression tests for fixed bugs (241 lines)
+  - Property-based correctness tests (640 lines)
+  - Cache strategy benchmark (350 lines)
+
+### Changed
+- **Architecture improvements**
+  - Thread schema context through all operators for type-aware queries
+  - Improved JSONB compatibility
+  - Better separation: lightweight matcher for in-memory, SQL for database queries
+
+### Technical Details
+- All 520+ tests passing
+- Zero regressions in query or write performance
+- Lazy iteration preserves insertion order for queries without sort
+- Eager path preserves sorted order for queries with ORDER BY
+
+---
+
 ## [1.3.0] - 2026-02-26
 
 ### Added
