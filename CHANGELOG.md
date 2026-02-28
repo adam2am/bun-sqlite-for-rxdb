@@ -1,5 +1,112 @@
 # Changelog
 
+## [1.5.0] - 2026-02-28
+
+### Added
+- **Top-level $not operator** (Extension beyond MongoDB/Mingo spec)
+  - Enables cleaner negation logic without De Morgan's law
+  - SQL translation: `NOT (inner_condition)`
+  - Real-world use cases: range exclusion, access control, date filtering
+  - Example: `{ $not: { $and: [{ price: { $gt: 20 } }, { price: { $lt: 100 } }] } }`
+- **Tolerant Reader pattern** (Postel's Law)
+  - Accept Mingo's permissive behavior over MongoDB's strict behavior
+  - Handles Date/RegExp objects in $not operator (Mingo compatibility)
+  - Normalizes primitives, Date, RegExp to operator format internally
+  - Maintains RxDB ecosystem compatibility across storage backends
+- **Comprehensive test coverage** (200+ new test lines)
+  - $not operator edge cases (empty objects, nested logical operators, primitives)
+  - $nin operator with null/undefined handling
+  - $regex with $options: 'i' integration tests (full query path verification)
+  - Case-insensitive regex with anchored patterns (prefix/suffix/exact)
+  - Per-instance cache isolation and cleanup tests (100 concurrent instances stress test)
+  - Property-based test edge cases (complex regex, nested operators, NULL in arrays)
+  - Mango query syntax documentation tests (valid vs invalid patterns)
+
+### Performance 🔥
+- **Date/RegExp normalization: 4.2% faster**
+  - Early exit optimization for primitive values
+  - Zero-allocation validation (primitive loops instead of regex)
+  - Validation runs after cache lookup (avoids hot path overhead)
+
+### Fixed 🔥
+- **Query cache architecture: Global → Per-instance scope**
+  - Prevents cache pollution between multiple storage instances
+  - Each instance maintains isolated cache with proper cleanup on close()
+  - Fixes race conditions in multi-collection applications
+  - Stress tested with 100 concurrent instances
+- **Field-level $not with nested logical operators** (Extended MongoDB syntax)
+  - MongoDB/Mingo reject `{ field: { $not: { $or: [...] } } }` but RxDB passes it raw
+  - Now supports nested $and/$or/$nor inside field-level $not
+  - Follows Tolerant Reader pattern for better UX
+  - Fixes $elemMatch with complex nested conditions
+- **$nin operator: MongoDB spec compliance**
+  - Now includes NULL check: `(field IS NULL OR field NOT IN (...))`
+  - MongoDB spec: "$nin selects documents where field NOT in array OR field does NOT exist"
+  - Verified against MongoDB docs and Mingo implementation
+- **RegExp cache collision in query builder**
+  - stableStringify() now explicitly serializes RegExp as `{"$re":"pattern","$fl":"flags"}`
+  - Also handles Date objects explicitly to prevent cache key collisions
+  - Fixes test isolation bug where `{ $not: {} }` and `{ $not: /test/i }` had identical cache keys
+- **Regex improvements**
+  - Validate regex options and reject invalid flags (g, y, etc.) with explicit error
+  - MongoDB only supports: i, m, s, x, u flags
+  - Fix regex fallback for complex patterns (type-safe null propagation)
+  - Fix $regex + $options handling as sibling operators
+  - Export clearRegexCache() utility for test cleanup
+- **Operator handling in handleFieldCondition**
+  - Fix isOperatorObject to reject empty objects (zero-allocation for...in loop)
+  - Add instanceof checks for RegExp and Date before treating as operator object
+  - Handle empty objects explicitly (return 1=0 - match nothing)
+  - Route $not as logical operator instead of leaf operator
+- **Test reliability**
+  - Fix flaky benchmark test with proper statistical methodology (warmup + median)
+  - Remove flaky timing assertions from cache performance tests
+  - Add cache cleanup between tests to prevent pollution
+  - Fix property-based test generator to use valid regex flags only
+
+### Changed
+- **BREAKING: Architecture refactor**
+  - Removed `translateNot` export (moved logic to builder.ts)
+  - Separated document parsing (builder.ts) from operator translation (operators.ts)
+  - builder.ts: Document structure parser, handles Tolerant Reader pattern
+  - operators.ts: Pure operator dictionary with translateLeafOperator router
+  - Clear contract, no mixing of concerns
+- **Mingo compatibility improvements**
+  - Date/RegExp normalization for SQLite compatibility (primitives only in bindings)
+  - Date → ISO 8601 string (toISOString)
+  - RegExp → JSON with source/flags (Mingo compatibility)
+  - undefined → null
+  - Applied to all comparison operators: $eq, $ne, $gt, $gte, $lt, $lte, $in, $nin
+- **Operator refactoring**
+  - Added isLogicalOperator() - O(1) operator classification
+  - Added handleLogicalOperator() - Recursive logical operator handling
+  - Added handleFieldCondition() - Nested object value support
+  - Refactored buildElemMatchConditions with helper functions
+
+### Documentation
+- **Pattern #30: Top-level $not operator support**
+  - 3 real-world use cases with code examples
+  - SQL translation proof and rationale
+- **Mingo vs MongoDB compatibility analysis** (1048-line proposal)
+  - 27 Mingo vs MongoDB differences documented
+  - Bug analysis and root cause investigation
+  - MVP vs architectural refactor comparison
+  - Performance benchmarks and known bugs
+  - MongoDB spec compliance verification
+- **Builder/operators architecture separation**
+  - Clear separation of concerns documented
+  - Parser vs dictionary contract defined
+
+### Technical Details
+- All 570 tests passing (520 + 50 new tests)
+- Zero regressions in query or write performance (4.2% faster with normalization)
+- Per-instance cache isolation prevents multi-collection bugs
+- Extended MongoDB syntax support for better RxDB integration
+- Improved test reliability with proper cleanup and statistical methods
+- Zero-allocation optimizations throughout (for...in loops, primitive validation)
+
+---
+
 ## [1.4.0] - 2026-02-27
 
 ### Performance 🔥

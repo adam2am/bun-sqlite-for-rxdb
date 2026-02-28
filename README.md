@@ -7,16 +7,13 @@
 RxDB storage adapter that translates Mango queries directly to bun:sqlite (except of $regex), bypassing slow in-memory filtering.
 
 ## Features
-
-- ✅ **520+ tests passing** (138 local + 122 official RxDB + 260 property-based)
-- ✅ **244x faster LIMIT queries** with lazy iteration (0.16ms vs 38.99ms)
 - ✅ **17 Mango operators** directly using SQL ($eq, $ne, $gt, $gte, $lt, $lte, $in, $nin, $or, $and, $exists, $elemMatch, $not, $nor, $type, $size, $mod)
 - ✅ **1 Mango operator optimized in memory** (complex $regex)
-
 - ✅ **Smart regex** - converts simple patterns to SQL LIKE (uses indexes)
-- ✅ **Dual LRU caching** - prepared statements + query AST parsing
 - ✅ **Attachments support** (base64 storage with digest validation)
+
 - ✅ **Multi-instance support** with connection pooling
+- ✅ **Dual LRU caching** - prepared statements + query AST parsing
 - ✅ **Property-based testing** with fast-check (3000+ assertions vs Mingo and Sift.js)
 - ✅ MIT licensed
 
@@ -64,19 +61,6 @@ bun test
 # Type check
 bun run typecheck
 ```
-
-## Architecture
-
-**Query Translation:**
-- Mango queries → SQL WHERE clauses (avoids fetching entire tables into memory)
-- Array operators use `jsonb_each()` instead of `(?, ?, ?)` (single cached statement for all array lengths)
-- Simple regex patterns → SQL LIKE (can use indexes)
-- Complex queries → lazy iteration with early termination
-
-**Caching:**
-- LRU cache for prepared statements (500 entries)
-- LRU cache for query AST parsing (1000 entries)
-- Statement cache prevents thrashing from dynamic array lengths
 
 ## License
 
