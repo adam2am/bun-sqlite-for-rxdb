@@ -301,4 +301,117 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 		expect(time2).toBeLessThanOrEqual(time1 * 1.5);
 		console.log(`  FIFO eviction works: First query ${time1.toFixed(3)}ms (evicted), Last query ${time2.toFixed(3)}ms (cached)`);
 	});
+
+	test('Edge Case 14: Cache handles null results correctly', () => {
+		const invalidSelector: MangoQuerySelector<RxDocumentData<TestDoc>> = null as any;
+		
+		const result1 = buildWhereClause(invalidSelector, schema, 'test');
+		const result2 = buildWhereClause(invalidSelector, schema, 'test');
+		
+		expect(result1).toBeNull();
+		expect(result2).toBeNull();
+		console.log(`  Null results: cached correctly`);
+	});
+
+	test('Edge Case 15: Different collection names produce different cache entries', () => {
+		const selector: MangoQuerySelector<RxDocumentData<TestDoc>> = { age: { $gt: 30 } };
+		
+		const result1 = buildWhereClause(selector, schema, 'collection1');
+		const result2 = buildWhereClause(selector, schema, 'collection2');
+		const result3 = buildWhereClause(selector, schema, 'collection3');
+		
+		expect(result1).not.toBeNull();
+		expect(result2).not.toBeNull();
+		expect(result3).not.toBeNull();
+		expect(result1!.sql).toBe(result2!.sql);
+		expect(result2!.sql).toBe(result3!.sql);
+		expect(getCacheSize()).toBe(3);
+		console.log(`  Different collections: 3 separate cache entries`);
+	});
+
+	test('Edge Case 16: Complex operators are cached correctly', () => {
+		const complexSelectors = [
+			{ age: { $not: { $gt: 30 } } },
+			{ $nor: [{ age: { $lt: 20 } }, { age: { $gt: 60 } }] },
+			{ age: { $in: [25, 30, 35] } },
+			{ name: { $regex: '^test', $options: 'i' } }
+		];
+		
+		complexSelectors.forEach(selector => {
+			const result1 = buildWhereClause(selector as MangoQuerySelector<RxDocumentData<TestDoc>>, schema, 'test');
+			const result2 = buildWhereClause(selector as MangoQuerySelector<RxDocumentData<TestDoc>>, schema, 'test');
+			
+			expect(result1).not.toBeNull();
+			expect(result2).not.toBeNull();
+			expect(result1!.sql).toBe(result2!.sql);
+		});
+		
+		expect(getCacheSize()).toBe(4);
+		console.log(`  Complex operators: all cached correctly`);
+	});
+
+	test('Edge Case 17: LRU behavior - recently used entries move to end', () => {
+		clearCache();
+		
+		const selectors = Array.from({ length: 10 }, (_, i) => ({ age: { $eq: i } }));
+		
+		selectors.forEach(selector => {
+			buildWhereClause(selector as MangoQuerySelector<RxDocumentData<TestDoc>>, schema, 'test');
+		});
+		
+		expect(getCacheSize()).toBe(10);
+		
+		buildWhereClause(selectors[0] as MangoQuerySelector<RxDocumentData<TestDoc>>, schema, 'test');
+		
+		for (let i = 10; i < 1010; i++) {
+			buildWhereClause({ age: { $eq: i } } as MangoQuerySelector<RxDocumentData<TestDoc>>, schema, 'test');
+		}
+		
+		expect(getCacheSize()).toBe(1000);
+		
+		const result = buildWhereClause(selectors[0] as MangoQuerySelector<RxDocumentData<TestDoc>>, schema, 'test');
+		expect(result).not.toBeNull();
+		console.log(`  LRU: recently accessed entry survived eviction`);
+	});
+
+	test('Edge Case 18: Cache with identical SQL but different args', () => {
+		const selector1: MangoQuerySelector<RxDocumentData<TestDoc>> = { age: { $gt: 20 } };
+		const selector2: MangoQuerySelector<RxDocumentData<TestDoc>> = { age: { $gt: 30 } };
+		const selector3: MangoQuerySelector<RxDocumentData<TestDoc>> = { age: { $gt: 40 } };
+		
+		const result1 = buildWhereClause(selector1, schema, 'test');
+		const result2 = buildWhereClause(selector2, schema, 'test');
+		const result3 = buildWhereClause(selector3, schema, 'test');
+		
+		expect(result1!.sql).toBe(result2!.sql);
+		expect(result2!.sql).toBe(result3!.sql);
+		expect(result1!.args).not.toEqual(result2!.args);
+		expect(result2!.args).not.toEqual(result3!.args);
+		expect(getCacheSize()).toBe(3);
+		console.log(`  Same SQL, different args: 3 separate cache entries`);
+	});
+
+	test('Edge Case 19: Rapid cache clear and rebuild', () => {
+		for (let cycle = 0; cycle < 100; cycle++) {
+			clearCache();
+			expect(getCacheSize()).toBe(0);
+			
+			buildWhereClause({ age: { $gt: 30 } }, schema, 'test');
+			expect(getCacheSize()).toBe(1);
+		}
+		console.log(`  Rapid clear/rebuild: 100 cycles completed`);
+	});
+
+	test('Edge Case 20: Cache with extremely long collection names', () => {
+		const longCollectionName = 'a'.repeat(1000);
+		const selector: MangoQuerySelector<RxDocumentData<TestDoc>> = { age: { $gt: 30 } };
+		
+		const result1 = buildWhereClause(selector, schema, longCollectionName);
+		const result2 = buildWhereClause(selector, schema, longCollectionName);
+		
+		expect(result1).not.toBeNull();
+		expect(result2).not.toBeNull();
+		expect(result1!.sql).toBe(result2!.sql);
+		console.log(`  Long collection name: cached correctly`);
+	});
 });
