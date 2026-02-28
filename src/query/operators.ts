@@ -465,8 +465,8 @@ export function translateLeafOperator<RxDocType>(
 			return result;
 		}
 		case '$regex': {
-			let options: string | undefined;
 			let pattern: string;
+			let options: string | undefined;
 
 			if (value instanceof RegExp) {
 				pattern = value.source;

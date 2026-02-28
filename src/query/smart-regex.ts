@@ -6,6 +6,10 @@ export interface SqlFragment {
 }
 
 const INDEX_CACHE = new Map<string, boolean>();
+
+export function clearRegexCache(): void {
+	INDEX_CACHE.clear();
+}
 const MAX_INDEX_CACHE_SIZE = 1000;
 
 function hasExpressionIndex<RxDocType>(
