@@ -124,7 +124,7 @@ const MangoQueryArbitrary = () => {
 			'\\w+',                  // Shorthands
 			'(a|e){2,}'             // Complex combination
 		),
-		options: fc.option(fc.constantFrom('i', 'im', 'g'), { nil: undefined })
+		options: fc.option(fc.constantFrom('i', 'im', 'is', 'iu', 'm', 's', 'u'), { nil: undefined })
 	});
 	
 	const typeArb = fc.record({
