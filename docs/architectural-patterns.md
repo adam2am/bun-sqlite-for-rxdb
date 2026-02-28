@@ -38,10 +38,11 @@ Key design patterns and decisions for `bun-sqlite-for-rxdb` development.
 | **bulkWrite refactoring** | **v1.0.0** | **Cleaner architecture** |
 | **schema.indexes support** | **v1.1.0** | **Dynamic index creation** |
 | **ORDER BY optimization** | **v1.1.0** | **29.8% query speedup** |
+| **Top-level $not support** | **v1.2.0** | **Beyond MongoDB spec** |
 
 ---
 
-**Last updated:** v1.1.0 (2026-02-23)
+**Last updated:** v1.2.0 (2026-02-28)
 
 ---
 
@@ -1463,5 +1464,133 @@ After removing ORDER BY, we questioned: "What if `preparedQuery.query.sort` is u
 **Final Verdict:** ORDER BY removal is safe. RxDB's architecture guarantees `preparedQuery.query.sort` always exists with primary key included.
 
 **History:** v1.1.0 (2026-02-23) - Removed redundant ORDER BY id, measured 29.8% performance improvement. Verified safety with 4 parallel research agents.
+
+---
+
+## 30. Top-Level $not Operator Support (v1.2.0)
+
+**[Rule]:** Support top-level `$not` operator as extension beyond MongoDB/Mingo spec.
+
+**Why:**
+- Cleaner code for negation logic (no De Morgan's law mental gymnastics)
+- Trivial SQL translation (`NOT (...)`)
+- RxDB passes raw queries - we handle edge cases MongoDB rejects
+- Matches our philosophy: We already support field-level `$not` with nested `$and` (MongoDB rejects this)
+
+**Real-World Use Cases:**
+
+**1. Range Exclusion - "NOT between X and Y"**
+```typescript
+// ❌ WITHOUT top-level $not (De Morgan's law - brain hurts)
+collection.find({
+  $or: [
+    { price: { $lte: 20 } },
+    { price: { $gte: 100 } }
+  ]
+})
+
+// ✅ WITH top-level $not (reads like English)
+collection.find({
+  $not: {
+    $and: [
+      { price: { $gt: 20 } },
+      { price: { $lt: 100 } }
+    ]
+  }
+})
+// "NOT (price > 20 AND price < 100)" = "price NOT between 20 and 100"
+```
+
+**2. Complex Access Control - "NOT (premium AND expired)"**
+```typescript
+// ❌ WITHOUT top-level $not (De Morgan's law again)
+collection.find({
+  $or: [
+    { tier: { $ne: 'premium' } },
+    { expired: false }
+  ]
+})
+
+// ✅ WITH top-level $not (natural logic)
+collection.find({
+  $not: {
+    $and: [
+      { tier: 'premium' },
+      { expired: true }
+    ]
+  }
+})
+// Business logic: "block premium expired users" → code matches requirement
+```
+
+**3. Date Range Exclusion - "NOT during business hours"**
+```typescript
+// ❌ WITHOUT top-level $not (complex, hard to read)
+collection.find({
+  $or: [
+    { hour: { $lt: 9 } },
+    { hour: { $gte: 17 } }
+  ]
+})
+
+// ✅ WITH top-level $not (crystal clear)
+collection.find({
+  $not: {
+    $and: [
+      { hour: { $gte: 9 } },
+      { hour: { $lt: 17 } }
+    ]
+  }
+})
+// "NOT (9 AM to 5 PM)" = "after hours"
+```
+
+**Implementation:**
+```typescript
+// src/query/builder.ts lines 115-121
+if (field === '$not' && typeof value === 'object' && value !== null) {
+    const innerFragment = processSelector(value, schema, logicalDepth + 1);
+    if (!innerFragment) return null;
+    conditions.push(`NOT (${innerFragment.sql})`);
+    args.push(...innerFragment.args);
+    continue;
+}
+```
+
+**SQL Translation (Proof It's Trivial):**
+```typescript
+// Query
+{ $not: { $and: [{ age: { $gt: 20 } }, { age: { $lt: 40 } }] } }
+
+// SQL (just wrap in NOT)
+SELECT * FROM users 
+WHERE NOT (
+  json_extract(data, '$.age') > 20 
+  AND json_extract(data, '$.age') < 40
+)
+```
+
+**Key Insights:**
+1. **Top-level $not shines when:**
+   - Business logic is naturally expressed as negation ("NOT X")
+   - De Morgan's law makes the alternative ugly
+   - Excluding ranges/zones/groups (NOT between, NOT inside, NOT during)
+
+2. **MongoDB doesn't support it because:**
+   - Historical quirk (defined $not as field-level only)
+   - Not a technical limitation
+   - We're SQL-based, not bound by MongoDB's decisions
+
+3. **We already go beyond MongoDB:**
+   - Field-level `$not` with nested `$and` (MongoDB rejects bare operators)
+   - Empty objects `{ $not: {} }` (handled as `1=0`)
+   - Top-level `$not` (this pattern)
+
+**Test Coverage:**
+- `test/unit/operators/not-and-validation.test.ts` (2 tests)
+- Both field-level and top-level $not patterns
+- Verifies correct SQL generation and result filtering
+
+**History:** v1.2.0 (2026-02-28) - Added top-level $not support with 5 lines of code. Analyzed with 5-approaches framework, validated with real-world use cases, ARRR! 🏴‍☠️
 
 ---
