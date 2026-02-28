@@ -31,6 +31,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	private db: Database;
 	private stmtManager: StatementManager;
 	private changeStream$ = new Subject<EventBulk<RxStorageChangeEvent<RxDocumentData<RxDocType>>, RxStorageDefaultCheckpoint>>();
+	private queryCache = new Map<string, import('./query/operators').SqlFragment | null>();
 	public readonly databaseName: string;
 	public readonly collectionName: string;
 	public readonly schema: Readonly<RxJsonSchema<RxDocumentData<RxDocType>>>;
@@ -244,7 +245,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	}
 
 	async query(preparedQuery: PreparedQuery<RxDocType>): Promise<RxStorageQueryResult<RxDocType>> {
-		const whereResult = buildWhereClause(preparedQuery.query.selector, this.schema, this.collectionName);
+		const whereResult = buildWhereClause(preparedQuery.query.selector, this.schema, this.collectionName, this.queryCache);
 		if (!whereResult) {
 			return this.queryWithOurMemory(preparedQuery);
 		}
@@ -314,7 +315,8 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		const whereResult = buildWhereClause(
 			preparedQuery.query.selector,
 			this.schema,
-			this.collectionName
+			this.collectionName,
+			this.queryCache
 		);
 		
 		if (!whereResult) {
@@ -359,11 +361,16 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	async close(): Promise<void> {
 		if (this.closed) return this.closed;
 		this.closed = (async () => {
+			this.queryCache.clear();
 			this.changeStream$.complete();
 			this.stmtManager.close();
 			releaseDatabase(this.databaseName);
 		})();
 		return this.closed;
+	}
+
+	getCacheSize(): number {
+		return this.queryCache.size;
 	}
 
 	async remove(): Promise<void> {

@@ -4,42 +4,45 @@ import { translateLeafOperator, wrapWithNot, translateElemMatch } from './operat
 import type { SqlFragment, ElemMatchCriteria } from './operators';
 import { stableStringify } from '../utils/stable-stringify';
 
-const QUERY_CACHE = new Map<string, SqlFragment | null>();
 const MAX_CACHE_SIZE = 1000;
 
+// Global cache for backwards compatibility (tests)
+const GLOBAL_CACHE = new Map<string, SqlFragment | null>();
+
 export function getCacheSize(): number {
-	return QUERY_CACHE.size;
+	return GLOBAL_CACHE.size;
 }
 
 export function clearCache(): void {
-	QUERY_CACHE.clear();
+	GLOBAL_CACHE.clear();
 }
 
 export function buildWhereClause<RxDocType>(
 	selector: MangoQuerySelector<RxDocumentData<RxDocType>>,
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
-	collectionName: string
+	collectionName: string,
+	cache: Map<string, SqlFragment | null> = GLOBAL_CACHE
 ): SqlFragment | null {
 	if (!selector || typeof selector !== 'object') return null;
 	
 	const cacheKey = `v${schema.version}_${collectionName}_${stableStringify(selector)}`;
 
-	const cached = QUERY_CACHE.get(cacheKey);
-	if (cached) {
-		QUERY_CACHE.delete(cacheKey);
-		QUERY_CACHE.set(cacheKey, cached);
+	const cached = cache.get(cacheKey);
+	if (cached !== undefined) {
+		cache.delete(cacheKey);
+		cache.set(cacheKey, cached);
 		return cached;
 	}
 
 	const result = processSelector(selector, schema, 0);
 	if (!result) return null;
 
-	if (QUERY_CACHE.size >= MAX_CACHE_SIZE) {
-		const firstKey = QUERY_CACHE.keys().next().value;
-		if (firstKey) QUERY_CACHE.delete(firstKey);
+	if (cache.size >= MAX_CACHE_SIZE) {
+		const firstKey = cache.keys().next().value;
+		if (firstKey) cache.delete(firstKey);
 	}
+	cache.set(cacheKey, result);
 
-	QUERY_CACHE.set(cacheKey, result);
 	return result;
 }
 
@@ -161,9 +164,17 @@ function processSelector<RxDocType>(
 						fragment = { sql: '1=0', args: [] };
 					
 					// 6. Handle Nested Logical Operators ($and/$or/$nor)
-					// Example: { $not: { $and: [...] } } → Unwrap and negate
+					// Example: { age: { $not: { $and: [{ $gt: 20 }, { $lt: 28 }] } } }
 					} else if (innerKeys.some(k => k === '$and' || k === '$or' || k === '$nor')) {
-						const innerFragment = processSelector(opValueObj as MangoQuerySelector<RxDocumentData<RxDocType>>, schema, logicalDepth + 1);
+						const logicalOp = innerKeys[0] as '$and' | '$or' | '$nor';
+						const nestedSelector = opValueObj as unknown as MangoQuerySelector<RxDocumentData<RxDocType>>;
+						const items = nestedSelector[logicalOp]!;
+						
+						const wrappedItems = items.map(item => 
+							Object.keys(item).some(k => !k.startsWith('$')) ? item : { [field]: item }
+						);
+						
+						const innerFragment = processSelector({ [logicalOp]: wrappedItems } as MangoQuerySelector<RxDocumentData<RxDocType>>, schema, logicalDepth + 1);
 						if (!innerFragment) return null;
 						fragment = wrapWithNot(innerFragment);
 					
