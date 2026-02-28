@@ -40,6 +40,24 @@ describe('$regex Operator', () => {
 		expect(result?.args).toEqual(['%john%']);
 	});
 
+	it('handles case-insensitive prefix pattern', () => {
+		const result = translateRegex('name', '^john', 'i', mockSchema, 'name');
+		expect(result?.sql).toBe("name LIKE ? COLLATE NOCASE ESCAPE '\\'");
+		expect(result?.args).toEqual(['john%']);
+	});
+
+	it('handles case-insensitive suffix pattern', () => {
+		const result = translateRegex('email', '@gmail\\.com$', 'i', mockSchema, 'email');
+		expect(result?.sql).toBe("email LIKE ? COLLATE NOCASE ESCAPE '\\'");
+		expect(result?.args).toEqual(['%@gmail.com']);
+	});
+
+	it('handles case-insensitive exact match', () => {
+		const result = translateRegex('code', '^ABC$', 'i', mockSchema, 'code');
+		expect(result?.sql).toBe("code = ? COLLATE NOCASE");
+		expect(result?.args).toEqual(['ABC']);
+	});
+
 	it('returns null for complex regex patterns', () => {
 		const result = translateRegex('phone', '\\d{3}-\\d{4}', undefined, mockSchema, 'phone');
 		expect(result).toBeNull();
