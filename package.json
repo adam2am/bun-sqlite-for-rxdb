@@ -6,6 +6,11 @@
     "type": "git",
     "url": "https://github.com/adam2am/bun-sqlite-for-rxdb.git"
   },
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun && tsc --emitDeclarationOnly --declaration --outDir dist",
+    "test": "bun test test/",
+    "typecheck": "tsc --noEmit"
+  },
   "main": "dist/index.js",
   "dependencies": {},
   "devDependencies": {
@@ -45,11 +50,6 @@
     "README.md",
     "LICENSE"
   ],
-  "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target bun && tsc --emitDeclarationOnly --declaration --outDir dist",
-    "test": "bun test src/",
-    "typecheck": "tsc --noEmit"
-  },
   "type": "module",
   "types": "dist/index.d.ts"
 }
