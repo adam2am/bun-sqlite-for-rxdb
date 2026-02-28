@@ -265,6 +265,89 @@ export function translateRegex<RxDocType>(
 	return null;
 }
 
+// Operator classification for O(1) lookups
+const LOGICAL_OPERATORS = new Set(['$and', '$or', '$nor', '$not']);
+const LEAF_OPERATORS = new Set(['$eq', '$ne', '$gt', '$gte', '$lt', '$lte', '$in', '$nin', '$exists', '$regex', '$type', '$size', '$mod', '$elemMatch']);
+
+function isLogicalOperator(key: string): boolean {
+	return LOGICAL_OPERATORS.has(key);
+}
+
+function isOperatorObject(obj: Record<string, unknown>): boolean {
+	return Object.keys(obj).every(k => k.startsWith('$'));
+}
+
+// EXTENDED MONGODB SYNTAX SUPPORT
+// RxDB passes queries AS-IS to storage (normalizeMangoQuery only handles top-level keys)
+// We support field-level $not with nested logical operators even though MongoDB/Mingo don't
+// Rationale: Better UX, semantically correct transformation, consistent with TOLERANT READER pattern
+function handleLogicalOperator<RxDocType>(
+	operator: string,
+	value: unknown,
+	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
+	baseFieldName: string
+): SqlFragment {
+	if (operator === '$not') {
+		if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+			const innerFragment = buildElemMatchConditions(value as Record<string, unknown>, schema, baseFieldName);
+			return { sql: `NOT (${innerFragment.sql})`, args: innerFragment.args };
+		}
+		return { sql: '1=1', args: [] };
+	}
+
+	if (!Array.isArray(value)) return { sql: '1=0', args: [] };
+	
+	const nestedConditions = value.map(cond =>
+		buildElemMatchConditions(cond as Record<string, unknown>, schema, baseFieldName)
+	);
+	
+	const joiner = operator === '$and' ? ' AND ' : (operator === '$or' ? ' OR ' : ' AND NOT ');
+	const sql = nestedConditions.map(f => `(${f.sql})`).join(joiner);
+	
+	return {
+		sql: `(${sql})`,
+		args: nestedConditions.flatMap(f => f.args)
+	};
+}
+
+function handleFieldCondition<RxDocType>(
+	fieldName: string,
+	value: unknown,
+	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
+	baseFieldName: string
+): SqlFragment {
+	const propertyField = `json_extract(value, '$.${fieldName}')`;
+	const nestedFieldName = `${baseFieldName}.${fieldName}`;
+
+	if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+		const valueObj = value as Record<string, unknown>;
+		
+		// Check if value is an operator object (all keys start with $)
+		if (isOperatorObject(valueObj)) {
+			const fragments = Object.entries(valueObj).map(([op, opValue]) =>
+				translateLeafOperator(op, propertyField, opValue, schema, nestedFieldName)
+			);
+			return {
+				sql: fragments.map(f => f.sql).join(' AND '),
+				args: fragments.flatMap(f => f.args)
+			};
+		}
+		
+		// Plain object value - drill down to nested fields
+		// Example: { config: { enabled: true, level: 5 } } → config.enabled = true AND config.level = 5
+		const fragments = Object.entries(valueObj).map(([nestedKey, nestedValue]) => {
+			const nestedField = `json_extract(value, '$.${fieldName}.${nestedKey}')`;
+			return translateLeafOperator('$eq', nestedField, nestedValue, schema, `${nestedFieldName}.${nestedKey}`);
+		});
+		return {
+			sql: fragments.map(f => f.sql).join(' AND '),
+			args: fragments.flatMap(f => f.args)
+		};
+	}
+
+	return translateLeafOperator('$eq', propertyField, value, schema, nestedFieldName);
+}
+
 function buildElemMatchConditions<RxDocType>(
 	criteria: Record<string, unknown>,
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
@@ -274,33 +357,18 @@ function buildElemMatchConditions<RxDocType>(
 	const args: (string | number | boolean | null)[] = [];
 
 	for (const [key, value] of Object.entries(criteria)) {
-		if (key === '$not') {
-			if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-				const [[innerOp, innerVal]] = Object.entries(value);
-				const innerFrag = translateLeafOperator(innerOp, 'value', innerVal, schema, baseFieldName);
-				conditions.push(`NOT (${innerFrag.sql})`);
-				args.push(...innerFrag.args);
-			}
+		let fragment: SqlFragment;
+		
+		if (isLogicalOperator(key)) {
+			fragment = handleLogicalOperator(key, value, schema, baseFieldName);
 		} else if (key.startsWith('$')) {
-			const fragment = translateLeafOperator(key, 'value', value, schema, baseFieldName);
-			conditions.push(fragment.sql);
-			args.push(...fragment.args);
+			fragment = translateLeafOperator(key, 'value', value, schema, baseFieldName);
 		} else {
-			const propertyField = `json_extract(value, '$.${key}')`;
-			const nestedFieldName = `${baseFieldName}.${key}`;
-
-			if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-				for (const [op, opValue] of Object.entries(value)) {
-					const fragment = translateLeafOperator(op, propertyField, opValue, schema, nestedFieldName);
-					conditions.push(fragment.sql);
-					args.push(...fragment.args);
-				}
-			} else {
-				const fragment = translateLeafOperator('$eq', propertyField, value, schema, nestedFieldName);
-				conditions.push(fragment.sql);
-				args.push(...fragment.args);
-			}
+			fragment = handleFieldCondition(key, value, schema, baseFieldName);
 		}
+		
+		conditions.push(fragment.sql);
+		args.push(...fragment.args);
 	}
 
 	return {

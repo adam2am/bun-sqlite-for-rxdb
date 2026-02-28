@@ -164,15 +164,34 @@ function processSelector<RxDocType>(
 						fragment = { sql: '1=0', args: [] };
 					
 					// 6. Handle Nested Logical Operators ($and/$or/$nor)
-					// Example: { age: { $not: { $and: [{ $gt: 20 }, { $lt: 28 }] } } }
+					// EXTENDED MONGODB SYNTAX SUPPORT
+					// Pattern: { age: { $not: { $or: [{ $and: [...] }, { $eq: 35 }] } } }
+					// MongoDB/Mingo: Do NOT support this (logical operators are root-level only)
+					// RxDB: Passes queries AS-IS to storage (normalizeMangoQuery incomplete)
+					// Our approach: Transform to valid SQL via recursive wrapping
+					// Rationale: Better UX, semantically correct, consistent with TOLERANT READER pattern
 					} else if (innerKeys.some(k => k === '$and' || k === '$or' || k === '$nor')) {
 						const logicalOp = innerKeys[0] as '$and' | '$or' | '$nor';
 						const nestedSelector = opValueObj as unknown as MangoQuerySelector<RxDocumentData<RxDocType>>;
 						const items = nestedSelector[logicalOp]!;
 						
-						const wrappedItems = items.map(item => 
-							Object.keys(item).some(k => !k.startsWith('$')) ? item : { [field]: item }
-						);
+						const LOGICAL_OPS = new Set(['$and', '$or', '$nor']);
+						
+						// Recursively wrap leaf operators with field name
+						// { $or: [{ $and: [{ $gt: 20 }] }] } → { $or: [{ $and: [{ age: { $gt: 20 } }] }] }
+						function recursivelyWrapLeafOperators(items: any[], field: string): any[] {
+							return items.map(item => {
+								const keys = Object.keys(item);
+								if (keys.some(k => !k.startsWith('$'))) return item;
+								if (keys.length === 1 && LOGICAL_OPS.has(keys[0])) {
+									const logicalOp = keys[0];
+									return { [logicalOp]: recursivelyWrapLeafOperators(item[logicalOp], field) };
+								}
+								return { [field]: item };
+							});
+						}
+						
+						const wrappedItems = recursivelyWrapLeafOperators(items, field);
 						
 						const innerFragment = processSelector({ [logicalOp]: wrappedItems } as MangoQuerySelector<RxDocumentData<RxDocType>>, schema, logicalDepth + 1);
 						if (!innerFragment) return null;
