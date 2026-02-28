@@ -310,7 +310,6 @@ const MangoQueryArbitrary = () => {
 		deepNestedArb,
 		orPrecedenceArb,
 		emptyObjectArb,
-		// NEW: Edge cases and complex scenarios
 		notNestedArb,
 		emptyArrayArb,
 		nullInArrayArb,
