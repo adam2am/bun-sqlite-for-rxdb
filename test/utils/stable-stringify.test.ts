@@ -197,7 +197,7 @@ describe('stableStringify - Edge Cases', () => {
 	it('should handle RegExp objects', () => {
 		const regex = /test/gi;
 		const result = stableStringify(regex);
-		expect(result).toBe('{}');
+		expect(result).toBe('{"$regex":"test","$options":"gi"}');
 	});
 
 	it('should handle Error objects', () => {

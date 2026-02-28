@@ -94,6 +94,14 @@ function _stringify(value: unknown, stack: unknown[]): string {
 		
 		const objType = Object.prototype.toString.call(obj);
 		if (objType !== '[object Object]') {
+			if (obj instanceof RegExp) {
+				stack.pop();
+				return `{"$regex":${strEscape(obj.source)},"$options":${strEscape(obj.flags)}}`;
+			}
+			if (obj instanceof Date) {
+				stack.pop();
+				return strEscape(obj.toISOString());
+			}
 			const result = JSON.stringify(obj);
 			stack.pop();
 			return result;
