@@ -255,6 +255,36 @@ describe('Simple SQL Operators (Integration Tests)', () => {
 			expect(result.documents).toHaveLength(1);
 			expect(result.documents[0].id).toBe('user3');
 		});
+		
+		it('matches case-insensitive prefix pattern with $options', async () => {
+			const result = await instance.query({ 
+				query: { selector: { name: { $regex: '^ali', $options: 'i' } }, sort: [{ id: 'asc' }], skip: 0 },
+				queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+			});
+			
+			expect(result.documents).toHaveLength(1);
+			expect(result.documents[0].id).toBe('user1');
+		});
+		
+		it('matches case-insensitive suffix pattern with $options', async () => {
+			const result = await instance.query({ 
+				query: { selector: { name: { $regex: 'ICE$', $options: 'i' } }, sort: [{ id: 'asc' }], skip: 0 },
+				queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+			});
+			
+			expect(result.documents).toHaveLength(1);
+			expect(result.documents[0].id).toBe('user1');
+		});
+		
+		it('matches case-insensitive contains pattern with $options', async () => {
+			const result = await instance.query({ 
+				query: { selector: { name: { $regex: 'CHAR', $options: 'i' } }, sort: [{ id: 'asc' }], skip: 0 },
+				queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+			});
+			
+			expect(result.documents).toHaveLength(1);
+			expect(result.documents[0].id).toBe('user3');
+		});
 	});
 	
 	// Logical Operators
