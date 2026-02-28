@@ -53,6 +53,14 @@ function hasExpressionIndex<RxDocType>(
 	return hasLowerIndex;
 }
 
+function isValidRegexOptions(options: string): boolean {
+	for (let i = 0; i < options.length; i++) {
+		const c = options[i];
+		if (c !== 'i' && c !== 'm' && c !== 's' && c !== 'x' && c !== 'u') return false;
+	}
+	return true;
+}
+
 function isComplexRegex(pattern: string): boolean {
 	return /[*+?()[\]{}|]/.test(pattern.replace(/\\\./g, ''));
 }
@@ -69,6 +77,10 @@ export function smartRegexToLike<RxDocType>(
 	fieldName: string
 ): SqlFragment | null {
 	if (typeof pattern !== 'string') return null;
+	
+	if (options && !isValidRegexOptions(options)) {
+		throw new Error(`Invalid regex options: "${options}". Valid options are: i, m, s, x, u`);
+	}
 	
 	const caseInsensitive = options?.includes('i') ?? false;
 	const hasLowerIndex = hasExpressionIndex(fieldName, schema);

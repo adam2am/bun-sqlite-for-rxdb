@@ -5,12 +5,24 @@ interface RegexCacheEntry {
 const REGEX_CACHE = new Map<string, RegexCacheEntry>();
 const MAX_REGEX_CACHE_SIZE = 100;
 
+function isValidRegexOptions(options: string): boolean {
+	for (let i = 0; i < options.length; i++) {
+		const c = options[i];
+		if (c !== 'i' && c !== 'm' && c !== 's' && c !== 'x' && c !== 'u') return false;
+	}
+	return true;
+}
+
 function compileRegex(pattern: string, options?: string): RegExp {
 	const cacheKey = `${pattern}::${options || ''}`;
 
 	const cached = REGEX_CACHE.get(cacheKey);
 	if (cached) {
 		return cached.regex;
+	}
+
+	if (options && !isValidRegexOptions(options)) {
+		throw new Error(`Invalid regex options: "${options}". Valid options are: i, m, s, x, u`);
 	}
 
 	const regex = new RegExp(pattern, options);
