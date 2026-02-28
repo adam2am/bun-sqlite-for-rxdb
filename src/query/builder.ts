@@ -103,14 +103,22 @@ function processSelector<RxDocType>(
 			continue;
 		}
 
-		if (field === '$nor' && Array.isArray(value)) {
-			const norFragment = buildLogicalOperator('nor', value, schema, logicalDepth);
-			if (!norFragment) return null;
-			
-			conditions.push(norFragment.sql);
-			args.push(...norFragment.args);
-			continue;
-		}
+	if (field === '$nor' && Array.isArray(value)) {
+		const norFragment = buildLogicalOperator('nor', value, schema, logicalDepth);
+		if (!norFragment) return null;
+		
+		conditions.push(norFragment.sql);
+		args.push(...norFragment.args);
+		continue;
+	}
+
+	if (field === '$not' && typeof value === 'object' && value !== null) {
+		const innerFragment = processSelector(value, schema, logicalDepth + 1);
+		if (!innerFragment) return null;
+		conditions.push(`NOT (${innerFragment.sql})`);
+		args.push(...innerFragment.args);
+		continue;
+	}
 
 	const columnInfo = getColumnInfo(field, schema);
 	const fieldName = columnInfo.column || `json_extract(data, '${columnInfo.jsonPath}')`;
