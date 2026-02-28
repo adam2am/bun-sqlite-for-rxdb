@@ -1,6 +1,10 @@
-import { describe, it, expect } from 'bun:test';
-import { buildWhereClause } from '$app/query/builder';
+import { describe, it, expect, afterEach } from 'bun:test';
+import { buildWhereClause, clearCache } from '$app/query/builder';
 import type { RxJsonSchema, RxDocumentData } from 'rxdb';
+
+afterEach(() => {
+	clearCache();
+});
 
 interface TestDoc {
 	id: string;
