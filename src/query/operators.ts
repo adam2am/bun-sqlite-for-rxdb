@@ -274,7 +274,12 @@ function isLogicalOperator(key: string): boolean {
 }
 
 function isOperatorObject(obj: Record<string, unknown>): boolean {
-	return Object.keys(obj).every(k => k.startsWith('$'));
+	let hasKeys = false;
+	for (const k in obj) {
+		hasKeys = true;
+		if (!k.startsWith('$')) return false;
+	}
+	return hasKeys;
 }
 
 // EXTENDED MONGODB SYNTAX SUPPORT
@@ -322,13 +327,33 @@ function handleFieldCondition<RxDocType>(
 	const nestedFieldName = `${baseFieldName}.${fieldName}`;
 
 	if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+		if (value instanceof RegExp) {
+			return translateLeafOperator('$regex', propertyField, value, schema, nestedFieldName);
+		}
+		if (value instanceof Date) {
+			return translateLeafOperator('$eq', propertyField, value, schema, nestedFieldName);
+		}
+
 		const valueObj = value as Record<string, unknown>;
+		
+		if (Object.keys(valueObj).length === 0) {
+			return { sql: '1=0', args: [] };
+		}
 		
 		// Check if value is an operator object (all keys start with $)
 		if (isOperatorObject(valueObj)) {
-			const fragments = Object.entries(valueObj).map(([op, opValue]) =>
-				translateLeafOperator(op, propertyField, opValue, schema, nestedFieldName)
-			);
+			const fragments: SqlFragment[] = [];
+			for (const [op, opValue] of Object.entries(valueObj)) {
+				if (op === '$not') {
+					const innerFragment = handleFieldCondition(fieldName, opValue, schema, baseFieldName);
+					if (!innerFragment) return null;
+					fragments.push({ sql: `NOT (${innerFragment.sql})`, args: innerFragment.args });
+				} else {
+					const frag = translateLeafOperator(op, propertyField, opValue, schema, nestedFieldName);
+					if (!frag) return null;
+					fragments.push(frag);
+				}
+			}
 			if (fragments.some(f => f === null)) return null;
 			return {
 				sql: fragments.map(f => f!.sql).join(' AND '),
