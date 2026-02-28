@@ -137,21 +137,24 @@ function processSelector<RxDocType>(
 				// Examples: { $not: false } → { $not: { $eq: false } }
 				//           { $not: null } → { $not: { $eq: null } }
 				//           { $not: [1,2] } → { $not: { $eq: [1,2] } }
-				if (typeof opValue !== 'object' || opValue === null || Array.isArray(opValue)) {
-					const eqFrag = translateLeafOperator('$eq', fieldName, opValue, schema, actualFieldName);
-					fragment = wrapWithNot(eqFrag);
-				
-				// 2. Handle Date objects (Mingo compatibility)
-				// Example: { $not: new Date('2024-01-01') } → { $not: { $eq: date } }
-				} else if (opValue instanceof Date) {
-					const eqFrag = translateLeafOperator('$eq', fieldName, opValue, schema, actualFieldName);
-					fragment = wrapWithNot(eqFrag);
-				
-				// 3. Handle RegExp objects (Mingo compatibility)
-				// Example: { $not: /pattern/i } → { $not: { $regex: /pattern/i } }
-				} else if (opValue instanceof RegExp) {
-					const regexFrag = translateLeafOperator('$regex', fieldName, opValue, schema, actualFieldName);
-					fragment = wrapWithNot(regexFrag);
+			if (typeof opValue !== 'object' || opValue === null || Array.isArray(opValue)) {
+				const eqFrag = translateLeafOperator('$eq', fieldName, opValue, schema, actualFieldName);
+				if (!eqFrag) return null;
+				fragment = wrapWithNot(eqFrag!);
+			
+			// 2. Handle Date objects (Mingo compatibility)
+			// Example: { $not: new Date('2024-01-01') } → { $not: { $eq: date } }
+			} else if (opValue instanceof Date) {
+				const eqFrag = translateLeafOperator('$eq', fieldName, opValue, schema, actualFieldName);
+				if (!eqFrag) return null;
+				fragment = wrapWithNot(eqFrag!);
+			
+			// 3. Handle RegExp objects (Mingo compatibility)
+			// Example: { $not: /pattern/i } → { $not: { $regex: /pattern/i } }
+			} else if (opValue instanceof RegExp) {
+				const regexFrag = translateLeafOperator('$regex', fieldName, opValue, schema, actualFieldName);
+				if (!regexFrag) return null;
+				fragment = wrapWithNot(regexFrag!);
 				
 				// 4. Handle Objects (operator expressions, plain objects, empty objects)
 				} else {
@@ -208,29 +211,54 @@ function processSelector<RxDocType>(
 					} else {
 						const hasOperators = innerKeys.some(k => k.startsWith('$'));
 						if (!hasOperators) {
-							// Plain object without operators → Wrap with $eq (Mingo compatibility)
-							// Example: { $not: { a: 1 } } → NOT (field = {a:1})
-							const eqFrag = translateLeafOperator('$eq', fieldName, opValueObj, schema, actualFieldName);
-							fragment = wrapWithNot(eqFrag);
-						} else {
-							// Has operators → Process normally
-							// Example: { $not: { $gt: 5 } } → NOT (field > 5)
-							const [[innerOp, innerVal]] = Object.entries(opValueObj);
-							const innerFrag = translateLeafOperator(innerOp, fieldName, innerVal, schema, actualFieldName);
-							fragment = wrapWithNot(innerFrag);
-						}
+						// Plain object without operators → Wrap with $eq (Mingo compatibility)
+						// Example: { $not: { a: 1 } } → NOT (field = {a:1})
+						const eqFrag = translateLeafOperator('$eq', fieldName, opValueObj, schema, actualFieldName);
+						if (!eqFrag) return null;
+						fragment = wrapWithNot(eqFrag!);
+					} else {
+						// Has operators → Process normally
+						// Example: { $not: { $gt: 5 } } → NOT (field > 5)
+						const [[innerOp, innerVal]] = Object.entries(opValueObj);
+						const innerFrag = translateLeafOperator(innerOp, fieldName, innerVal, schema, actualFieldName);
+						if (!innerFrag) return null;
+						fragment = wrapWithNot(innerFrag!);
+					}
 					}
 				}
 			} else if (op === '$elemMatch') {
 				const elemMatchFragment = translateElemMatch(fieldName, opValue as ElemMatchCriteria, schema, actualFieldName);
 				if (!elemMatchFragment) return null;
 				fragment = elemMatchFragment;
+			} else if (op === '$regex') {
+				// Handle $regex with optional $options sibling
+				// MongoDB allows: { field: { $regex: 'pattern', $options: 'i' } }
+				const regexValue = opValue;
+				const optionsValue = (value as Record<string, unknown>).$options as string | undefined;
+				
+				let combinedValue: unknown;
+				if (typeof regexValue === 'string' && optionsValue) {
+					combinedValue = { $regex: regexValue, $options: optionsValue };
+				} else {
+					combinedValue = regexValue;
+				}
+				
+				const leafFrag = translateLeafOperator('$regex', fieldName, combinedValue, schema, actualFieldName);
+				if (!leafFrag) return null;
+				fragment = leafFrag;
+			} else if (op === '$options') {
+				// Skip $options - it's handled together with $regex
+				continue;
 			} else if (!op.startsWith('$')) {
 				const jsonPath = `json_extract(${fieldName}, '$.${op}')`;
 				const nestedFieldName = `${actualFieldName}.${op}`;
-				fragment = translateLeafOperator('$eq', jsonPath, opValue, schema, nestedFieldName);
+				const leafFrag = translateLeafOperator('$eq', jsonPath, opValue, schema, nestedFieldName);
+				if (!leafFrag) return null;
+				fragment = leafFrag;
 			} else {
-				fragment = translateLeafOperator(op, fieldName, opValue, schema, actualFieldName);
+				const leafFrag = translateLeafOperator(op, fieldName, opValue, schema, actualFieldName);
+				if (!leafFrag) return null;
+				fragment = leafFrag;
 			}
 
 			if (fieldFragments.length > 0) {
@@ -250,6 +278,7 @@ function processSelector<RxDocType>(
 		});
 	} else {
 		const fragment = translateLeafOperator('$eq', fieldName, value, schema, actualFieldName);
+		if (!fragment) return null;
 		conditions.push(fragment.sql);
 		args.push(...fragment.args);
 	}

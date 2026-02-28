@@ -286,10 +286,11 @@ function handleLogicalOperator<RxDocType>(
 	value: unknown,
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	baseFieldName: string
-): SqlFragment {
+): SqlFragment | null {
 	if (operator === '$not') {
 		if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
 			const innerFragment = buildElemMatchConditions(value as Record<string, unknown>, schema, baseFieldName);
+			if (!innerFragment) return null;
 			return { sql: `NOT (${innerFragment.sql})`, args: innerFragment.args };
 		}
 		return { sql: '1=1', args: [] };
@@ -300,13 +301,14 @@ function handleLogicalOperator<RxDocType>(
 	const nestedConditions = value.map(cond =>
 		buildElemMatchConditions(cond as Record<string, unknown>, schema, baseFieldName)
 	);
+	if (nestedConditions.some(f => f === null)) return null;
 	
 	const joiner = operator === '$and' ? ' AND ' : (operator === '$or' ? ' OR ' : ' AND NOT ');
-	const sql = nestedConditions.map(f => `(${f.sql})`).join(joiner);
+	const sql = nestedConditions.map(f => `(${f!.sql})`).join(joiner);
 	
 	return {
 		sql: `(${sql})`,
-		args: nestedConditions.flatMap(f => f.args)
+		args: nestedConditions.flatMap(f => f!.args)
 	};
 }
 
@@ -315,7 +317,7 @@ function handleFieldCondition<RxDocType>(
 	value: unknown,
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	baseFieldName: string
-): SqlFragment {
+): SqlFragment | null {
 	const propertyField = `json_extract(value, '$.${fieldName}')`;
 	const nestedFieldName = `${baseFieldName}.${fieldName}`;
 
@@ -327,9 +329,10 @@ function handleFieldCondition<RxDocType>(
 			const fragments = Object.entries(valueObj).map(([op, opValue]) =>
 				translateLeafOperator(op, propertyField, opValue, schema, nestedFieldName)
 			);
+			if (fragments.some(f => f === null)) return null;
 			return {
-				sql: fragments.map(f => f.sql).join(' AND '),
-				args: fragments.flatMap(f => f.args)
+				sql: fragments.map(f => f!.sql).join(' AND '),
+				args: fragments.flatMap(f => f!.args)
 			};
 		}
 		
@@ -339,9 +342,10 @@ function handleFieldCondition<RxDocType>(
 			const nestedField = `json_extract(value, '$.${fieldName}.${nestedKey}')`;
 			return translateLeafOperator('$eq', nestedField, nestedValue, schema, `${nestedFieldName}.${nestedKey}`);
 		});
+		if (fragments.some(f => f === null)) return null;
 		return {
-			sql: fragments.map(f => f.sql).join(' AND '),
-			args: fragments.flatMap(f => f.args)
+			sql: fragments.map(f => f!.sql).join(' AND '),
+			args: fragments.flatMap(f => f!.args)
 		};
 	}
 
@@ -352,12 +356,12 @@ function buildElemMatchConditions<RxDocType>(
 	criteria: Record<string, unknown>,
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	baseFieldName: string
-): SqlFragment {
+): SqlFragment | null {
 	const conditions: string[] = [];
 	const args: (string | number | boolean | null)[] = [];
 
 	for (const [key, value] of Object.entries(criteria)) {
-		let fragment: SqlFragment;
+		let fragment: SqlFragment | null;
 		
 		if (isLogicalOperator(key)) {
 			fragment = handleLogicalOperator(key, value, schema, baseFieldName);
@@ -367,6 +371,7 @@ function buildElemMatchConditions<RxDocType>(
 			fragment = handleFieldCondition(key, value, schema, baseFieldName);
 		}
 		
+		if (!fragment) return null;
 		conditions.push(fragment.sql);
 		args.push(...fragment.args);
 	}
@@ -397,8 +402,9 @@ export function translateElemMatch<RxDocType>(
 
 	if (criteria.$and && Array.isArray(criteria.$and)) {
 		const fragments = criteria.$and.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond, schema, actualFieldName));
-		const sql = fragments.map(f => f.sql).join(' AND ');
-		const args = fragments.flatMap(f => f.args);
+		if (fragments.some(f => f === null)) return null;
+		const sql = fragments.map(f => f!.sql).join(' AND ');
+		const args = fragments.flatMap(f => f!.args);
 		return {
 			sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE ${sql})`,
 			args
@@ -407,8 +413,9 @@ export function translateElemMatch<RxDocType>(
 
 	if (criteria.$or && Array.isArray(criteria.$or)) {
 		const fragments = criteria.$or.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond, schema, actualFieldName));
-		const sql = fragments.map(f => f.sql).join(' OR ');
-		const args = fragments.flatMap(f => f.args);
+		if (fragments.some(f => f === null)) return null;
+		const sql = fragments.map(f => f!.sql).join(' OR ');
+		const args = fragments.flatMap(f => f!.args);
 		return {
 			sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE ${sql})`,
 			args
@@ -417,8 +424,9 @@ export function translateElemMatch<RxDocType>(
 
 	if (criteria.$nor && Array.isArray(criteria.$nor)) {
 		const fragments = criteria.$nor.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond, schema, actualFieldName));
-		const sql = fragments.map(f => f.sql).join(' OR ');
-		const args = fragments.flatMap(f => f.args);
+		if (fragments.some(f => f === null)) return null;
+		const sql = fragments.map(f => f!.sql).join(' OR ');
+		const args = fragments.flatMap(f => f!.args);
 		return {
 			sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE NOT (${sql}))`,
 			args
@@ -426,6 +434,7 @@ export function translateElemMatch<RxDocType>(
 	}
 
 	const fragment = buildElemMatchConditions(criteria as Record<string, unknown>, schema, actualFieldName);
+	if (!fragment) return null;
 	return {
 		sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE ${fragment.sql})`,
 		args: fragment.args
@@ -438,7 +447,7 @@ export function translateLeafOperator<RxDocType>(
 	value: unknown,
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	actualFieldName: string
-): SqlFragment {
+): SqlFragment | null {
 	switch (op) {
 		case '$eq': return translateEq(field, value, schema, actualFieldName);
 		case '$ne': return translateNe(field, value, schema, actualFieldName);
@@ -469,11 +478,10 @@ export function translateLeafOperator<RxDocType>(
 				pattern = regexObj.pattern as string || regexObj.$regex as string;
 				options = regexObj.$options as string | undefined;
 			} else {
-				return { sql: '1=0', args: [] };
+				return null;
 			}
 
-			const regexFragment = translateRegex(field, pattern, options, schema, actualFieldName);
-			return regexFragment || { sql: '1=0', args: [] };
+			return translateRegex(field, pattern, options, schema, actualFieldName);
 		}
 		case '$type': {
 			let jsonCol = 'data';

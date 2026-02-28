@@ -27,7 +27,6 @@ function compileRegex(pattern: string, options?: string): RegExp {
 }
 
 export function matchesRegex(value: unknown, pattern: string, options?: string): boolean {
-	// console.log(`[ourMemory] pattern="${pattern}", options=${options ? `"${options}"` : 'undefined'}`);
 	const regex = compileRegex(pattern, options);
 
 	if (typeof value === 'string') {
