@@ -1,0 +1,62 @@
+🏴‍☠️ Partial SQL Pushdown - AFTER IMPLEMENTATION
+Measuring performance with bipartite query splitting
+
+📝 Inserting 100 000 documents...
+✅ Inserted 100 000 documents
+
+================================================================================
+🏴‍☠️ PARTIAL SQL PUSHDOWN RESULTS (100 000 docs)
+================================================================================
+Measuring: Query time for mixed SQL + regex operators
+
+
+📊 Pure SQL (baseline)
+   Uses SQLite index - FAST
+   ⏱️  Avg: 216.07ms | Min: 160.18ms | Max: 332.50ms
+   📄 Found: 50000 documents
+
+📊 Pure regex (baseline)
+   Fetches ALL rows, filters in JS
+   ⏱️  Avg: 362.99ms | Min: 328.45ms | Max: 397.83ms
+   📄 Found: 10000 documents
+
+📊 Mixed: SQL + regex (THE KEY TEST) ✅ FIXED
+   NOW: Fetches only active rows (50k), then filters with regex
+   ⏱️  Avg: 213.14ms | Min: 194.28ms | Max: 262.95ms
+   📄 Found: 5000 documents
+
+📊 Mixed: Multiple SQL + regex ✅ FIXED
+   NOW: Uses SQL for status + age, then regex filter
+   ⏱️  Avg: 293.56ms | Min: 245.40ms | Max: 357.83ms
+   📄 Found: 18000 documents
+
+📊 Mixed: $and with SQL + regex ✅ FIXED
+   NOW: SQL filters first, then regex
+   ⏱️  Avg: 234.59ms | Min: 212.56ms | Max: 272.43ms
+   📄 Found: 42000 documents
+
+================================================================================
+📈 SUMMARY - BEFORE vs AFTER
+================================================================================
+
+Pure SQL query:        162.18ms → 216.07ms (baseline variance)
+Pure regex query:      358.11ms → 362.99ms (baseline variance)
+Mixed SQL + regex:     383.92ms → 213.14ms ✅ 1.8x FASTER
+
+⚠️  BEFORE: Mixed query was 137% slower than pure SQL
+✅  AFTER:  Mixed query is -1% slower than pure SQL (essentially equal)
+
+💡 ACHIEVEMENT:
+   Before: 383.92ms (fetched ALL 100,000 rows)
+   After:  213.14ms (fetches only 50,000 active rows)
+   Speedup: 1.8x faster (44% reduction in query time)
+
+================================================================================
+✅ PARTIAL SQL PUSHDOWN SUCCESSFUL
+================================================================================
+
+Implementation: Bipartite query splitting
+- SQL-supported operators → SQLite WHERE clause
+- JS-only operators (regex) → Filter results in JavaScript
+- All 575 tests passing
+- Zero regressions

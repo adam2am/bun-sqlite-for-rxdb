@@ -8,6 +8,11 @@ import { getGlobalCache } from './cache';
 
 export { getCacheSize, clearCache } from './cache';
 
+export interface BipartiteQuery<RxDocType> {
+	sqlWhere: SqlFragment | null;
+	jsSelector: MangoQuerySelector<RxDocumentData<RxDocType>> | null;
+}
+
 export function buildWhereClause<RxDocType>(
 	selector: MangoQuerySelector<RxDocumentData<RxDocType>>,
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
@@ -27,6 +32,56 @@ export function buildWhereClause<RxDocType>(
 	actualCache.set(cacheKey, result);
 
 	return result;
+}
+
+export function buildWhereClauseWithFallback<RxDocType>(
+	selector: MangoQuerySelector<RxDocumentData<RxDocType>>,
+	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
+	collectionName: string,
+	cache?: Map<string, SqlFragment | null> | SieveCache<string, SqlFragment | null>
+): BipartiteQuery<RxDocType> {
+	if (!selector || typeof selector !== 'object') {
+		return { sqlWhere: null, jsSelector: null };
+	}
+
+	const sqlResult = buildWhereClause(selector, schema, collectionName, cache);
+	if (sqlResult) {
+		return { sqlWhere: sqlResult, jsSelector: null };
+	}
+
+	const splitResult = splitSelector(selector, schema);
+	return splitResult;
+}
+
+function splitSelector<RxDocType>(
+	selector: MangoQuerySelector<RxDocumentData<RxDocType>>,
+	schema: RxJsonSchema<RxDocumentData<RxDocType>>
+): BipartiteQuery<RxDocType> {
+	const sqlConditions: MangoQuerySelector<RxDocumentData<RxDocType>>[] = [];
+	const jsConditions: MangoQuerySelector<RxDocumentData<RxDocType>>[] = [];
+
+	const entries = Object.entries(selector);
+	
+	for (const [field, value] of entries) {
+		const testSelector = { [field]: value } as MangoQuerySelector<RxDocumentData<RxDocType>>;
+		const sqlFragment = processSelector(testSelector, schema, 0);
+		
+		if (sqlFragment) {
+			sqlConditions.push(testSelector);
+		} else {
+			jsConditions.push(testSelector);
+		}
+	}
+
+	const sqlWhere = sqlConditions.length > 0 
+		? processSelector({ $and: sqlConditions } as MangoQuerySelector<RxDocumentData<RxDocType>>, schema, 0)
+		: null;
+
+	const jsSelector = jsConditions.length > 0
+		? (jsConditions.length === 1 ? jsConditions[0] : { $and: jsConditions } as MangoQuerySelector<RxDocumentData<RxDocType>>)
+		: null;
+
+	return { sqlWhere, jsSelector };
 }
 
 

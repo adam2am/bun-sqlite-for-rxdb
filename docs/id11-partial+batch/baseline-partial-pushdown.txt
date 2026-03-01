@@ -1,0 +1,61 @@
+🏴‍☠️ Partial SQL Pushdown - BASELINE BENCHMARK
+Measuring BEFORE implementing bipartite query splitting
+
+📝 Inserting 100 000 documents...
+✅ Inserted 100 000 documents
+
+================================================================================
+🏴‍☠️ PARTIAL SQL PUSHDOWN BASELINE (100 000 docs)
+================================================================================
+Measuring: Query time for mixed SQL + regex operators
+
+
+📊 Pure SQL (baseline)
+   Should use SQLite index - FAST
+   ⏱️  Avg: 162.18ms | Min: 153.50ms | Max: 175.83ms
+   📄 Found: 50000 documents
+
+📊 Pure regex (baseline)
+   Falls back to queryWithOurMemory - fetches ALL rows
+   ⏱️  Avg: 358.11ms | Min: 342.94ms | Max: 380.59ms
+   📄 Found: 10000 documents
+
+📊 Mixed: SQL + regex (THE KEY TEST)
+   Currently: Fetches ALL rows (because of regex)
+   Should: Fetch only active rows, then filter with regex
+   ⏱️  Avg: 383.92ms | Min: 364.67ms | Max: 404.20ms
+   📄 Found: 5000 documents
+
+📊 Mixed: Multiple SQL + regex
+   Currently: Fetches ALL rows
+   Should: Use SQL for status + age, then regex filter
+   ⏱️  Avg: 492.56ms | Min: 434.20ms | Max: 629.67ms
+   📄 Found: 18000 documents
+
+📊 Mixed: $and with SQL + regex
+   Currently: Fetches ALL rows
+   Should: SQL filters first, then regex
+   ⏱️  Avg: 203.18ms | Min: 194.43ms | Max: 219.79ms
+   📄 Found: 42000 documents
+
+================================================================================
+📈 SUMMARY
+================================================================================
+
+Pure SQL query:        162.18ms (50000 docs)
+Pure regex query:      358.11ms (10000 docs)
+Mixed SQL + regex:     383.92ms (5000 docs)
+
+⚠️  Mixed query is 137% slower than pure SQL
+    (Should be close to pure SQL time after partial pushdown fix)
+
+💡 EXPECTED IMPROVEMENT AFTER FIX:
+   Current: 383.92ms (fetches ALL 100 000 rows)
+   After:   ~162.18ms (fetches only 50 000 active rows)
+   Speedup: 2.4x faster
+
+================================================================================
+✅ BASELINE ESTABLISHED
+================================================================================
+
+Next: Implement partial SQL pushdown, then re-run to measure improvement

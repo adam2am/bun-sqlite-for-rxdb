@@ -20,7 +20,7 @@ import type {
 	RxStorageDefaultCheckpoint
 } from 'rxdb';
 import type { BunSQLiteStorageSettings, BunSQLiteInternals } from './types';
-import { buildWhereClause } from './query/builder';
+import { buildWhereClause, buildWhereClauseWithFallback } from './query/builder';
 import { matchesSelector } from './query/lightweight-matcher';
 import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from './rxdb-helpers';
 import { StatementManager } from './statement-manager';
@@ -162,7 +162,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 				const batch = categorized.bulkInsertDocs.slice(i, i + BATCH_SIZE);
 				const placeholders = batch.map(() => '(?, jsonb(?), ?, ?, ?)').join(', ');
 				const insertQuery = `INSERT INTO "${this.tableName}" (id, data, deleted, rev, mtime_ms) VALUES ${placeholders}`;
-				const params: any[] = [];
+				const params: SQLQueryBindings[] = [];
 				
 				for (const row of batch) {
 					const doc = row.document;
@@ -255,15 +255,20 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	}
 
 	async query(preparedQuery: PreparedQuery<RxDocType>): Promise<RxStorageQueryResult<RxDocType>> {
-		const whereResult = buildWhereClause(preparedQuery.query.selector, this.schema, this.collectionName, this.queryCache);
-		if (!whereResult) {
-			return this.queryWithOurMemory(preparedQuery);
+		const { sqlWhere, jsSelector } = buildWhereClauseWithFallback(
+			preparedQuery.query.selector,
+			this.schema,
+			this.collectionName,
+			this.queryCache
+		);
+
+		let sql = `SELECT json(data) as data FROM "${this.tableName}"`;
+		const queryArgs: SQLQueryBindings[] = [];
+
+		if (sqlWhere) {
+			sql += ` WHERE (${sqlWhere.sql})`;
+			queryArgs.push(...sqlWhere.args);
 		}
-
-		const { sql: whereClause, args } = whereResult;
-
-		let sql = `SELECT json(data) as data FROM "${this.tableName}" WHERE (${whereClause})`;
-		const queryArgs = [...args];
 
 		if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
 			const orderBy = preparedQuery.query.sort.map(sortField => {
@@ -272,19 +277,6 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 				return `json_extract(data, '$.${field}') ${dir}`;
 			}).join(', ');
 			sql += ` ORDER BY ${orderBy}`;
-		}
-
-		if (preparedQuery.query.limit) {
-			sql += ` LIMIT ?`;
-			queryArgs.push(preparedQuery.query.limit);
-		}
-
-		if (preparedQuery.query.skip) {
-			if (!preparedQuery.query.limit) {
-				sql += ` LIMIT -1`;
-			}
-			sql += ` OFFSET ?`;
-			queryArgs.push(preparedQuery.query.skip);
 		}
 
 		if (process.env.DEBUG_QUERIES) {
@@ -296,7 +288,22 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		}
 
 		const rows = this.stmtManager.all({ query: sql, params: queryArgs }) as Array<{ data: string }>;
-		const documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
+		let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
+
+		if (jsSelector) {
+			documents = documents.filter(doc => matchesSelector(doc, jsSelector));
+		}
+
+		const skip = preparedQuery.query.skip || 0;
+		const limit = preparedQuery.query.limit;
+
+		if (skip > 0) {
+			documents = documents.slice(skip);
+		}
+
+		if (limit !== undefined) {
+			documents = documents.slice(0, limit);
+		}
 
 		return { documents };
 	}

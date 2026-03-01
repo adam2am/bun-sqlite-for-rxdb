@@ -1,0 +1,61 @@
+🏴‍☠️ Batch Operations - BASELINE BENCHMARK
+Measuring BEFORE switching to single prepared statement
+
+================================================================================
+CURRENT IMPLEMENTATION: String concatenation with dynamic placeholders
+PROBLEM: Each batch size generates different SQL → statement cache miss
+================================================================================
+
+📊 Test 1: Fixed Batch Size (100 docs × 10 iterations)
+   Measures: Consistent performance with same batch size
+   Expected: Fast (statement cache hit every time)
+
+   ⏱️  Avg: 1.13ms | Min: 0.55ms | Max: 4.15ms
+   📊 Variance: 318.3%
+
+📊 Test 2: Varying Batch Sizes (THE KEY TEST)
+   Measures: Statement cache thrashing with different batch sizes
+   Expected: SLOW (cache miss on every size change)
+
+   Size  42: 2.68ms
+   Size  73: 1.00ms
+   Size 100: 0.81ms
+   Size 127: 1.15ms
+   Size 200: 1.63ms
+   Size  42: 0.46ms
+   Size 100: 0.72ms
+   Size  73: 0.82ms
+   Size 200: 1.29ms
+   Size 127: 0.98ms
+
+   ⏱️  Avg: 1.15ms | Min: 0.46ms | Max: 2.68ms
+   📊 Variance: 192.2%
+
+📊 Test 3: Large Single Batch (10,000 docs)
+   Measures: Performance with large batch
+   Expected: Moderate (string concatenation overhead)
+
+   ⏱️  Time: 70.08ms
+   📊 Throughput: 142700 docs/sec
+
+================================================================================
+📈 SUMMARY
+================================================================================
+
+Fixed batch size (100):    1.13ms avg
+Varying batch sizes:       1.15ms avg
+Large batch (10k):         70.08ms
+
+⚠️  Varying sizes are 2% slower (statement cache thrashing)
+
+💡 EXPECTED IMPROVEMENT AFTER FIX:
+   Current: String concatenation → cache miss on size change
+   After:   Single prepared statement → cache hit every time
+   Expected: Varying sizes should match fixed size (~1.13ms)
+   Speedup:  1.0x faster for varying sizes
+
+================================================================================
+✅ BASELINE ESTABLISHED
+================================================================================
+
+Next: Implement single prepared statement pattern, then re-run
