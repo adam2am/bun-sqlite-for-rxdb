@@ -34,40 +34,39 @@ describe('$not operator with primitive values', () => {
 	it('should accept $not with boolean false (Mingo compatibility - Tolerant Reader)', () => {
 		const result = buildWhereClause({ active: { $not: false } }, schema, 'test');
 		expect(result).not.toBeNull();
-		expect(result!.sql).toContain('NOT');
-		expect(result!.sql).toContain('=');
+		expect(result!.sql).toContain('<>');
+		expect(result!.sql).toContain('IS NULL');
 		expect(result!.args).toContain(false);
 	});
 
 	it('should accept $not with boolean true (Mingo compatibility - Tolerant Reader)', () => {
 		const result = buildWhereClause({ active: { $not: true } }, schema, 'test');
 		expect(result).not.toBeNull();
-		expect(result!.sql).toContain('NOT');
-		expect(result!.sql).toContain('=');
+		expect(result!.sql).toContain('<>');
+		expect(result!.sql).toContain('IS NULL');
 		expect(result!.args).toContain(true);
 	});
 
 	it('should accept $not with number 0 (Mingo compatibility - Tolerant Reader)', () => {
 		const result = buildWhereClause({ count: { $not: 0 } }, schema, 'test');
 		expect(result).not.toBeNull();
-		expect(result!.sql).toContain('NOT');
-		expect(result!.sql).toContain('=');
+		expect(result!.sql).toContain('<>');
+		expect(result!.sql).toContain('IS NULL');
 		expect(result!.args).toContain(0);
 	});
 
 	it('should accept $not with empty string (Mingo compatibility - Tolerant Reader)', () => {
 		const result = buildWhereClause({ name: { $not: '' } }, schema, 'test');
 		expect(result).not.toBeNull();
-		expect(result!.sql).toContain('NOT');
-		expect(result!.sql).toContain('=');
+		expect(result!.sql).toContain('<>');
+		expect(result!.sql).toContain('IS NULL');
 		expect(result!.args).toContain('');
 	});
 
 	it('should accept $not with null (Mingo compatibility - Tolerant Reader)', () => {
 		const result = buildWhereClause({ name: { $not: null } }, schema, 'test');
 		expect(result).not.toBeNull();
-		expect(result!.sql).toContain('NOT');
-		expect(result!.sql).toContain('IS NULL');
+		expect(result!.sql).toContain('IS NOT NULL');
 		expect(result!.args).toEqual([]);
 	});
 
