@@ -1,5 +1,60 @@
 # Changelog
 
+## [1.5.2] - 2026-03-01
+
+### Performance 🔥
+- **Partial SQL pushdown: 1.8x faster for mixed queries**
+  - Queries with unsupported operators (e.g., $regex): 383ms → 213ms
+  - Splits selectors into SQL-supported + JS-only parts
+  - SQL filters first (reduces dataset), then JS filters remaining
+  - Example: `{ status: 'active', name: { $regex: '^[A-Z]' } }` now filters 100k → 50k in SQL, then regex in JS
+- **Batch operations: 54-55% faster for small/medium batches, 6% faster for large batches**
+  - Fixed batch (100 docs): 2.33ms → 1.07ms (54% faster)
+  - Varying batch sizes: 2.14ms → 0.96ms (55% faster)
+  - Large batch (10k docs): 86.76ms → 81.24ms (6% faster)
+  - Chunked multi-VALUES INSERT with CHUNK_SIZE=50 (optimal from SQLite benchmarks)
+  - Reduces JS↔native boundary crossings: 10k calls → 200 calls
+  - Single transaction wrapper eliminates commit overhead
+
+### Added
+- **BipartiteQuery interface** for partial SQL pushdown
+  - `buildWhereClauseWithFallback()` splits selectors into SQL + JS parts
+  - `splitSelector()` separates supported from unsupported operators
+  - Enables progressive enhancement: SQL fast path + JS fallback
+- **Chunked multi-VALUES INSERT pattern**
+  - CHUNK_SIZE=50 based on SQLite Forum benchmarks (50-100 rows optimal)
+  - Per-chunk conflict handling (maintains RxDB semantics)
+  - Prepared statement pattern with transaction wrapper
+
+### Fixed 🔥
+- **Batch operations regression** (124% slower for large batches)
+  - Single prepared statement loop caused: 86.76ms → 194.06ms for 10k docs
+  - Root cause: 10k individual insertStmt.run() calls = massive boundary crossing overhead
+  - Solution: Chunked multi-VALUES INSERT = 194.06ms → 81.24ms (beats original by 6%)
+- **Full table scans for mixed queries**
+  - Queries with ANY unsupported operator returned null → fetched ALL rows
+  - Now: SQL filters supported parts, JS filters unsupported parts
+  - Prevents loading 100k rows when only 5k match after filtering
+
+### Changed
+- **Query execution flow** for mixed queries
+  - BEFORE: Unsupported operator → null → fetch all → filter in JS
+  - AFTER: Build partial SQL WHERE → fetch subset → filter remaining in JS
+  - SKIP/LIMIT moved to JS layer for correct semantics
+- **Batch operations implementation**
+  - BEFORE: String concatenation with BATCH_SIZE=100 chunking
+  - AFTER: Chunked multi-VALUES with CHUNK_SIZE=50 in single transaction
+  - Better statement cache utilization, fewer boundary crossings
+
+### Technical Details
+- All 576 tests passing
+- Zero regressions
+- Benchmark validation: partial-pushdown-baseline.ts, batch-operations-baseline.ts
+- Research-backed: SQLite Forum benchmarks, production examples from Signal Desktop
+- Applied 5-approaches framework (Linus Torvalds style) for optimization analysis
+
+---
+
 ## [1.5.1] - 2026-03-01
 
 ### Performance 🔥
