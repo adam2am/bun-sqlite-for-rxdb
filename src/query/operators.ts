@@ -433,22 +433,18 @@ export function translateElemMatch<RxDocType>(
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	actualFieldName: string
 ): SqlFragment | null {
-	// Empty criteria is data corruption - fail fast
 	if (typeof criteria === 'object' && criteria !== null && !Array.isArray(criteria) && Object.keys(criteria).length === 0) {
 		return { sql: '1=0', args: [] };
 	}
 
-	if (typeof criteria !== 'object' || criteria === null) {
-		return {
-			sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE value = ?)`,
-			args: [criteria]
-		};
+	if (typeof criteria !== 'object' || criteria === null || Array.isArray(criteria)) {
+		return null;
 	}
 
 	if (criteria.$and && Array.isArray(criteria.$and)) {
 		const fragments = criteria.$and.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond, schema, actualFieldName));
 		if (fragments.some(f => f === null)) return null;
-		const sql = fragments.map(f => f!.sql).join(' AND ');
+		const sql = fragments.map(f => `COALESCE((${f!.sql}), 0)`).join(' AND ');
 		const args = fragments.flatMap(f => f!.args);
 		return {
 			sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE ${sql})`,
@@ -459,7 +455,7 @@ export function translateElemMatch<RxDocType>(
 	if (criteria.$or && Array.isArray(criteria.$or)) {
 		const fragments = criteria.$or.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond, schema, actualFieldName));
 		if (fragments.some(f => f === null)) return null;
-		const sql = fragments.map(f => f!.sql).join(' OR ');
+		const sql = fragments.map(f => `COALESCE((${f!.sql}), 0)`).join(' OR ');
 		const args = fragments.flatMap(f => f!.args);
 		return {
 			sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE ${sql})`,
@@ -470,7 +466,7 @@ export function translateElemMatch<RxDocType>(
 	if (criteria.$nor && Array.isArray(criteria.$nor)) {
 		const fragments = criteria.$nor.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond, schema, actualFieldName));
 		if (fragments.some(f => f === null)) return null;
-		const sql = fragments.map(f => f!.sql).join(' OR ');
+		const sql = fragments.map(f => `COALESCE((${f!.sql}), 0)`).join(' OR ');
 		const args = fragments.flatMap(f => f!.args);
 		return {
 			sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE NOT (${sql}))`,
@@ -481,7 +477,7 @@ export function translateElemMatch<RxDocType>(
 	const fragment = buildElemMatchConditions(criteria as Record<string, unknown>, schema, actualFieldName);
 	if (!fragment) return null;
 	return {
-		sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE ${fragment.sql})`,
+		sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE ${asBoolean(fragment.sql)})`,
 		args: fragment.args
 	};
 }
@@ -503,13 +499,28 @@ export function translateLeafOperator<RxDocType>(
 		case '$in': return translateIn(field, value as unknown[], schema, actualFieldName);
 		case '$nin': return translateNin(field, value as unknown[], schema, actualFieldName);
 		case '$exists': return translateExists(field, value as boolean);
-		case '$size': {
-			const columnInfo = getColumnInfo(actualFieldName, schema);
-			if (columnInfo.type !== 'array' && columnInfo.type !== 'unknown') {
-				return null;
-			}
-			return translateSize(field, value as number);
+	case '$size': {
+		const columnInfo = getColumnInfo(actualFieldName, schema);
+		// Known non-array types → impossible (data corruption per docs/architecture/data-corruption-handling.md)
+		// Unknown types → execute and let SQL handle it (matches Mingo: try, then handle result)
+		if (columnInfo.type !== 'array' && columnInfo.type !== 'unknown') {
+			return { sql: '1=0', args: [] };
 		}
+		
+		// Extract column and path for two-parameter form (matches translateType pattern)
+		let jsonColumn = 'data';
+		let jsonPath = actualFieldName;
+		let isDirectPath = false;
+		
+		if (field === 'value') {
+			// Inside $elemMatch - use value directly
+			jsonColumn = 'value';
+			jsonPath = '';
+			isDirectPath = true;
+		}
+		
+		return translateSize(jsonColumn, jsonPath, value as number, isDirectPath);
+	}
 		case '$mod': {
 			const result = translateMod(field, value);
 			if (!result) return translateEq(field, value, schema, actualFieldName);
@@ -581,9 +592,17 @@ export function translateLeafOperator<RxDocType>(
 	}
 }
 
+/**
+ * Forces any SQL expression into strict 0/1 boolean (NULL → 0)
+ * to match MongoDB/Mingo two-valued logic.
+ */
+function asBoolean(sql: string): string {
+	return `COALESCE((${sql}), 0)`;
+}
+
 export function wrapWithNot(innerFragment: SqlFragment): SqlFragment {
 	return {
-		sql: `NOT (${innerFragment.sql})`,
+		sql: `NOT (${asBoolean(innerFragment.sql)})`,
 		args: innerFragment.args
 	};
 }
@@ -613,9 +632,15 @@ export function translateType(
 	}
 }
 
-export function translateSize(field: string, size: number): SqlFragment {
+export function translateSize(
+	jsonColumn: string,
+	jsonPath: string,
+	size: number,
+	isDirectPath: boolean = false
+): SqlFragment {
+	const path = isDirectPath ? jsonPath : `$.${jsonPath}`;
 	return {
-		sql: `json_array_length(${field}) = ?`,
+		sql: `json_array_length(${jsonColumn}, '${path}') = ?`,
 		args: [size]
 	};
 }

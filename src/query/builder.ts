@@ -22,7 +22,7 @@ export function buildWhereClause<RxDocType>(
 	if (!selector || typeof selector !== 'object') return null;
 
 	const actualCache = cache ?? getGlobalCache();
-	const cacheKey = `v${schema.version}_${stableStringify(selector)}`;
+	const cacheKey = `v3_${schema.version}_${stableStringify(selector)}`;
 	const cached = actualCache.get(cacheKey);
 	if (cached !== undefined) {
 		return cached;
@@ -61,11 +61,11 @@ function splitSelector<RxDocType>(
 	const jsConditions: MangoQuerySelector<RxDocumentData<RxDocType>>[] = [];
 
 	const entries = Object.entries(selector);
-	
+
 	for (const [field, value] of entries) {
 		const testSelector = { [field]: value } as MangoQuerySelector<RxDocumentData<RxDocType>>;
 		const sqlFragment = processSelector(testSelector, schema, 0);
-		
+
 		if (sqlFragment) {
 			sqlConditions.push(testSelector);
 		} else {
@@ -73,7 +73,7 @@ function splitSelector<RxDocType>(
 		}
 	}
 
-	const sqlWhere = sqlConditions.length > 0 
+	const sqlWhere = sqlConditions.length > 0
 		? processSelector({ $and: sqlConditions } as MangoQuerySelector<RxDocumentData<RxDocType>>, schema, 0)
 		: null;
 
@@ -82,6 +82,14 @@ function splitSelector<RxDocType>(
 		: null;
 
 	return { sqlWhere, jsSelector };
+}
+/**
+ * Converts SQL three-valued logic (TRUE/FALSE/NULL) to two-valued logic (TRUE/FALSE).
+ * NULL is treated as FALSE to match Mingo/MongoDB behavior where undefined fields
+ * evaluate to false in comparisons.
+ */
+function coerceToBoolean(sql: string): string {
+	return `COALESCE((${sql}), 0)`;
 }
 
 
@@ -98,12 +106,14 @@ export function buildLogicalOperator<RxDocType>(
 	const fragments = conditions.map(subSelector => processSelector(subSelector, schema, logicalDepth + 1));
 	if (fragments.some(f => f === null)) return null;
 
-	const sql = fragments.map(f => `(${f!.sql})`).join(' OR ');
+	const sql = fragments.map(f => f!.sql).join(operator === 'and' ? ' AND ' : ' OR ');
 	const args = fragments.flatMap(f => f!.args);
 
-	return operator === 'nor'
-		? { sql: `NOT(${sql})`, args }
-		: { sql, args };
+	if (operator === 'nor') {
+		return { sql: `NOT(${coerceToBoolean(sql)})`, args };
+	}
+
+	return { sql, args };
 }
 
 function processSelector<RxDocType>(
@@ -184,17 +194,19 @@ function processSelector<RxDocType>(
 					// Examples: { $not: false } → { $not: { $eq: false } }
 					//           { $not: null } → { $not: { $eq: null } }
 					//           { $not: [1,2] } → { $not: { $eq: [1,2] } }
+					// ROBUST FIX: $not with primitive is $not: {$eq}, which is semantically $ne
 					if (typeof opValue !== 'object' || opValue === null || Array.isArray(opValue)) {
-						const eqFrag = translateLeafOperator('$eq', fieldName, opValue, schema, actualFieldName);
-						if (!eqFrag) return null;
-						fragment = wrapWithNot(eqFrag!);
+						const neFrag = translateLeafOperator('$ne', fieldName, opValue, schema, actualFieldName);
+						if (!neFrag) return null;
+						fragment = neFrag;
 
 						// 2. Handle Date objects (Mingo compatibility)
 						// Example: { $not: new Date('2024-01-01') } → { $not: { $eq: date } }
+						// ROBUST FIX: Same as primitives, use $ne for NULL handling
 					} else if (opValue instanceof Date) {
-						const eqFrag = translateLeafOperator('$eq', fieldName, opValue, schema, actualFieldName);
-						if (!eqFrag) return null;
-						fragment = wrapWithNot(eqFrag!);
+						const neFrag = translateLeafOperator('$ne', fieldName, opValue, schema, actualFieldName);
+						if (!neFrag) return null;
+						fragment = neFrag;
 
 						// 3. Handle RegExp objects (Mingo compatibility)
 						// Example: { $not: /pattern/i } → { $not: { $regex: /pattern/i } }
@@ -258,18 +270,27 @@ function processSelector<RxDocType>(
 						} else {
 							const hasOperators = innerKeys.some(k => k.startsWith('$'));
 							if (!hasOperators) {
-								// Plain object without operators → Wrap with $eq (Mingo compatibility)
-								// Example: { $not: { a: 1 } } → NOT (field = {a:1})
-								const eqFrag = translateLeafOperator('$eq', fieldName, opValueObj, schema, actualFieldName);
-								if (!eqFrag) return null;
-								fragment = wrapWithNot(eqFrag!);
+								const neFrag = translateLeafOperator('$ne', fieldName, opValueObj, schema, actualFieldName);
+								if (!neFrag) return null;
+								fragment = neFrag;
 							} else {
 								// Has operators → Process normally
-								// Example: { $not: { $gt: 5 } } → NOT (field > 5)
 								const [[innerOp, innerVal]] = Object.entries(opValueObj);
-								const innerFrag = translateLeafOperator(innerOp, fieldName, innerVal, schema, actualFieldName);
-								if (!innerFrag) return null;
-								fragment = wrapWithNot(innerFrag!);
+
+								// ROBUST FIX: $not: {$eq} is semantically equivalent to $ne
+								// Mingo: undefined != value → true (should match)
+								// SQL: NOT(NULL = value) → NULL (doesn't match) ✗
+								// Solution: Use translateNe which handles NULL correctly
+								if (innerOp === '$eq') {
+									const neFrag = translateLeafOperator('$ne', fieldName, innerVal, schema, actualFieldName);
+									if (!neFrag) return null;
+									fragment = neFrag;
+								} else {
+									// Example: { $not: { $gt: 5 } } → NOT (field > 5)
+									const innerFrag = translateLeafOperator(innerOp, fieldName, innerVal, schema, actualFieldName);
+									if (!innerFrag) return null;
+									fragment = wrapWithNot(innerFrag!);
+								}
 							}
 						}
 					}
