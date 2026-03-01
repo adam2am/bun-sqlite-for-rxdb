@@ -1,37 +1,25 @@
 import type { RxJsonSchema, RxDocumentData } from 'rxdb';
+import { getIndexCache } from './cache';
 
 export interface SqlFragment {
 	sql: string;
 	args: (string | number | boolean)[];
 }
 
-const INDEX_CACHE = new Map<string, boolean>();
-
-export function clearRegexCache(): void {
-	INDEX_CACHE.clear();
-}
-const MAX_INDEX_CACHE_SIZE = 1000;
-
 function hasExpressionIndex<RxDocType>(
 	fieldName: string,
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>
 ): boolean {
-	const indexKey = schema.indexes ? JSON.stringify(schema.indexes) : 'none';
-	const cacheKey = `${schema.version}_${fieldName}_${indexKey}`;
+	const cache = getIndexCache();
+	const cacheKey = `${fieldName}:${JSON.stringify(schema.indexes || [])}`;
 	
-	const cached = INDEX_CACHE.get(cacheKey);
+	const cached = cache.get(cacheKey);
 	if (cached !== undefined) {
-		INDEX_CACHE.delete(cacheKey);
-		INDEX_CACHE.set(cacheKey, cached);
 		return cached;
 	}
 	
 	if (!schema.indexes) {
-		if (INDEX_CACHE.size >= MAX_INDEX_CACHE_SIZE) {
-			const firstKey = INDEX_CACHE.keys().next().value;
-			if (firstKey) INDEX_CACHE.delete(firstKey);
-		}
-		INDEX_CACHE.set(cacheKey, false);
+		cache.set(cacheKey, false);
 		return false;
 	}
 	
@@ -44,12 +32,7 @@ function hasExpressionIndex<RxDocType>(
 		});
 	});
 	
-	if (INDEX_CACHE.size >= MAX_INDEX_CACHE_SIZE) {
-		const firstKey = INDEX_CACHE.keys().next().value;
-		if (firstKey) INDEX_CACHE.delete(firstKey);
-	}
-	
-	INDEX_CACHE.set(cacheKey, hasLowerIndex);
+	cache.set(cacheKey, hasLowerIndex);
 	return hasLowerIndex;
 }
 

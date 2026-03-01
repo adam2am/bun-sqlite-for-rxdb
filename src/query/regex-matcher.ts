@@ -1,9 +1,4 @@
-interface RegexCacheEntry {
-	regex: RegExp;
-}
-
-const REGEX_CACHE = new Map<string, RegexCacheEntry>();
-const MAX_REGEX_CACHE_SIZE = 100;
+import { getRegexCache } from './cache';
 
 function isValidRegexOptions(options: string): boolean {
 	for (let i = 0; i < options.length; i++) {
@@ -14,27 +9,19 @@ function isValidRegexOptions(options: string): boolean {
 }
 
 function compileRegex(pattern: string, options?: string): RegExp {
-	const cacheKey = `${pattern}::${options || ''}`;
-
-	const cached = REGEX_CACHE.get(cacheKey);
+	const cache = getRegexCache();
+	const cacheKey = `${pattern}:${options || ''}`;
+	const cached = cache.get(cacheKey);
 	if (cached) {
 		return cached.regex;
 	}
 
 	if (options && !isValidRegexOptions(options)) {
-		throw new Error(`Invalid regex options: "${options}". Valid options are: i, m, s, x, u`);
+		throw new Error(`Invalid regex options: ${options}`);
 	}
 
 	const regex = new RegExp(pattern, options);
-
-	if (REGEX_CACHE.size >= MAX_REGEX_CACHE_SIZE) {
-		const firstKey = REGEX_CACHE.keys().next().value;
-		if (firstKey) {
-			REGEX_CACHE.delete(firstKey);
-		}
-	}
-
-	REGEX_CACHE.set(cacheKey, { regex });
+	cache.set(cacheKey, { regex });
 	return regex;
 }
 
@@ -51,3 +38,5 @@ export function matchesRegex(value: unknown, pattern: string, options?: string):
 
 	return false;
 }
+
+
