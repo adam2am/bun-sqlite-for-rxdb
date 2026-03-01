@@ -1594,3 +1594,143 @@ WHERE NOT (
 **History:** v1.2.0 (2026-02-28) - Added top-level $not support with 5 lines of code. Analyzed with 5-approaches framework, validated with real-world use cases, ARRR! 🏴‍☠️
 
 ---
+
+## 31. NULL Handling in SQL Query Translation (v1.2.0)
+
+**[Rule]:** Execute operations on unknown fields, use COALESCE to convert NULL → false where needed.
+
+**Why:**
+- SQL's three-valued logic (TRUE/FALSE/NULL) doesn't match JavaScript's two-valued logic (true/false)
+- Mingo doesn't pre-validate field types - it evaluates first, then handles the result
+- Our SQL should match this "try, then handle" philosophy
+- NULL in logical operations can break query semantics
+
+**🧠 Key Insights (Linus Style)**
+
+*"This wasn't a bug, it was a fundamental misunderstanding of the problem."*
+
+1. **Don't confuse "unknown" with "invalid"**
+   - Invalid: `$type: "invalidType"` → We KNOW it's wrong
+   - Unknown: `$size` on unknown field → We DON'T KNOW if it's an array
+   - Invalid = return `1=0` (impossible condition)
+   - Unknown = execute and let SQL handle it (matches Mingo)
+
+2. **Match the reference implementation**
+   - Mingo doesn't pre-validate types
+   - Mingo evaluates first, THEN handles the result
+   - Our SQL should do the same
+   - Example: `Array.isArray(a) && a.length === b` returns false for undefined
+
+3. **Use SQLite's JSON functions correctly**
+   - Two-parameter form: `json_array_length(data, '$.path')` ✅
+   - One-parameter form: `json_array_length(json_value)` ❌ (expects JSON, not string)
+   - `json_extract()` returns a STRING representation, not a JSON value
+   - Two-parameter form is the correct API for path-based access
+
+4. **Extra parentheses are noise, not safety**
+   - `((a) OR (b))` ≡ `(a OR b)`
+   - SQL operator precedence is well-defined
+   - Clean code > brittle tests
+   - Remove redundant parentheses for readability
+
+**The Bug We Fixed:**
+
+Property-based test failure:
+```typescript
+Query: {
+  items: {
+    $not: {
+      $elemMatch: {
+        $or: [
+          { name: { $regex: "item" } },
+          { tags: { $size: 0 } }
+        ]
+      }
+    }
+  }
+}
+
+Expected: ["4"] (only doc with empty items array)
+Got: ["1","2","3","4","5"] (all docs - WRONG!)
+```
+
+**Root Cause:** `$size` on unknown fields returned NULL, entire query failed, fell back to JavaScript filtering with incorrect results.
+
+**Implementation:**
+
+**1. $size on Unknown Fields**
+```typescript
+case '$size': {
+  const columnInfo = getColumnInfo(actualFieldName, schema);
+  // Known non-array types → impossible (data corruption)
+  // Unknown types → execute and let SQL handle it (matches Mingo)
+  if (columnInfo.type !== 'array' && columnInfo.type !== 'unknown') {
+    return { sql: '1=0', args: [] };
+  }
+  
+  // Use two-parameter form (matches translateType pattern)
+  let jsonColumn = 'data';
+  let jsonPath = actualFieldName;
+  let isDirectPath = false;
+  
+  if (field === 'value') {
+    jsonColumn = 'value';
+    jsonPath = '';
+    isDirectPath = true;
+  }
+  
+  return translateSize(jsonColumn, jsonPath, value as number, isDirectPath);
+}
+```
+
+**2. translateSize API Fix**
+```typescript
+// BEFORE (WRONG):
+export function translateSize(field: string, size: number): SqlFragment {
+  return {
+    sql: `json_array_length(${field}) = ?`,  // Single-parameter form
+    args: [size]
+  };
+}
+
+// AFTER (CORRECT):
+export function translateSize(
+  jsonColumn: string,
+  jsonPath: string,
+  size: number,
+  isDirectPath: boolean = false
+): SqlFragment {
+  const path = isDirectPath ? jsonPath : `$.${jsonPath}`;
+  return {
+    sql: `json_array_length(${jsonColumn}, '${path}') = ?`,  // Two-parameter form
+    args: [size]
+  };
+}
+```
+
+**Why Two-Parameter Form:**
+- Old: `json_array_length(json_extract(data, '$.field'))` → "malformed JSON" error
+- New: `json_array_length(data, '$.field')` → Works correctly
+- SQLite's `json_extract()` returns a STRING, not a JSON value
+
+**3. NULL Handling Strategy**
+
+Apply `COALESCE((sql), 0)` ONLY where NULL breaks logic:
+- `wrapWithNot` - All NOT(...) operations
+- `$nor` in buildLogicalOperator - Top-level $nor
+- `translateElemMatch` - All logical operators inside $elemMatch
+
+Leave regular `$or`/`$and` clean (NULL doesn't break them).
+
+**4. Data Corruption vs Schema Uncertainty**
+- **Data Corruption:** `$size` on KNOWN string field → Return `1=0` (impossible)
+- **Schema Uncertainty:** `$size` on UNKNOWN field → Execute SQL (we don't know if it's an array)
+
+**Test Results:**
+- Before: 605/624 passing (19 failures)
+- After: 624/624 passing (0 failures) ✅
+- Property-based tests: 10k random queries validated against Mingo
+
+**History:** v1.2.0 (2026-03-01) - Fixed NULL handling in $size operator, updated translateSize API to two-parameter form, added COALESCE guards. All 624 tests passing, ARRR! 🏴‍☠️
+
+---
