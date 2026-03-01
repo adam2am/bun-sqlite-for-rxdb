@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.5.4] - 2026-03-01
+
+### Performance 🔥
+- **VIRTUAL/STORED generated columns: 5-11% faster queries**
+  - VIRTUAL mode (default): 5-7% speedup, 0% storage overhead
+  - STORED mode: 11% speedup on typical queries, 58% faster sorts
+  - Pre-computes _deleted, _rev, _meta.lwt from JSON data column
+  - Synthetic benchmark (100K docs, sort without index): 58% faster with STORED
+- **Iterator-based mixed queries: 1.6x faster for paginated regex**
+  - Stops fetching rows once LIMIT reached
+  - 1.6x faster queries (59.31ms → 36.80ms)
+  - 813x less memory (33,334 rows → 41 rows processed)
+  - Optimizes queries like `{ status: 'active', name: { $regex: '^A' } } LIMIT 10`
+
+### Added
+- **useStoredColumns config option** with 3 modes:
+  - `false`: baseline (manual column extraction)
+  - `'virtual'`: computed on-the-fly, 0% storage overhead (default)
+  - `'stored'`: pre-computed, +11% storage, 58% faster sorts
+- **Generated columns for RxDB internal fields**
+  - `_deleted` column (VIRTUAL/STORED)
+  - `_rev` column (VIRTUAL/STORED)
+  - `_meta.lwt` column (VIRTUAL/STORED)
+- **Iterator-based execution for mixed queries**
+  - Early exit when LIMIT reached
+  - Processes only necessary rows for SQL + JS selector queries
+
+### Fixed 🔥
+- **ORDER BY clause now uses column mapper**
+  - Was hardcoded to `json_extract(data, '$.field')`
+  - Now uses `getColumnInfo()` to map fields to native columns
+  - Enables proper use of VIRTUAL/STORED columns in sort clauses
+
+### Technical Details
+- All 587 tests passing (our tests)
+- All 16/16 RxDB query correctness tests passing
+- All 122/122 RxDB storage implementation tests passing
+- Zero regressions
+- Marked experimental for alpha testing
+
+---
+
 ## [1.5.3] - 2026-03-01
 
 ### Performance 🔥
