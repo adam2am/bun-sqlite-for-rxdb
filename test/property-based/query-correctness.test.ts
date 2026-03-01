@@ -180,7 +180,7 @@ const MangoQueryArbitrary = () => {
 	);
 	
 	// Convert operator object to Mango query
-	const toMangoQuery = (op: any) => {
+	const toMangoQuery = (op: { field: string; op: string; value: unknown }) => {
 		if (op.op === '$eq') {
 			return { [op.field]: op.value };
 		}
@@ -406,7 +406,7 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 						inclusiveStart: true,
 						inclusiveEnd: true
 					}
-				} as any);
+				});
 				const sqlIds = sqlResults.documents.map(doc => doc.id).sort();
 				
 				// Compare results
@@ -459,7 +459,7 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 		const query = { age: { $gt: 100 } }; // No matches
 		
 		const mingoQuery = new Query<TestDocType>(query);
-		const mingoResults = mingoQuery.find(mockDocs).all();
+		const mingoResults = mingoQuery.find<TestDocType>(mockDocs).all();
 		
 		const sqlResults = await instance.query({
 			query: {
@@ -476,7 +476,7 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 				inclusiveStart: true,
 				inclusiveEnd: true
 			}
-		} as any);
+		});
 		
 		expect(sqlResults.documents.length).toBe(0);
 		expect(mingoResults.length).toBe(0);
@@ -486,7 +486,7 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 		const query = { _deleted: false }; // All match
 		
 		const mingoQuery = new Query<TestDocType>(query);
-		const mingoResults = mingoQuery.find(mockDocs).all();
+		const mingoResults = mingoQuery.find<TestDocType>(mockDocs).all();
 		
 		const sqlResults = await instance.query({
 			query: {
@@ -503,9 +503,45 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 				inclusiveStart: true,
 				inclusiveEnd: true
 			}
-		} as any);
+		});
 		
 		expect(sqlResults.documents.length).toBe(5);
 		expect(mingoResults.length).toBe(5);
+	});
+
+	it('handles mixed SQL + regex queries (partial pushdown)', async () => {
+		const mixedQueries = [
+			{ active: true, name: { $regex: '^A' } },
+			{ age: { $gt: 25 }, name: { $regex: 'e$' } },
+			{ active: false, name: { $regex: 'o' }, age: { $lt: 30 } },
+			{ tags: { $size: 2 }, name: { $regex: '[aeiou]{2}' } },
+			{ score: { $gte: 85 }, name: { $regex: '(Alice|Charlie)' } }
+		];
+
+		for (const query of mixedQueries) {
+			const mingoQuery = new Query<TestDocType>(query);
+			const mingoResults = mingoQuery.find<TestDocType>(mockDocs).all();
+			const mingoIds = mingoResults.map(doc => doc.id).sort();
+
+			const sqlResults = await instance.query({
+				query: {
+					selector: query,
+					sort: [{ id: 'asc' }],
+					skip: 0
+				},
+				queryPlan: {
+					index: ['id'],
+					sortSatisfiedByIndex: false,
+					selectorSatisfiedByIndex: false,
+					startKeys: [],
+					endKeys: [],
+					inclusiveStart: true,
+					inclusiveEnd: true
+				}
+			} as any);
+			const sqlIds = sqlResults.documents.map(doc => doc.id).sort();
+
+			expect(sqlIds).toEqual(mingoIds);
+		}
 	});
 });
