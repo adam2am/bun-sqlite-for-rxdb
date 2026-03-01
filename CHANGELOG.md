@@ -1,5 +1,53 @@
 # Changelog
 
+## [1.5.1] - 2026-03-01
+
+### Performance 🔥
+- **Sorted fallback queries: 2.1x faster**
+  - 100k docs with LIMIT=10: 629ms → 302ms
+  - Unified sorted/unsorted code paths
+  - Push ORDER BY to SQLite, use iterate() + early exit
+  - Only parse ~10-20 documents instead of loading all
+- **StatementManager caching: 2.8x faster UPDATE operations**
+  - UPDATE operations: 12.98ms → 4.64ms
+  - Fixed artificial limitation refusing to cache queries with WHERE clause
+  - Now caches ALL prepared statements (industry standard)
+- **Cache hit rates: 1.5-28% better under pressure**
+  - REGEX_CACHE (FIFO → SIEVE): 11.7-28% better hit rates
+  - INDEX_CACHE (Manual-LRU → SIEVE): 1.5-6.8% better hit rates
+  - 10-18% lower eviction overhead
+
+### Changed
+- **Cache infrastructure unification (DRY refactor)**
+  - Centralized all cache creation in `src/query/cache.ts`
+  - Single source of truth for cache configuration
+  - Factory pattern: `getRegexCache()`, `getIndexCache()`, `getQueryCache()`
+  - Eliminated ~50 lines of manual eviction code
+  - Easy to swap cache implementations (change 1 file)
+- **Query cache architecture**
+  - Migrated REGEX_CACHE from manual FIFO Map to SieveCache(100)
+  - Migrated INDEX_CACHE from manual LRU Map to SieveCache(1000)
+  - Unified caching strategy across all 3 caches
+
+### Fixed 🔥
+- **Sorted fallback loading all documents before filtering**
+  - Was loading 100k docs to return 10 (O(n) instead of O(k))
+  - Now uses ORDER BY + iterate() + early exit pattern
+  - Preserves correctness while achieving 2x speedup
+- **StatementManager refusing to cache dynamic queries**
+  - `isStaticSQL()` was rejecting queries with `WHERE (`
+  - Affected UPDATE/INSERT/DELETE operations
+  - Now caches all queries with LRU eviction (MAX_STATEMENTS=500)
+
+### Technical Details
+- All 575 tests passing
+- Zero regressions
+- Benchmark validation: cache-pressure-comparison.ts
+- Code reduction: ~50 lines of manual cache eviction eliminated
+- Architecture: Single source of truth for cache configuration
+
+---
+
 ## [1.5.0] - 2026-02-28
 
 ### Added
