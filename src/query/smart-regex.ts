@@ -81,32 +81,27 @@ export function smartRegexToLike<RxDocType>(
 	
 	if (startsWithAnchor && endsWithAnchor) {
 		if (caseInsensitive) {
-			return hasLowerIndex
-				? { sql: `LOWER(${field}) = ?`, args: [unescaped.toLowerCase()] }
-				: { sql: `${field} = ? COLLATE NOCASE`, args: [unescaped] };
+			return { sql: `LOWER(${field}) = LOWER(?)`, args: [unescaped] };
 		}
 		return { sql: `${field} = ?`, args: [unescaped] };
 	}
 	
 	if (startsWithAnchor) {
-		const suffix = caseInsensitive ? escaped.toLowerCase() : escaped;
-		if (caseInsensitive && hasLowerIndex) {
-			return { sql: `LOWER(${field}) LIKE ? ESCAPE '\\'`, args: [suffix + '%'] };
+		if (caseInsensitive) {
+			return { sql: `LOWER(${field}) LIKE LOWER(?) ESCAPE '\\'`, args: [escaped + '%'] };
 		}
-		return { sql: `${field} LIKE ?${caseInsensitive ? ' COLLATE NOCASE' : ''} ESCAPE '\\'`, args: [suffix + '%'] };
+		return { sql: `${field} LIKE ? ESCAPE '\\'`, args: [escaped + '%'] };
 	}
 	
 	if (endsWithAnchor) {
-		const prefix = caseInsensitive ? escaped.toLowerCase() : escaped;
-		if (caseInsensitive && hasLowerIndex) {
-			return { sql: `LOWER(${field}) LIKE ? ESCAPE '\\'`, args: ['%' + prefix] };
+		if (caseInsensitive) {
+			return { sql: `LOWER(${field}) LIKE LOWER(?) ESCAPE '\\'`, args: ['%' + escaped] };
 		}
-		return { sql: `${field} LIKE ?${caseInsensitive ? ' COLLATE NOCASE' : ''} ESCAPE '\\'`, args: ['%' + prefix] };
+		return { sql: `${field} LIKE ? ESCAPE '\\'`, args: ['%' + escaped] };
 	}
 	
-	const middle = caseInsensitive ? escaped.toLowerCase() : escaped;
-	if (caseInsensitive && hasLowerIndex) {
-		return { sql: `LOWER(${field}) LIKE ? ESCAPE '\\'`, args: ['%' + middle + '%'] };
+	if (caseInsensitive) {
+		return { sql: `LOWER(${field}) LIKE LOWER(?) ESCAPE '\\'`, args: ['%' + escaped + '%'] };
 	}
-	return { sql: `${field} LIKE ?${caseInsensitive ? ' COLLATE NOCASE' : ''} ESCAPE '\\'`, args: ['%' + middle + '%'] };
+	return { sql: `${field} LIKE ? ESCAPE '\\'`, args: ['%' + escaped + '%'] };
 }

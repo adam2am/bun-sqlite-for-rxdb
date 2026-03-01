@@ -1,6 +1,6 @@
 import type { RxJsonSchema, MangoQuerySelector, RxDocumentData } from 'rxdb';
 import { getColumnInfo } from './schema-mapper';
-import { translateLeafOperator, wrapWithNot, translateElemMatch } from './operators';
+import { translateLeafOperator, wrapWithNot, translateElemMatch, buildJsonPath } from './operators';
 import type { SqlFragment, ElemMatchCriteria } from './operators';
 import { stableStringify } from '../utils/stable-stringify';
 import type { SieveCache } from './sieve-cache';
@@ -160,7 +160,7 @@ function processSelector<RxDocType>(
 		}
 
 		const columnInfo = getColumnInfo(field, schema);
-		const fieldName = columnInfo.column || `json_extract(data, '${columnInfo.jsonPath}')`;
+		const fieldName = columnInfo.column || `json_extract(data, '${buildJsonPath(field)}')`;
 		const actualFieldName = columnInfo.jsonPath?.replace(/^\$\./, '') || columnInfo.column || field;
 
 		if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
@@ -297,7 +297,7 @@ function processSelector<RxDocType>(
 					// Skip $options - it's handled together with $regex
 					continue;
 				} else if (!op.startsWith('$')) {
-					const jsonPath = `json_extract(${fieldName}, '$.${op}')`;
+					const jsonPath = `json_extract(${fieldName}, '${buildJsonPath(op)}')`;
 					const nestedFieldName = `${actualFieldName}.${op}`;
 					const leafFrag = translateLeafOperator('$eq', jsonPath, opValue, schema, nestedFieldName);
 					if (!leafFrag) return null;

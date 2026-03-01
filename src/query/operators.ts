@@ -12,13 +12,19 @@ export type ElemMatchCriteria = QueryValue | OperatorExpression;
 
 import { smartRegexToLike } from './smart-regex';
 
-/**
- * Normalizes values for SQLite binding compatibility.
- * SQLite only accepts: string | number | boolean | null | bigint | TypedArray
- * 
- * @param value - Value to normalize
- * @returns SQLite-compatible value
- */
+export function buildJsonPath(fieldName: string): string {
+	const segments = fieldName.split('.');
+	let path = '$';
+	for (const segment of segments) {
+		if (/^\d+$/.test(segment)) {
+			path += `[${segment}]`;
+		} else {
+			path += `.${segment}`;
+		}
+	}
+	return path;
+}
+
 function normalizeValueForSQLite(value: unknown): string | number | boolean | null {
 	if (value instanceof Date) {
 		return value.toISOString();
@@ -259,6 +265,20 @@ export function translateRegex<RxDocType>(
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	fieldName: string
 ): SqlFragment | null {
+	const columnInfo = getColumnInfo(fieldName, schema);
+	const isArray = field !== 'value' && columnInfo.type === 'array';
+	
+	if (isArray) {
+		const smartResult = smartRegexToLike('value', pattern, options, schema, fieldName);
+		if (smartResult) {
+			return {
+				sql: `EXISTS (SELECT 1 FROM jsonb_each(${field}) WHERE ${smartResult.sql})`,
+				args: smartResult.args
+			};
+		}
+		return null;
+	}
+	
 	const smartResult = smartRegexToLike(field, pattern, options, schema, fieldName);
 	if (smartResult) return smartResult;
 
@@ -323,7 +343,7 @@ function handleFieldCondition<RxDocType>(
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	baseFieldName: string
 ): SqlFragment | null {
-	const propertyField = `json_extract(value, '$.${fieldName}')`;
+	const propertyField = `json_extract(value, '${buildJsonPath(fieldName)}')`;
 	const nestedFieldName = `${baseFieldName}.${fieldName}`;
 
 	if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
@@ -486,7 +506,7 @@ export function translateLeafOperator<RxDocType>(
 		case '$size': {
 			const columnInfo = getColumnInfo(actualFieldName, schema);
 			if (columnInfo.type !== 'array' && columnInfo.type !== 'unknown') {
-				return { sql: '1=0', args: [] };
+				return null;
 			}
 			return translateSize(field, value as number);
 		}

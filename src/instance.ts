@@ -74,6 +74,8 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	}
 
 	private initTable(filename: string) {
+		this.db.run("PRAGMA case_sensitive_like = ON");
+		
 		if (filename !== ':memory:') {
 			this.db.run("PRAGMA journal_mode = WAL");
 			this.db.run("PRAGMA synchronous = NORMAL");
