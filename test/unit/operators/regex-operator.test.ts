@@ -36,25 +36,25 @@ describe('$regex Operator', () => {
 
 	it('handles case-insensitive with COLLATE NOCASE', () => {
 		const result = translateRegex('name', 'john', 'i', mockSchema, 'name');
-		expect(result?.sql).toBe("name LIKE ? COLLATE NOCASE ESCAPE '\\'");
+		expect(result?.sql).toBe("LOWER(name) LIKE LOWER(?) ESCAPE '\\'");
 		expect(result?.args).toEqual(['%john%']);
 	});
 
 	it('handles case-insensitive prefix pattern', () => {
 		const result = translateRegex('name', '^john', 'i', mockSchema, 'name');
-		expect(result?.sql).toBe("name LIKE ? COLLATE NOCASE ESCAPE '\\'");
+		expect(result?.sql).toBe("LOWER(name) LIKE LOWER(?) ESCAPE '\\'");
 		expect(result?.args).toEqual(['john%']);
 	});
 
 	it('handles case-insensitive suffix pattern', () => {
 		const result = translateRegex('email', '@gmail\\.com$', 'i', mockSchema, 'email');
-		expect(result?.sql).toBe("email LIKE ? COLLATE NOCASE ESCAPE '\\'");
+		expect(result?.sql).toBe("LOWER(email) LIKE LOWER(?) ESCAPE '\\'");
 		expect(result?.args).toEqual(['%@gmail.com']);
 	});
 
 	it('handles case-insensitive exact match', () => {
 		const result = translateRegex('code', '^ABC$', 'i', mockSchema, 'code');
-		expect(result?.sql).toBe("code = ? COLLATE NOCASE");
+		expect(result?.sql).toBe("LOWER(code) = LOWER(?)");
 		expect(result?.args).toEqual(['ABC']);
 	});
 

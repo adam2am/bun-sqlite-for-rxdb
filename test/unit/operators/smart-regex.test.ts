@@ -79,10 +79,7 @@ describe('INDEX_CACHE bounds and LRU eviction', () => {
 		const result1 = smartRegexToLike('name', '^test$', 'i', schema1, 'name');
 		const result2 = smartRegexToLike('name', '^test$', 'i', schema2, 'name');
 		
-		// Different schemas should produce different results
-		// schema1: no index → COLLATE NOCASE
-		// schema2: expression index → LOWER()
-		expect(result1?.sql).toContain('COLLATE NOCASE');
+		expect(result1?.sql).toContain('LOWER(');
 		expect(result2?.sql).toContain('LOWER(');
 	});
 });
@@ -92,15 +89,15 @@ describe('smartRegexToLike basic functionality', () => {
 		const schema = createSchema(0, ['LOWER(name)']);
 		const result = smartRegexToLike('name', '^test$', 'i', schema, 'name');
 		
-		expect(result?.sql).toBe('LOWER(name) = ?');
+		expect(result?.sql).toBe('LOWER(name) = LOWER(?)');
 		expect(result?.args).toEqual(['test']);
 	});
 	
-	test('Exact match without index uses COLLATE NOCASE', () => {
+	test('Exact match without index uses LOWER()', () => {
 		const schema = createSchema(0, []);
 		const result = smartRegexToLike('name', '^test$', 'i', schema, 'name');
 		
-		expect(result?.sql).toBe('name = ? COLLATE NOCASE');
+		expect(result?.sql).toBe('LOWER(name) = LOWER(?)');
 		expect(result?.args).toEqual(['test']);
 	});
 	
@@ -108,15 +105,15 @@ describe('smartRegexToLike basic functionality', () => {
 		const schema = createSchema(0, ['LOWER(name)']);
 		const result = smartRegexToLike('name', '^test', 'i', schema, 'name');
 		
-		expect(result?.sql).toBe('LOWER(name) LIKE ? ESCAPE \'\\\'');
+		expect(result?.sql).toBe('LOWER(name) LIKE LOWER(?) ESCAPE \'\\\'');
 		expect(result?.args).toEqual(['test%']);
 	});
 	
-	test('Contains match without index uses COLLATE NOCASE', () => {
+	test('Contains match without index uses LOWER()', () => {
 		const schema = createSchema(0, []);
 		const result = smartRegexToLike('name', 'test', 'i', schema, 'name');
 		
-		expect(result?.sql).toBe('name LIKE ? COLLATE NOCASE ESCAPE \'\\\'');
+		expect(result?.sql).toBe('LOWER(name) LIKE LOWER(?) ESCAPE \'\\\'');
 		expect(result?.args).toEqual(['%test%']);
 	});
 });

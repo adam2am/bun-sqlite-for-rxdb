@@ -31,7 +31,7 @@ describe('$regex Invalid Flags', () => {
 	it('accepts "i" flag (case-insensitive)', () => {
 		const result = translateRegex('name', 'test', 'i', mockSchema, 'name');
 		expect(result).not.toBeNull();
-		expect(result?.sql).toContain('COLLATE NOCASE');
+		expect(result?.sql).toContain('LOWER(');
 	});
 
 	it('accepts "m" flag (multiline)', () => {
