@@ -1,5 +1,45 @@
 # Changelog
 
+## [1.5.5] - 2026-03-01
+
+### Fixed 🔥
+- **Critical: schema-mapper.ts typo causing ALL schema-aware optimizations to fail**
+  - Line 27: `properties?.path` → `properties?.[path]`
+  - Bug prevented getColumnInfo() from detecting field types
+  - All schema-aware checks were returning 'unknown' instead of actual types
+- **$type operator NULL bug in $nor queries**
+  - `json_type()` returns NULL for missing fields
+  - `NOT(FALSE OR NULL)` = NULL (excluded from results incorrectly)
+  - Fix: COALESCE(json_type(...) = 'text', 0) converts NULL → FALSE
+  - Now correctly matches MongoDB/Mingo behavior in negation contexts
+
+### Added
+- **Schema-aware $size optimization**
+  - Returns 1=0 (no matches) when $size used on non-array fields
+  - Prevents SQLite crash: `json_array_length('string')` → "malformed JSON"
+  - Compile-time optimization (no runtime overhead)
+- **BSON type aliases for $type operator**
+  - Added: bool, int, long, double, decimal
+  - Matches MongoDB BSON type naming conventions
+- **Comprehensive data corruption handling**
+  - Invalid operators return 1=0 (matches Mingo/RxDB ecosystem pattern)
+  - Research: 7 agents analyzed Mingo/RxDB behavior
+  - Decision: Ecosystem compatibility over MongoDB purity
+  - Documented in docs/architecture/data-corruption-handling.md
+
+### Changed
+- **Extend getColumnInfo() to return all primitive types**
+  - Now returns: string, number, boolean, array (was: array, unknown)
+  - Enables more schema-aware optimizations in future
+
+### Technical Details
+- All 594 tests passing (15,836 expect() calls)
+- Zero regressions
+- Research-backed: 7 agents (4 Vivian + 3 Lisa) validated approach
+- Conservative optimization: Only optimize when mathematically safe
+
+---
+
 ## [1.5.4] - 2026-03-01
 
 ### Performance 🔥
