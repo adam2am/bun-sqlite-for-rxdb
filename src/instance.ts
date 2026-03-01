@@ -282,32 +282,45 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			queryArgs.push(...sqlWhere.args);
 		}
 
-		if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
-			const orderBy = preparedQuery.query.sort.map(sortField => {
-				const [field, direction] = Object.entries(sortField)[0];
-				const dir = direction === 'asc' ? 'ASC' : 'DESC';
-				return `json_extract(data, '$.${field}') ${dir}`;
-			}).join(', ');
-			sql += ` ORDER BY ${orderBy}`;
+	if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
+		const orderBy = preparedQuery.query.sort.map(sortField => {
+			const [field, direction] = Object.entries(sortField)[0];
+			const dir = direction === 'asc' ? 'ASC' : 'DESC';
+			return `json_extract(data, '$.${field}') ${dir}`;
+		}).join(', ');
+		sql += ` ORDER BY ${orderBy}`;
+	}
+
+	const skip = preparedQuery.query.skip || 0;
+	const limit = preparedQuery.query.limit;
+
+	if (!jsSelector) {
+		if (limit !== undefined) {
+			sql += ` LIMIT ?`;
+			queryArgs.push(limit);
 		}
-
-		if (process.env.DEBUG_QUERIES) {
-			const explainSql = `EXPLAIN QUERY PLAN ${sql}`;
-			const plan = this.stmtManager.all({ query: explainSql, params: queryArgs });
-			console.log('[DEBUG_QUERIES] Query plan:', JSON.stringify(plan, null, 2));
-			console.log('[DEBUG_QUERIES] SQL:', sql);
-			console.log('[DEBUG_QUERIES] Args:', queryArgs);
+		if (skip > 0) {
+			if (limit === undefined) {
+				sql += ` LIMIT -1`;
+			}
+			sql += ` OFFSET ?`;
+			queryArgs.push(skip);
 		}
+	}
 
-		const rows = this.stmtManager.all({ query: sql, params: queryArgs }) as Array<{ data: string }>;
-		let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
+	if (process.env.DEBUG_QUERIES) {
+		const explainSql = `EXPLAIN QUERY PLAN ${sql}`;
+		const plan = this.stmtManager.all({ query: explainSql, params: queryArgs });
+		console.log('[DEBUG_QUERIES] Query plan:', JSON.stringify(plan, null, 2));
+		console.log('[DEBUG_QUERIES] SQL:', sql);
+		console.log('[DEBUG_QUERIES] Args:', queryArgs);
+	}
 
-		if (jsSelector) {
-			documents = documents.filter(doc => matchesSelector(doc, jsSelector));
-		}
+	const rows = this.stmtManager.all({ query: sql, params: queryArgs }) as Array<{ data: string }>;
+	let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
 
-		const skip = preparedQuery.query.skip || 0;
-		const limit = preparedQuery.query.limit;
+	if (jsSelector) {
+		documents = documents.filter(doc => matchesSelector(doc, jsSelector));
 
 		if (skip > 0) {
 			documents = documents.slice(skip);
@@ -316,8 +329,9 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		if (limit !== undefined) {
 			documents = documents.slice(0, limit);
 		}
+	}
 
-		return { documents };
+	return { documents };
 	}
 
 

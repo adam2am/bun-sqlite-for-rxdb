@@ -72,7 +72,7 @@ async function runBenchmark(instance: any, docCount: number) {
 	console.log('='.repeat(80));
 	console.log(`🏴‍☠️ PARTIAL SQL PUSHDOWN BASELINE (${docCount.toLocaleString()} docs)`);
 	console.log('='.repeat(80));
-	console.log('Measuring: Query time for mixed SQL + regex operators\n');
+	console.log('Measuring: Query time for mixed SQL + regex operators (20 runs, median)\n');
 
 	const tests = [
 		{
@@ -108,7 +108,7 @@ async function runBenchmark(instance: any, docCount: number) {
 		console.log(`\n📊 ${test.name}`);
 		console.log(`   ${test.description.split('\n').join('\n   ')}`);
 		
-		const iterations = 10;
+		const iterations = 20;
 		const times: number[] = [];
 		let resultCount = 0;
 
@@ -132,14 +132,16 @@ async function runBenchmark(instance: any, docCount: number) {
 			resultCount = result.documents.length;
 		}
 
+		times.sort((a, b) => a - b);
+		const medianTime = times[Math.floor(iterations / 2)];
 		const avgTime = times.reduce((a, b) => a + b, 0) / iterations;
-		const minTime = Math.min(...times);
-		const maxTime = Math.max(...times);
+		const minTime = times[0];
+		const maxTime = times[iterations - 1];
 
-		console.log(`   ⏱️  Avg: ${avgTime.toFixed(2)}ms | Min: ${minTime.toFixed(2)}ms | Max: ${maxTime.toFixed(2)}ms`);
+		console.log(`   ⏱️  Median: ${medianTime.toFixed(2)}ms | Avg: ${avgTime.toFixed(2)}ms | Min: ${minTime.toFixed(2)}ms | Max: ${maxTime.toFixed(2)}ms`);
 		console.log(`   📄 Found: ${resultCount} documents`);
 
-		results.push({ name: test.name, time: avgTime, count: resultCount });
+		results.push({ name: test.name, time: medianTime, count: resultCount });
 	}
 
 	console.log('\n' + '='.repeat(80));
