@@ -104,6 +104,23 @@ const MangoQueryArbitrary = () => {
 		value: fc.integer({ min: 0, max: 5 })
 	});
 	
+	const arrayIndexArb = fc.record({
+		field: fc.constantFrom('tags.0', 'tags.1', 'items.0.name', 'items.0.category', 'items.1.price'),
+		op: fc.constant('$eq'),
+		value: fc.oneof(
+			fc.constantFrom('admin', 'user', 'moderator'),
+			fc.constantFrom('item1', 'item2', 'item3', 'item4', 'item5'),
+			fc.constantFrom('A', 'B', 'C'),
+			fc.integer({ min: 50, max: 300 })
+		)
+	});
+	
+	const regexOnArrayArb = fc.record({
+		field: fc.constant('tags'),
+		op: fc.constant('$regex'),
+		value: fc.constantFrom('^a', 'r$', 'mod', 'user')
+	});
+	
 	const modArb = fc.record({
 		field: fc.constantFrom('age', 'score'),
 		op: fc.constant('$mod'),
@@ -202,7 +219,9 @@ const MangoQueryArbitrary = () => {
 		sizeArb, sizeOnNonArrayArb, modArb, regexArb, 
 		typeArb,
 		elemMatchSimpleArb,
-		elemMatchComplexArb
+		elemMatchComplexArb,
+		arrayIndexArb,
+		regexOnArrayArb
 	);
 	
 	// Convert operator object to Mango query
