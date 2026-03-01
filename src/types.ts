@@ -14,6 +14,17 @@ export interface BunSQLiteStorageSettings {
 	 * @default 268435456 (256MB)
 	 */
 	mmapSize?: number;
+
+	/**
+	 * Use generated columns for _deleted and _meta.lwt fields.
+	 * - false: Regular columns with manual extraction (baseline)
+	 * - 'virtual': VIRTUAL generated columns (computed on-the-fly, no storage overhead) - RECOMMENDED
+	 * - 'stored': STORED generated columns (pre-computed, +11% storage, 58% faster queries)
+	 * Requires SQLite 3.31.0+ (Bun 1.0+ includes SQLite 3.42+).
+	 * @default 'virtual'
+	 * @experimental Alpha feature - opt-in for testing
+	 */
+	useStoredColumns?: false | 'virtual' | 'stored';
 }
 
 export interface BunSQLiteInternals {

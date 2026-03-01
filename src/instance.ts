@@ -21,6 +21,7 @@ import type {
 } from 'rxdb';
 import type { BunSQLiteStorageSettings, BunSQLiteInternals } from './types';
 import { buildWhereClause, buildWhereClauseWithFallback } from './query/builder';
+import { getColumnInfo } from './query/schema-mapper';
 import { matchesSelector } from './query/lightweight-matcher';
 import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from './rxdb-helpers';
 import { StatementManager } from './statement-manager';
@@ -40,6 +41,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	public readonly options: Readonly<BunSQLiteStorageSettings>;
 	private primaryPath: string;
 	private tableName: string;
+	private useStoredColumns: false | 'virtual' | 'stored';
 	public closed?: Promise<void>;
 
 	constructor(
@@ -56,6 +58,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		const primaryKey = params.schema.primaryKey;
 		this.primaryPath = typeof primaryKey === 'string' ? primaryKey : primaryKey.key;
 		this.tableName = `${params.collectionName}_v${params.schema.version}`;
+		this.useStoredColumns = this.options?.useStoredColumns ?? 'virtual';
 
 		const filename = settings.filename || ':memory:';
 		this.db = getDatabase(this.databaseName, filename);
@@ -87,15 +90,37 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			this.db.run("PRAGMA locking_mode = NORMAL");
 		}
 
-		this.db.run(`
-			CREATE TABLE IF NOT EXISTS "${this.tableName}" (
-				id TEXT PRIMARY KEY NOT NULL,
-				data BLOB NOT NULL,
-				deleted INTEGER NOT NULL DEFAULT 0,
-				rev TEXT NOT NULL,
-				mtime_ms REAL NOT NULL
-			)
-		`);
+		if (this.useStoredColumns === 'virtual') {
+			this.db.run(`
+				CREATE TABLE IF NOT EXISTS "${this.tableName}" (
+					id TEXT PRIMARY KEY NOT NULL,
+					data BLOB NOT NULL,
+					deleted INTEGER GENERATED ALWAYS AS (json_extract(data, '$._deleted')) VIRTUAL,
+					rev TEXT GENERATED ALWAYS AS (json_extract(data, '$._rev')) VIRTUAL,
+					mtime_ms REAL GENERATED ALWAYS AS (json_extract(data, '$._meta.lwt')) VIRTUAL
+				)
+			`);
+		} else if (this.useStoredColumns === 'stored') {
+			this.db.run(`
+				CREATE TABLE IF NOT EXISTS "${this.tableName}" (
+					id TEXT PRIMARY KEY NOT NULL,
+					data BLOB NOT NULL,
+					deleted INTEGER GENERATED ALWAYS AS (json_extract(data, '$._deleted')) STORED,
+					rev TEXT GENERATED ALWAYS AS (json_extract(data, '$._rev')) STORED,
+					mtime_ms REAL GENERATED ALWAYS AS (json_extract(data, '$._meta.lwt')) STORED
+				)
+			`);
+		} else {
+			this.db.run(`
+				CREATE TABLE IF NOT EXISTS "${this.tableName}" (
+					id TEXT PRIMARY KEY NOT NULL,
+					data BLOB NOT NULL,
+					deleted INTEGER NOT NULL DEFAULT 0,
+					rev TEXT NOT NULL,
+					mtime_ms REAL NOT NULL
+				)
+			`);
+		}
 
 		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${this.tableName}_deleted_id" ON "${this.tableName}"(deleted, id)`);
 		this.db.run(`CREATE INDEX IF NOT EXISTS "idx_${this.tableName}_mtime_ms_id" ON "${this.tableName}"(mtime_ms, id)`);
@@ -155,24 +180,33 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 				context
 		);
 
-			const CHUNK_SIZE = 50;
-			const updateStmt = this.db.prepare(
-				`UPDATE "${this.tableName}" SET data = jsonb(?), deleted = ?, rev = ?, mtime_ms = ? WHERE id = ?`
-			);
+		const CHUNK_SIZE = 50;
+		
+		const updateStmt = this.useStoredColumns
+			? this.db.prepare(`UPDATE "${this.tableName}" SET data = jsonb(?) WHERE id = ?`)
+			: this.db.prepare(`UPDATE "${this.tableName}" SET data = jsonb(?), deleted = ?, rev = ?, mtime_ms = ? WHERE id = ?`);
 
-			const insertBatch = this.db.transaction((docs: typeof categorized.bulkInsertDocs) => {
-				for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
-					const chunk = docs.slice(i, i + CHUNK_SIZE);
-			
-					const placeholders = chunk.map(() => '(?, jsonb(?), ?, ?, ?)').join(', ');
-					const insertQuery = `INSERT INTO "${this.tableName}" (id, data, deleted, rev, mtime_ms) VALUES ${placeholders}`;
-					
-					const params: SQLQueryBindings[] = [];
-					for (const row of chunk) {
-						const doc = row.document;
-						const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
+		const insertBatch = this.db.transaction((docs: typeof categorized.bulkInsertDocs) => {
+			for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
+				const chunk = docs.slice(i, i + CHUNK_SIZE);
+		
+				const placeholders = this.useStoredColumns
+					? chunk.map(() => '(?, jsonb(?))').join(', ')
+					: chunk.map(() => '(?, jsonb(?), ?, ?, ?)').join(', ');
+				const insertQuery = this.useStoredColumns
+					? `INSERT INTO "${this.tableName}" (id, data) VALUES ${placeholders}`
+					: `INSERT INTO "${this.tableName}" (id, data, deleted, rev, mtime_ms) VALUES ${placeholders}`;
+				
+				const params: SQLQueryBindings[] = [];
+				for (const row of chunk) {
+					const doc = row.document;
+					const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
+					if (this.useStoredColumns) {
+						params.push(id, JSON.stringify(doc));
+					} else {
 						params.push(id, JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt);
 					}
+				}
 			
 					try {
 						this.stmtManager.run({ query: insertQuery, params });
@@ -197,13 +231,17 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 				}
 			});
 
-			const updateBatch = this.db.transaction((docs: typeof categorized.bulkUpdateDocs) => {
-				for (const row of docs) {
-					const doc = row.document;
-					const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
+		const updateBatch = this.db.transaction((docs: typeof categorized.bulkUpdateDocs) => {
+			for (const row of docs) {
+				const doc = row.document;
+				const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
+				if (this.useStoredColumns) {
+					updateStmt.run(JSON.stringify(doc), id);
+				} else {
 					updateStmt.run(JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt, id);
 				}
-			});
+			}
+		});
 
 			if (categorized.bulkInsertDocs.length > 0) {
 				insertBatch(categorized.bulkInsertDocs);
@@ -286,7 +324,9 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		const orderBy = preparedQuery.query.sort.map(sortField => {
 			const [field, direction] = Object.entries(sortField)[0];
 			const dir = direction === 'asc' ? 'ASC' : 'DESC';
-			return `json_extract(data, '$.${field}') ${dir}`;
+			const colInfo = getColumnInfo(field, this.schema);
+			const colName = colInfo.column || `json_extract(data, '${colInfo.jsonPath}')`;
+			return `${colName} ${dir}`;
 		}).join(', ');
 		sql += ` ORDER BY ${orderBy}`;
 	}
@@ -316,22 +356,34 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		console.log('[DEBUG_QUERIES] Args:', queryArgs);
 	}
 
-	const rows = this.stmtManager.all({ query: sql, params: queryArgs }) as Array<{ data: string }>;
-	let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
-
 	if (jsSelector) {
-		documents = documents.filter(doc => matchesSelector(doc, jsSelector));
-
-		if (skip > 0) {
-			documents = documents.slice(skip);
+		const stmt = this.db.prepare(sql);
+		const documents: RxDocumentData<RxDocType>[] = [];
+		let skipped = 0;
+		
+		for (const row of stmt.all(...queryArgs) as Array<{ data: string }>) {
+			const doc = JSON.parse(row.data) as RxDocumentData<RxDocType>;
+			
+			if (matchesSelector(doc, jsSelector)) {
+				if (skip > 0 && skipped < skip) {
+					skipped++;
+					continue;
+				}
+				
+				documents.push(doc);
+				
+				if (limit !== undefined && documents.length >= limit) {
+					break;
+				}
+			}
 		}
-
-		if (limit !== undefined) {
-			documents = documents.slice(0, limit);
-		}
+		
+		return { documents };
+	} else {
+		const rows = this.stmtManager.all({ query: sql, params: queryArgs }) as Array<{ data: string }>;
+		const documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
+		return { documents };
 	}
-
-	return { documents };
 	}
 
 
