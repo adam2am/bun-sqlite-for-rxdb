@@ -101,9 +101,6 @@ export class StatementManager {
 	}
 
 	private isStaticSQL(query: string): boolean {
-		if (query.includes('WHERE (')) {
-			return false;
-		}
 		return true;
 	}
 }
