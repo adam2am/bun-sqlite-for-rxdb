@@ -98,6 +98,12 @@ const MangoQueryArbitrary = () => {
 		value: fc.integer({ min: 0, max: 3 })
 	});
 	
+	const sizeOnNonArrayArb = fc.record({
+		field: fc.constantFrom('name', 'age', 'score', 'active'),
+		op: fc.constant('$size'),
+		value: fc.integer({ min: 0, max: 5 })
+	});
+	
 	const modArb = fc.record({
 		field: fc.constantFrom('age', 'score'),
 		op: fc.constant('$mod'),
@@ -130,7 +136,25 @@ const MangoQueryArbitrary = () => {
 	const typeArb = fc.record({
 		field: fieldArb,
 		op: fc.constant('$type'),
-		value: fc.constantFrom('string', 'number', 'boolean', 'array')
+		value: fc.constantFrom('string', 'number', 'boolean', 'array', 'null', 'object')
+	});
+	
+	const typeOnOptionalArb = fc.record({
+		field: fc.constant('optional'),
+		op: fc.constant('$type'),
+		value: fc.constantFrom('string', 'null')
+	});
+	
+	const existsOnOptionalArb = fc.record({
+		field: fc.constant('optional'),
+		op: fc.constant('$exists'),
+		value: booleanValueArb
+	});
+	
+	const existsOnRequiredArb = fc.record({
+		field: fc.constantFrom('name', 'age', 'tags'),
+		op: fc.constant('$exists'),
+		value: booleanValueArb
 	});
 	
 	const elemMatchSimpleArb = fc.record({
@@ -174,7 +198,9 @@ const MangoQueryArbitrary = () => {
 	
 	const singleOpArb = fc.oneof(
 		eqArb, neArb, gtArb, gteArb, ltArb, lteArb, 
-		inArb, ninArb, existsArb, sizeArb, modArb, regexArb, typeArb,
+		inArb, ninArb, existsArb,
+		sizeArb, sizeOnNonArrayArb, modArb, regexArb, 
+		typeArb,
 		elemMatchSimpleArb,
 		elemMatchComplexArb
 	);

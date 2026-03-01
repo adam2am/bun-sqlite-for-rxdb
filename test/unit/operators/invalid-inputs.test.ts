@@ -16,19 +16,29 @@ const mockSchema: RxJsonSchema<RxDocumentData<any>> = {
 
 describe('Invalid Operator Inputs (TDD)', () => {
 	describe('$type with invalid type string', () => {
-		it('should return 1=0 for invalid type "invalidType"', () => {
+		it('should return null for invalid type "invalidType"', () => {
 			const result = translateType('data', 'age', 'invalidType');
-			expect(result).toEqual({ sql: '1=0', args: [] });
+			expect(result).toBeNull();
 		});
 
-		it('should return 1=0 for invalid type "foo"', () => {
+		it('should return null for invalid type "foo"', () => {
 			const result = translateType('data', 'name', 'foo');
-			expect(result).toEqual({ sql: '1=0', args: [] });
+			expect(result).toBeNull();
 		});
 
 		it('should work correctly for valid type "number"', () => {
 			const result = translateType('data', 'age', 'number');
 			expect(result?.sql).toBe("json_type(data, '$.age') IN ('integer', 'real')");
+		});
+
+		it('PROOF: null from translateType converts to 1=0 via operator handler', () => {
+			const { buildWhereClause } = require('$app/query/builder');
+			
+			const selector = { age: { $type: 'invalidType' } };
+			const result = buildWhereClause(selector, mockSchema, 0);
+			
+			expect(result.sql).toBe('1=0');
+			expect(result.args).toEqual([]);
 		});
 	});
 

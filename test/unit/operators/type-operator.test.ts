@@ -1,5 +1,33 @@
 import { describe, it, expect } from 'bun:test';
 import { translateType } from '$app/query/operators';
+import { buildWhereClause } from '$app/query/builder';
+import type { RxJsonSchema, RxDocumentData } from 'rxdb';
+
+interface TestDoc {
+	id: string;
+	name: string;
+	age: number;
+	tags: string[];
+	active: boolean;
+}
+
+const testSchema: RxJsonSchema<RxDocumentData<TestDoc>> = {
+	version: 0,
+	primaryKey: 'id',
+	type: 'object',
+	properties: {
+		id: { type: 'string' },
+		name: { type: 'string' },
+		age: { type: 'number' },
+		tags: { type: 'array', items: { type: 'string' } },
+		active: { type: 'boolean' },
+		_deleted: { type: 'boolean' },
+		_attachments: { type: 'object' },
+		_rev: { type: 'string' },
+		_meta: { type: 'object', properties: { lwt: { type: 'number' } }, required: ['lwt'] }
+	},
+	required: ['id', 'name', 'age', 'tags', 'active', '_deleted', '_rev', '_meta']
+};
 
 describe('$type Operator', () => {
 	it('translates null type to SQL', () => {
@@ -16,7 +44,7 @@ describe('$type Operator', () => {
 
 	it('translates string type to SQL', () => {
 		const result = translateType('data', 'name', 'string');
-		expect(result?.sql).toBe("json_type(data, '$.name') = 'text'");
+		expect(result?.sql).toBe("COALESCE(json_type(data, '$.name') = 'text', 0)");
 		expect(result?.args).toEqual([]);
 	});
 

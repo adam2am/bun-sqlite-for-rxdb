@@ -26,8 +26,18 @@ export function getColumnInfo<RxDocType>(path: string, schema: RxJsonSchema<RxDo
 	const properties = schema.properties as Record<string, { type?: string; items?: unknown } | undefined>;
 	const fieldSchema = properties?.[path];
 	if (fieldSchema && typeof fieldSchema === 'object' && 'type' in fieldSchema) {
-		if (fieldSchema.type === 'array') {
+		const schemaType = fieldSchema.type;
+		if (schemaType === 'array') {
 			return { jsonPath: `$.${path}`, type: 'array' };
+		}
+		if (schemaType === 'string') {
+			return { jsonPath: `$.${path}`, type: 'string' };
+		}
+		if (schemaType === 'number') {
+			return { jsonPath: `$.${path}`, type: 'number' };
+		}
+		if (schemaType === 'boolean') {
+			return { jsonPath: `$.${path}`, type: 'boolean' };
 		}
 	}
 	

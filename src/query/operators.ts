@@ -483,7 +483,13 @@ export function translateLeafOperator<RxDocType>(
 		case '$in': return translateIn(field, value as unknown[], schema, actualFieldName);
 		case '$nin': return translateNin(field, value as unknown[], schema, actualFieldName);
 		case '$exists': return translateExists(field, value as boolean);
-		case '$size': return translateSize(field, value as number);
+		case '$size': {
+			const columnInfo = getColumnInfo(actualFieldName, schema);
+			if (columnInfo.type !== 'array' && columnInfo.type !== 'unknown') {
+				return { sql: '1=0', args: [] };
+			}
+			return translateSize(field, value as number);
+		}
 		case '$mod': {
 			const result = translateMod(field, value);
 			if (!result) return translateEq(field, value, schema, actualFieldName);
@@ -573,12 +579,17 @@ export function translateType(
 
 	switch (type) {
 		case 'null': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'null'`, args: [] };
-		case 'boolean': return { sql: `json_type(${jsonColumn}, '${jsonPath}') IN ('true', 'false')`, args: [] };
-		case 'number': return { sql: `json_type(${jsonColumn}, '${jsonPath}') IN ('integer', 'real')`, args: [] };
-		case 'string': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'text'`, args: [] };
+		case 'boolean':
+		case 'bool': return { sql: `json_type(${jsonColumn}, '${jsonPath}') IN ('true', 'false')`, args: [] };
+		case 'number':
+		case 'int':
+		case 'long':
+		case 'double':
+		case 'decimal': return { sql: `json_type(${jsonColumn}, '${jsonPath}') IN ('integer', 'real')`, args: [] };
+		case 'string': return { sql: `COALESCE(json_type(${jsonColumn}, '${jsonPath}') = 'text', 0)`, args: [] };
 		case 'array': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'array'`, args: [] };
 		case 'object': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'object'`, args: [] };
-		default: return { sql: '1=0', args: [] };
+		default: return null; // Fallback to SQL 1=0 (matches Mingo behavior)
 	}
 }
 
