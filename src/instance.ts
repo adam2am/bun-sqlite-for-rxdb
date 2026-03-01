@@ -153,52 +153,64 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 				docsInDbMap,
 				documentWrites,
 				context
+		);
+
+			const CHUNK_SIZE = 50;
+			const updateStmt = this.db.prepare(
+				`UPDATE "${this.tableName}" SET data = jsonb(?), deleted = ?, rev = ?, mtime_ms = ? WHERE id = ?`
 			);
 
-			const updateQuery = `UPDATE "${this.tableName}" SET data = jsonb(?), deleted = ?, rev = ?, mtime_ms = ? WHERE id = ?`;
-
-			const BATCH_SIZE = 100;
-			for (let i = 0; i < categorized.bulkInsertDocs.length; i += BATCH_SIZE) {
-				const batch = categorized.bulkInsertDocs.slice(i, i + BATCH_SIZE);
-				const placeholders = batch.map(() => '(?, jsonb(?), ?, ?, ?)').join(', ');
-				const insertQuery = `INSERT INTO "${this.tableName}" (id, data, deleted, rev, mtime_ms) VALUES ${placeholders}`;
-				const params: SQLQueryBindings[] = [];
-				
-				for (const row of batch) {
-					const doc = row.document;
-					const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
-					params.push(id, JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt);
-				}
-				
-				try {
-					this.stmtManager.run({ query: insertQuery, params });
-				} catch (err: unknown) {
-					if (err && typeof err === 'object' && 'code' in err && (err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || err.code === 'SQLITE_CONSTRAINT_UNIQUE')) {
-						for (const row of batch) {
-							const doc = row.document;
-							const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
-							const documentInDb = docsInDbMap.get(id);
-							categorized.errors.push({
-								isError: true,
-								status: 409,
-								documentId: id,
-								writeRow: row,
-								documentInDb: documentInDb || doc
-							});
+			const insertBatch = this.db.transaction((docs: typeof categorized.bulkInsertDocs) => {
+				for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
+					const chunk = docs.slice(i, i + CHUNK_SIZE);
+			
+					const placeholders = chunk.map(() => '(?, jsonb(?), ?, ?, ?)').join(', ');
+					const insertQuery = `INSERT INTO "${this.tableName}" (id, data, deleted, rev, mtime_ms) VALUES ${placeholders}`;
+					
+					const params: SQLQueryBindings[] = [];
+					for (const row of chunk) {
+						const doc = row.document;
+						const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
+						params.push(id, JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt);
+					}
+			
+					try {
+						this.stmtManager.run({ query: insertQuery, params });
+					} catch (err: unknown) {
+						if (err && typeof err === 'object' && 'code' in err && (err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || err.code === 'SQLITE_CONSTRAINT_UNIQUE')) {
+							for (const row of chunk) {
+								const doc = row.document;
+								const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
+								const documentInDb = docsInDbMap.get(id);
+								categorized.errors.push({
+									isError: true,
+									status: 409,
+									documentId: id,
+									writeRow: row,
+									documentInDb: documentInDb || doc
+								});
+							}
+						} else {
+							throw err;
 						}
-					} else {
-						throw err;
 					}
 				}
-			}
+			});
 
-			for (let i = 0; i < categorized.bulkUpdateDocs.length; i += BATCH_SIZE) {
-				const batch = categorized.bulkUpdateDocs.slice(i, i + BATCH_SIZE);
-				for (const row of batch) {
+			const updateBatch = this.db.transaction((docs: typeof categorized.bulkUpdateDocs) => {
+				for (const row of docs) {
 					const doc = row.document;
 					const id = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
-					this.stmtManager.run({ query: updateQuery, params: [JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt, id] });
+					updateStmt.run(JSON.stringify(doc), doc._deleted ? 1 : 0, doc._rev, doc._meta.lwt, id);
 				}
+			});
+
+			if (categorized.bulkInsertDocs.length > 0) {
+				insertBatch(categorized.bulkInsertDocs);
+			}
+
+			if (categorized.bulkUpdateDocs.length > 0) {
+				updateBatch(categorized.bulkUpdateDocs);
 			}
 
 			const insertAttQuery = `INSERT OR REPLACE INTO "${this.tableName}_attachments" (id, data, digest) VALUES (?, ?, ?)`;
