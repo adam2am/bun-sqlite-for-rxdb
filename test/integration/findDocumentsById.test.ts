@@ -119,4 +119,40 @@ describe('findDocumentsById - withDeleted semantics', () => {
 
 		await instance.remove();
 	});
+
+	test('bulkWrite handles 40k docs without hitting SQLite parameter limit (exceeds 32,766)', async () => {
+		const storage = getRxStorageBunSQLite();
+		const instance = await storage.createStorageInstance({
+			databaseName: 'test-db-40k',
+			collectionName: 'test-collection-40k',
+			schema: testSchema,
+			options: {},
+			multiInstance: false,
+			devMode: false,
+			databaseInstanceToken: 'test-token-40k'
+		});
+
+		const docCount = 40000;
+		const docs: RxDocumentData<TestDoc>[] = [];
+		for (let i = 0; i < docCount; i++) {
+			docs.push({
+				id: `doc${i}`,
+				name: `User${i}`,
+				age: 20 + (i % 50),
+				_deleted: false,
+				_attachments: {},
+				_rev: '1-a',
+				_meta: { lwt: Date.now() }
+			});
+		}
+
+		const result = await instance.bulkWrite(docs.map(doc => ({ document: doc })), 'test');
+
+		expect(result.error.length).toBe(0);
+
+		const retrieved = await instance.findDocumentsById(docs.map(d => d.id), false);
+		expect(retrieved.length).toBe(docCount);
+
+		await instance.remove();
+	});
 });

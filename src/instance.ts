@@ -26,12 +26,13 @@ import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from
 import { StatementManager } from './statement-manager';
 import { getDatabase, releaseDatabase } from './connection-pool';
 import { sqliteTransaction } from './transaction-queue';
+import { getQueryCache } from './query/cache';
 
 export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<RxDocType, BunSQLiteInternals, BunSQLiteStorageSettings> {
 	private db: Database;
 	private stmtManager: StatementManager;
 	private changeStream$ = new Subject<EventBulk<RxStorageChangeEvent<RxDocumentData<RxDocType>>, RxStorageDefaultCheckpoint>>();
-	private queryCache = new Map<string, import('./query/operators').SqlFragment | null>();
+	private queryCache: Map<string, import('./query/operators').SqlFragment | null> | import('./query/sieve-cache').SieveCache<string, import('./query/operators').SqlFragment | null>;
 	public readonly databaseName: string;
 	public readonly collectionName: string;
 	public readonly schema: Readonly<RxJsonSchema<RxDocumentData<RxDocType>>>;
@@ -59,6 +60,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		const filename = settings.filename || ':memory:';
 		this.db = getDatabase(this.databaseName, filename);
 		this.stmtManager = new StatementManager(this.db);
+		this.queryCache = getQueryCache(this.db);
 
 		this.internals = {
 			db: this.db,
@@ -133,9 +135,17 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 				return { error: [] };
 			}
 
-			const ids = documentWrites.map(w => (w.document as RxDocumentData<RxDocType>)[this.primaryPath as keyof RxDocumentData<RxDocType>] as string);
-			const docsInDb = await this.findDocumentsById(ids, true);
-			const docsInDbMap = new Map(docsInDb.map(d => [d[this.primaryPath as keyof RxDocumentData<RxDocType>] as string, d]));
+		const ids = documentWrites.map(w => (w.document as RxDocumentData<RxDocType>)[this.primaryPath as keyof RxDocumentData<RxDocType>] as string);
+		
+		const LOOKUP_BATCH_SIZE = 500;
+		const docsInDb: RxDocumentData<RxDocType>[] = [];
+		for (let i = 0; i < ids.length; i += LOOKUP_BATCH_SIZE) {
+			const batch = ids.slice(i, i + LOOKUP_BATCH_SIZE);
+			const batchDocs = await this.findDocumentsById(batch, true);
+			docsInDb.push(...batchDocs);
+		}
+		
+		const docsInDbMap = new Map(docsInDb.map(d => [d[this.primaryPath as keyof RxDocumentData<RxDocType>] as string, d]));
 
 			const categorized = categorizeBulkWriteRows(
 				this,
@@ -319,13 +329,13 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			this.queryCache
 		);
 		
-		if (!whereResult) {
-			const allDocs = await this.queryWithOurMemory(preparedQuery);
-			return {
-				count: allDocs.documents.length,
-				mode: 'fast'
-			};
-		}
+	if (!whereResult) {
+		const allDocs = this.queryWithOurMemory(preparedQuery);
+		return {
+			count: allDocs.documents.length,
+			mode: 'fast'
+		};
+	}
 		
 		const { sql, args } = whereResult;
 		const result = this.db.query(
@@ -361,7 +371,6 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	async close(): Promise<void> {
 		if (this.closed) return this.closed;
 		this.closed = (async () => {
-			this.queryCache.clear();
 			this.changeStream$.complete();
 			this.stmtManager.close();
 			releaseDatabase(this.databaseName);
@@ -424,25 +433,17 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	}
 
 	private queryWithOurMemory(preparedQuery: PreparedQuery<RxDocType>): RxStorageQueryResult<RxDocType> {
-		const query = `SELECT json(data) as data FROM "${this.tableName}"`;
+		let query = `SELECT json(data) as data FROM "${this.tableName}"`;
 		const selector = preparedQuery.query.selector;
 		const hasSort = preparedQuery.query.sort && preparedQuery.query.sort.length > 0;
 
 		if (hasSort) {
-			const rows = this.stmtManager.all({ query, params: [] }) as Array<{ data: string }>;
-			let documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
-			documents = documents.filter(doc => matchesSelector(doc, selector));
-			documents = this.sortDocuments(documents, preparedQuery.query.sort);
-
-			if (preparedQuery.query.skip) {
-				documents = documents.slice(preparedQuery.query.skip);
-			}
-
-			if (preparedQuery.query.limit) {
-				documents = documents.slice(0, preparedQuery.query.limit);
-			}
-
-			return { documents };
+			const orderBy = preparedQuery.query.sort.map(sortField => {
+				const [field, direction] = Object.entries(sortField)[0];
+				const dir = direction === 'asc' ? 'ASC' : 'DESC';
+				return `json_extract(data, '$.${field}') ${dir}`;
+			}).join(', ');
+			query += ` ORDER BY ${orderBy}`;
 		}
 
 		const stmt = this.db.prepare(query);
