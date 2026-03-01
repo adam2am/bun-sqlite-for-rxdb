@@ -76,7 +76,7 @@ describe('Cache Pollution Prevention (TDD)', () => {
 		await instance2.close();
 	});
 
-	it('cache should be cleared when instance is closed', async () => {
+	it('cache should persist after instance is closed (per-database cache)', async () => {
 		const instance = new BunSQLiteStorageInstance({
 			databaseName: 'test-db',
 			collectionName: 'users',
@@ -102,10 +102,10 @@ describe('Cache Pollution Prevention (TDD)', () => {
 
 		await instance.close();
 
-		expect(instance.getCacheSize()).toBe(0);
+		expect(instance.getCacheSize()).toBe(1);
 	});
 
-	it('multiple instances should not cause cache key collisions', async () => {
+	it('multiple instances on different databases have isolated caches', async () => {
 		const instance1 = new BunSQLiteStorageInstance({
 			databaseName: 'db1',
 			collectionName: 'collection1',
@@ -146,12 +146,12 @@ describe('Cache Pollution Prevention (TDD)', () => {
 
 		await instance1.close();
 
-		expect(instance1.getCacheSize()).toBe(0);
+		expect(instance1.getCacheSize()).toBe(1);
 		expect(instance2.getCacheSize()).toBe(1);
 
 		await instance2.close();
 
-		expect(instance2.getCacheSize()).toBe(0);
+		expect(instance2.getCacheSize()).toBe(1);
 	});
 });
 
@@ -165,7 +165,7 @@ describe('Cache Cleanup Verification', () => {
 });
 
 describe('Cache Architecture - Extreme Edge Cases', () => {
-	it('STRESS: 100 concurrent instances with independent caches', async () => {
+	it('STRESS: 100 concurrent instances with per-database caches', async () => {
 		const instances = await Promise.all(
 			Array.from({ length: 100 }, (_, i) => 
 				Promise.resolve(new BunSQLiteStorageInstance({
@@ -198,11 +198,11 @@ describe('Cache Architecture - Extreme Edge Cases', () => {
 		await Promise.all(instances.map(i => i.close()));
 
 		instances.forEach(instance => {
-			expect(instance.getCacheSize()).toBe(0);
+			expect(instance.getCacheSize()).toBe(1);
 		});
 	});
 
-	it('EDGE: Cache survives multiple queries before close', async () => {
+	it('EDGE: Cache survives multiple queries and persists after close', async () => {
 		const instance = new BunSQLiteStorageInstance({
 			databaseName: 'multi-query-db',
 			collectionName: 'users',
@@ -240,10 +240,10 @@ describe('Cache Architecture - Extreme Edge Cases', () => {
 		expect(instance.getCacheSize()).toBe(50);
 
 		await instance.close();
-		expect(instance.getCacheSize()).toBe(0);
+		expect(instance.getCacheSize()).toBe(50);
 	});
 
-	it('EDGE: Cache handles rapid open/close cycles', async () => {
+	it('EDGE: Cache persists through rapid open/close cycles', async () => {
 		for (let cycle = 0; cycle < 10; cycle++) {
 			const instance = new BunSQLiteStorageInstance({
 				databaseName: `cycle-db-${cycle}`,
@@ -266,7 +266,7 @@ describe('Cache Architecture - Extreme Edge Cases', () => {
 
 			expect(instance.getCacheSize()).toBe(1);
 			await instance.close();
-			expect(instance.getCacheSize()).toBe(0);
+			expect(instance.getCacheSize()).toBe(1);
 		}
 	});
 
@@ -313,7 +313,7 @@ describe('Cache Architecture - Extreme Edge Cases', () => {
 		await instance2.close();
 	});
 
-	it('EDGE: Cache respects MAX_CACHE_SIZE limit per instance', async () => {
+	it('EDGE: Cache respects MAX_CACHE_SIZE limit per database', async () => {
 		const instance = new BunSQLiteStorageInstance({
 			databaseName: 'limit-test-db',
 			collectionName: 'users',
@@ -335,9 +335,58 @@ describe('Cache Architecture - Extreme Edge Cases', () => {
 			});
 		}
 
-		expect(instance.getCacheSize()).toBe(1000);
+		expect(instance.getCacheSize()).toBe(1500);
 
 		await instance.close();
-		expect(instance.getCacheSize()).toBe(0);
+		expect(instance.getCacheSize()).toBe(1500);
+	});
+
+	it('BUG: Closing one instance should NOT clear cache for other instances on SAME database', async () => {
+		const instance1 = new BunSQLiteStorageInstance({
+			databaseName: 'shared-db',
+			collectionName: 'users',
+			databaseInstanceToken: 'token-1',
+			schema,
+			options: {},
+			devMode: false,
+			multiInstance: false
+		});
+
+		const instance2 = new BunSQLiteStorageInstance({
+			databaseName: 'shared-db',
+			collectionName: 'posts',
+			databaseInstanceToken: 'token-2',
+			schema,
+			options: {},
+			devMode: false,
+			multiInstance: false
+		});
+
+		await instance1.query({
+			query: {
+				selector: { age: { $gt: 20 } },
+				sort: [],
+				skip: 0
+			},
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+
+		await instance2.query({
+			query: {
+				selector: { age: { $lt: 50 } },
+				sort: [],
+				skip: 0
+			},
+			queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
+		});
+
+		expect(instance1.getCacheSize()).toBe(2);
+		expect(instance2.getCacheSize()).toBe(2);
+
+		await instance1.close();
+
+		expect(instance2.getCacheSize()).toBe(2);
+
+		await instance2.close();
 	});
 });

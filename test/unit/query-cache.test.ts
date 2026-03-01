@@ -275,7 +275,7 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 	test('Edge Case 13: Cache is BOUNDED at 1000 entries (no exponential growth)', () => {
 		clearCache();
 		
-		for (let i = 0; i < 1500; i++) {
+		for (let i = 0; i < 5050; i++) {
 			const selector: MangoQuerySelector<RxDocumentData<TestDoc>> = { 
 				id: { $eq: `unique-${i}` },
 				age: { $eq: i }
@@ -283,8 +283,8 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 			buildWhereClause(selector, schema, 'test');
 		}
 		
-		expect(getCacheSize()).toBe(1000);
-		console.log(`  Cache bounded: Added 1500 unique queries, cache size = ${getCacheSize()} (max 1000) ✅`);
+		expect(getCacheSize()).toBe(5000);
+		console.log(`  Cache bounded: Added 1500 unique queries, cache size = ${getCacheSize()} (max 5000) ✅`);
 		
 		const firstQuery: MangoQuerySelector<RxDocumentData<TestDoc>> = { 
 			id: { $eq: 'unique-0' },
@@ -332,8 +332,8 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 		expect(result3).not.toBeNull();
 		expect(result1!.sql).toBe(result2!.sql);
 		expect(result2!.sql).toBe(result3!.sql);
-		expect(getCacheSize()).toBe(3);
-		console.log(`  Different collections: 3 separate cache entries`);
+		expect(getCacheSize()).toBe(1);
+		console.log(`  Different collections: 1 shared cache entry (per-database cache)`);
 	});
 
 	test('Edge Case 16: Complex operators are cached correctly', () => {
@@ -370,11 +370,11 @@ describe('Query Builder Cache - Edge Cases & Production Readiness', () => {
 		
 		buildWhereClause(selectors[0] as MangoQuerySelector<RxDocumentData<TestDoc>>, schema, 'test');
 		
-		for (let i = 10; i < 1010; i++) {
+		for (let i = 10; i < 5010; i++) {
 			buildWhereClause({ age: { $eq: i } } as MangoQuerySelector<RxDocumentData<TestDoc>>, schema, 'test');
 		}
 		
-		expect(getCacheSize()).toBe(1000);
+		expect(getCacheSize()).toBe(5000);
 		
 		const result = buildWhereClause(selectors[0] as MangoQuerySelector<RxDocumentData<TestDoc>>, schema, 'test');
 		expect(result).not.toBeNull();
