@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.5.6] - 2026-03-01
+
+### Fixed 🔥
+- **Critical: NULL handling in $size operator and logical operations**
+  - SQLite's three-valued logic (TRUE/FALSE/NULL) was breaking query semantics
+  - Property-based tests failing: all docs matched instead of filtering correctly
+  - Root cause: $size on unknown fields returned NULL, causing fallback to incorrect JS filtering
+  - Fix: Use two-parameter `json_array_length(data, '$.path')` API (was using one-parameter form)
+  - Fix: Add COALESCE guards to convert NULL → 0 in logical operations
+  - Fix: $not: {$eq} now uses $ne semantics (handles NULL correctly)
+  - Result: 624/624 tests passing (was 605/624 with 19 failures)
+- **$size operator API consistency**
+  - Changed from one-parameter to two-parameter `json_array_length()` form
+  - Old: `json_array_length(json_extract(data, '$.field'))` → "malformed JSON" errors
+  - New: `json_array_length(data, '$.field')` → Correct SQLite API
+  - `json_extract()` returns STRING, not JSON value - two-parameter form is correct
+- **buildLogicalOperator bug (pre-existing)**
+  - Was always using OR even for $and operations
+  - Now correctly uses AND/OR based on operator type
+  - Discovered during NULL handling fix
+
+### Added
+- **COALESCE NULL handling strategy**
+  - Wraps SQL in `COALESCE((sql), 0)` where NULL breaks logic
+  - Applied to: wrapWithNot, $nor, $elemMatch logical operators
+  - Matches Mingo's two-valued logic (true/false, no NULL)
+- **Data corruption vs schema uncertainty distinction**
+  - Data corruption: $size on KNOWN string field → return 1=0 (impossible)
+  - Schema uncertainty: $size on UNKNOWN field → execute SQL (we don't know if it's an array)
+  - Follows Mingo philosophy: "try, then handle" not "pre-validate"
+
+### Changed
+- **Query cache version bump: v2 → v3**
+  - Invalidates old cached SQL without NULL handling fixes
+  - Prevents stale cache bugs
+
+### Technical Details
+- All 624 tests passing (19 failures fixed)
+- Property-based tests: 10k random queries validated against Mingo
+- Architectural pattern #31 documented
+- Zero regressions
+
+---
+
 ## [1.5.5] - 2026-03-01
 
 ### Fixed 🔥
