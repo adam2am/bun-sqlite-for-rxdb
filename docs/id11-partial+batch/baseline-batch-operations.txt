@@ -1,61 +1,56 @@
 🏴‍☠️ Batch Operations - BASELINE BENCHMARK
 Measuring BEFORE switching to single prepared statement
-
 ================================================================================
 CURRENT IMPLEMENTATION: String concatenation with dynamic placeholders
 PROBLEM: Each batch size generates different SQL → statement cache miss
 ================================================================================
-
-📊 Test 1: Fixed Batch Size (100 docs × 10 iterations)
+📊 Test 1: Fixed Batch Size (100 docs × 20 iterations)
    Measures: Consistent performance with same batch size
    Expected: Fast (statement cache hit every time)
-
-   ⏱️  Avg: 1.13ms | Min: 0.55ms | Max: 4.15ms
-   📊 Variance: 318.3%
-
-📊 Test 2: Varying Batch Sizes (THE KEY TEST)
+   ⏱️  Avg: 2.79ms | Median: 2.33ms | Min: 0.70ms | Max: 14.69ms
+   📊 Variance: 500.6%
+📊 Test 2: Varying Batch Sizes (THE KEY TEST - 20 iterations)
    Measures: Statement cache thrashing with different batch sizes
    Expected: SLOW (cache miss on every size change)
-
-   Size  42: 2.68ms
-   Size  73: 1.00ms
-   Size 100: 0.81ms
-   Size 127: 1.15ms
-   Size 200: 1.63ms
+   Size  42: 2.26ms
+   Size  73: 2.43ms
+   Size 100: 1.25ms
+   Size 127: 1.53ms
+   Size 200: 2.48ms
    Size  42: 0.46ms
-   Size 100: 0.72ms
-   Size  73: 0.82ms
-   Size 200: 1.29ms
-   Size 127: 0.98ms
-
-   ⏱️  Avg: 1.15ms | Min: 0.46ms | Max: 2.68ms
-   📊 Variance: 192.2%
-
+   Size 100: 0.78ms
+   Size  73: 0.93ms
+   Size 200: 2.14ms
+   Size 127: 1.61ms
+   Size  42: 0.40ms
+   Size  73: 1.10ms
+   Size 100: 1.82ms
+   Size 127: 1.66ms
+   Size 200: 13.17ms
+   Size  42: 2.27ms
+   Size 100: 5.15ms
+   Size  73: 4.57ms
+   Size 200: 9.23ms
+   Size 127: 4.67ms
+   ⏱️  Avg: 3.00ms | Median: 2.14ms | Min: 0.40ms | Max: 13.17ms
+   📊 Variance: 426.3%
 📊 Test 3: Large Single Batch (10,000 docs)
    Measures: Performance with large batch
    Expected: Moderate (string concatenation overhead)
-
-   ⏱️  Time: 70.08ms
-   📊 Throughput: 142700 docs/sec
-
+   ⏱️  Time: 86.76ms
+   📊 Throughput: 115257 docs/sec
 ================================================================================
 📈 SUMMARY
 ================================================================================
-
-Fixed batch size (100):    1.13ms avg
-Varying batch sizes:       1.15ms avg
-Large batch (10k):         70.08ms
-
-⚠️  Varying sizes are 2% slower (statement cache thrashing)
-
+Fixed batch size (100):    Avg: 2.79ms | Median: 2.33ms
+Varying batch sizes:       Avg: 3.00ms | Median: 2.14ms
+Large batch (10k):         86.76ms
+⚠️  Varying sizes overhead: Avg 7% | Median -8%
 💡 EXPECTED IMPROVEMENT AFTER FIX:
    Current: String concatenation → cache miss on size change
    After:   Single prepared statement → cache hit every time
-   Expected: Varying sizes should match fixed size (~1.13ms)
-   Speedup:  1.0x faster for varying sizes
-
+   Expected: Varying sizes should match fixed size (~2.33ms median)
+   Speedup:  0.9x faster for varying sizes
 ================================================================================
 ✅ BASELINE ESTABLISHED
 ================================================================================
-
-Next: Implement single prepared statement pattern, then re-run

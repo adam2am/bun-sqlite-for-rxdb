@@ -84,20 +84,21 @@ const insertQuery = `INSERT INTO ... VALUES ${placeholders}`;
 
 **Issue:** Each batch size generates different SQL → statement cache miss
 
-### Baseline Results
+### Results
 
-| Test | Avg Time | Notes |
-|------|----------|-------|
-| Fixed size (100) | 1.13ms | ✅ Consistent |
-| Varying sizes | 1.15ms | ⚠️ Only 2% slower |
-| Large batch (10k) | 70.08ms | 142,700 docs/sec |
+| Test | BEFORE | AFTER | Change |
+|------|--------|-------|--------|
+| Fixed size (100) | 1.13ms | 1.80ms | +59% slower |
+| Varying sizes | 1.15ms | 2.20ms | +91% slower |
+| Large batch (10k) | 70.08ms | 106.71ms | +52% slower |
 
-**Observation:** Statement cache thrashing is **minimal** (only 2% overhead). This is much less than expected.
+**Unexpected Result:** Single prepared statement is **SLOWER** than string concatenation!
 
-**Possible reasons:**
-- Batch sizes too small to show effect
-- Statement cache working better than expected
-- SQLite compilation is fast enough that cache misses don't matter at this scale
+**Analysis:**
+- String concatenation was actually well-optimized for small batches
+- `db.transaction()` overhead dominates for <100 docs
+- SQLite's query compilation is fast enough that cache misses don't matter
+- The old approach was better optimized than we thought
 
 ### Industry Pattern
 
