@@ -62,14 +62,14 @@ async function setupInstance() {
 }
 
 async function benchmarkFixedBatchSize(instance: any) {
-	console.log('\n📊 Test 1: Fixed Batch Size (100 docs × 10 iterations)');
+	console.log('\n📊 Test 1: Fixed Batch Size (100 docs × 20 iterations)');
 	console.log('   Measures: Consistent performance with same batch size');
 	console.log('   Expected: Fast (statement cache hit every time)\n');
 
 	const times: number[] = [];
 	const batchSize = 100;
 
-	for (let i = 0; i < 10; i++) {
+	for (let i = 0; i < 20; i++) {
 		const docs = generateDocs(batchSize, i * batchSize);
 		
 		const start = performance.now();
@@ -79,22 +79,24 @@ async function benchmarkFixedBatchSize(instance: any) {
 		times.push(end - start);
 	}
 
+	const sortedTimes = [...times].sort((a, b) => a - b);
 	const avgTime = times.reduce((a, b) => a + b, 0) / times.length;
+	const medianTime = sortedTimes[Math.floor(sortedTimes.length / 2)];
 	const minTime = Math.min(...times);
 	const maxTime = Math.max(...times);
 
-	console.log(`   ⏱️  Avg: ${avgTime.toFixed(2)}ms | Min: ${minTime.toFixed(2)}ms | Max: ${maxTime.toFixed(2)}ms`);
+	console.log(`   ⏱️  Avg: ${avgTime.toFixed(2)}ms | Median: ${medianTime.toFixed(2)}ms | Min: ${minTime.toFixed(2)}ms | Max: ${maxTime.toFixed(2)}ms`);
 	console.log(`   📊 Variance: ${((maxTime - minTime) / avgTime * 100).toFixed(1)}%`);
 	
-	return avgTime;
+	return { avg: avgTime, median: medianTime };
 }
 
 async function benchmarkVaryingBatchSizes(instance: any) {
-	console.log('\n📊 Test 2: Varying Batch Sizes (THE KEY TEST)');
+	console.log('\n📊 Test 2: Varying Batch Sizes (THE KEY TEST - 20 iterations)');
 	console.log('   Measures: Statement cache thrashing with different batch sizes');
 	console.log('   Expected: SLOW (cache miss on every size change)\n');
 
-	const batchSizes = [42, 73, 100, 127, 200, 42, 100, 73, 200, 127];
+	const batchSizes = [42, 73, 100, 127, 200, 42, 100, 73, 200, 127, 42, 73, 100, 127, 200, 42, 100, 73, 200, 127];
 	const times: number[] = [];
 	let offset = 10000;
 
@@ -110,14 +112,16 @@ async function benchmarkVaryingBatchSizes(instance: any) {
 		console.log(`   Size ${size.toString().padStart(3)}: ${(end - start).toFixed(2)}ms`);
 	}
 
+	const sortedTimes = [...times].sort((a, b) => a - b);
 	const avgTime = times.reduce((a, b) => a + b, 0) / times.length;
+	const medianTime = sortedTimes[Math.floor(sortedTimes.length / 2)];
 	const minTime = Math.min(...times);
 	const maxTime = Math.max(...times);
 
-	console.log(`\n   ⏱️  Avg: ${avgTime.toFixed(2)}ms | Min: ${minTime.toFixed(2)}ms | Max: ${maxTime.toFixed(2)}ms`);
+	console.log(`\n   ⏱️  Avg: ${avgTime.toFixed(2)}ms | Median: ${medianTime.toFixed(2)}ms | Min: ${minTime.toFixed(2)}ms | Max: ${maxTime.toFixed(2)}ms`);
 	console.log(`   📊 Variance: ${((maxTime - minTime) / avgTime * 100).toFixed(1)}%`);
 	
-	return avgTime;
+	return { avg: avgTime, median: medianTime };
 }
 
 async function benchmarkLargeBatch(instance: any) {
@@ -148,8 +152,8 @@ async function main() {
 
 	const instance = await setupInstance();
 
-	const fixedAvg = await benchmarkFixedBatchSize(instance);
-	const varyingAvg = await benchmarkVaryingBatchSizes(instance);
+	const fixed = await benchmarkFixedBatchSize(instance);
+	const varying = await benchmarkVaryingBatchSizes(instance);
 	const largeTime = await benchmarkLargeBatch(instance);
 
 	await instance.close();
@@ -158,18 +162,19 @@ async function main() {
 	console.log('📈 SUMMARY');
 	console.log('='.repeat(80));
 	
-	console.log(`\nFixed batch size (100):    ${fixedAvg.toFixed(2)}ms avg`);
-	console.log(`Varying batch sizes:       ${varyingAvg.toFixed(2)}ms avg`);
+	console.log(`\nFixed batch size (100):    Avg: ${fixed.avg.toFixed(2)}ms | Median: ${fixed.median.toFixed(2)}ms`);
+	console.log(`Varying batch sizes:       Avg: ${varying.avg.toFixed(2)}ms | Median: ${varying.median.toFixed(2)}ms`);
 	console.log(`Large batch (10k):         ${largeTime.toFixed(2)}ms`);
 
-	const overhead = ((varyingAvg / fixedAvg) - 1) * 100;
-	console.log(`\n⚠️  Varying sizes are ${overhead.toFixed(0)}% slower (statement cache thrashing)`);
+	const overheadAvg = ((varying.avg / fixed.avg) - 1) * 100;
+	const overheadMedian = ((varying.median / fixed.median) - 1) * 100;
+	console.log(`\n⚠️  Varying sizes overhead: Avg ${overheadAvg.toFixed(0)}% | Median ${overheadMedian.toFixed(0)}%`);
 
 	console.log('\n💡 EXPECTED IMPROVEMENT AFTER FIX:');
 	console.log('   Current: String concatenation → cache miss on size change');
 	console.log('   After:   Single prepared statement → cache hit every time');
-	console.log(`   Expected: Varying sizes should match fixed size (~${fixedAvg.toFixed(2)}ms)`);
-	console.log(`   Speedup:  ${(varyingAvg / fixedAvg).toFixed(1)}x faster for varying sizes`);
+	console.log(`   Expected: Varying sizes should match fixed size (~${fixed.median.toFixed(2)}ms median)`);
+	console.log(`   Speedup:  ${(varying.median / fixed.median).toFixed(1)}x faster for varying sizes`);
 
 	console.log('\n' + '='.repeat(80));
 	console.log('✅ BASELINE ESTABLISHED');
