@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.5.7] - 2026-03-02
+
+### Fixed 🔥
+- **Critical: MongoDB BSON type boundary enforcement**
+  - Added type guards to comparison operators ($eq, $gt, $gte, $lt, $lte) to prevent SQLite's implicit type conversion from breaking MongoDB compatibility
+  - Example: `{ score: { $lt: "80" } }` (string) no longer matches `score: 95.5` (number)
+  - Type guards enforce strict type matching: numbers only match numbers, strings only match strings
+- **Critical: "malformed JSON" crash in jsonb_each**
+  - Fixed crash when using `json_type(value)` inside `jsonb_each`
+  - Solution: Use built-in `type` column from `jsonb_each` instead of calling `json_type(value)`
+  - Prevents database crashes on all array queries with type guards
+- **2-argument jsonb_each form**
+  - Switched to `jsonb_each(data, '$.path')` from `jsonb_each(field)`
+  - Gracefully handles scalar fields instead of crashing with "malformed JSON"
+  - More robust error handling for edge cases
+
+### Added
+- **Type guard implementation**
+  - `addTypeGuard()` function enforces MongoDB BSON type boundaries
+  - Applied to: $eq, $gt, $gte, $lt, $lte (NOT $ne - inverted logic)
+  - Uses `type` column inside jsonb_each (prevents crashes)
+  - Uses `json_type()` for regular fields (correct API)
+- **Property-based test coverage**
+  - Added 3 new test cases for type mismatch scenarios
+  - Tests string vs number, array scalar match, null vs undefined
+  - All 628 tests passing (17 snapshot tests updated)
+
+### Technical Details
+- All 628 tests passing (611 integration + 17 unit tests updated)
+- Property-based tests: 11009 assertions across 1000 random queries
+- Zero regressions
+- Documentation: Added 94 lines explaining type guard implementation and why $ne has NO type guards
+
+---
+
 ## [1.5.6] - 2026-03-01
 
 ### Fixed 🔥
