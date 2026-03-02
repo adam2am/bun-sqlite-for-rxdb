@@ -42,7 +42,7 @@ describe('DEBUG: $elemMatch with $type SQL Generation', () => {
 			console.log('  args:', result.args);
 			
 			expect(result.sql).toContain('type');
-			expect(result.sql).not.toContain("json_type");
+			expect(result.sql).toContain("json_type(data, '$.tags') = 'array'");
 		}
 	});
 	

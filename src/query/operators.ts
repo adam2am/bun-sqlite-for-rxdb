@@ -188,6 +188,20 @@ export function translateGt<RxDocType>(
 				args: [normalizeValueForSQLite(value)]
 			};
 		}
+		
+		if (field !== 'value' && columnInfo.type === 'unknown' && !actualFieldName.includes('.')) {
+			const isInternalField = actualFieldName === schema.primaryKey || actualFieldName.startsWith('_');
+			if (!isInternalField) {
+				const scalarComparison = `${field} > ?`;
+				const scalarMatch = addTypeGuard(field, value, scalarComparison);
+				const arrayComparison = 'value > ?';
+				const arrayMatch = addTypeGuard('value', value, arrayComparison);
+				return {
+					sql: `(${scalarMatch} OR EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${arrayMatch}))`,
+					args: [normalizeValueForSQLite(value), normalizeValueForSQLite(value)]
+				};
+			}
+		}
 	}
 	const comparison = `${field} > ?`;
 	return { 
@@ -211,6 +225,20 @@ export function translateGte<RxDocType>(
 				sql: `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${guardedSql})`,
 				args: [normalizeValueForSQLite(value)]
 			};
+		}
+		
+		if (field !== 'value' && columnInfo.type === 'unknown' && !actualFieldName.includes('.')) {
+			const isInternalField = actualFieldName === schema.primaryKey || actualFieldName.startsWith('_');
+			if (!isInternalField) {
+				const scalarComparison = `${field} >= ?`;
+				const scalarMatch = addTypeGuard(field, value, scalarComparison);
+				const arrayComparison = 'value >= ?';
+				const arrayMatch = addTypeGuard('value', value, arrayComparison);
+				return {
+					sql: `(${scalarMatch} OR EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${arrayMatch}))`,
+					args: [normalizeValueForSQLite(value), normalizeValueForSQLite(value)]
+				};
+			}
 		}
 	}
 	const comparison = `${field} >= ?`;
@@ -236,6 +264,20 @@ export function translateLt<RxDocType>(
 				args: [normalizeValueForSQLite(value)]
 			};
 		}
+		
+		if (field !== 'value' && columnInfo.type === 'unknown' && !actualFieldName.includes('.')) {
+			const isInternalField = actualFieldName === schema.primaryKey || actualFieldName.startsWith('_');
+			if (!isInternalField) {
+				const scalarComparison = `${field} < ?`;
+				const scalarMatch = addTypeGuard(field, value, scalarComparison);
+				const arrayComparison = 'value < ?';
+				const arrayMatch = addTypeGuard('value', value, arrayComparison);
+				return {
+					sql: `(${scalarMatch} OR EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${arrayMatch}))`,
+					args: [normalizeValueForSQLite(value), normalizeValueForSQLite(value)]
+				};
+			}
+		}
 	}
 	const comparison = `${field} < ?`;
 	return { 
@@ -259,6 +301,20 @@ export function translateLte<RxDocType>(
 				sql: `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${guardedSql})`,
 				args: [normalizeValueForSQLite(value)]
 			};
+		}
+		
+		if (field !== 'value' && columnInfo.type === 'unknown' && !actualFieldName.includes('.')) {
+			const isInternalField = actualFieldName === schema.primaryKey || actualFieldName.startsWith('_');
+			if (!isInternalField) {
+				const scalarComparison = `${field} <= ?`;
+				const scalarMatch = addTypeGuard(field, value, scalarComparison);
+				const arrayComparison = 'value <= ?';
+				const arrayMatch = addTypeGuard('value', value, arrayComparison);
+				return {
+					sql: `(${scalarMatch} OR EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${arrayMatch}))`,
+					args: [normalizeValueForSQLite(value), normalizeValueForSQLite(value)]
+				};
+			}
 		}
 	}
 	const comparison = `${field} <= ?`;
@@ -302,6 +358,31 @@ export function translateIn<RxDocType>(
 				return { sql: inClause, args };
 			} catch (e) {
 				return { sql: '1=0', args: [] };
+			}
+		}
+		
+		if (field !== 'value' && columnInfo.type === 'unknown' && !actualFieldName.includes('.')) {
+			const isInternalField = actualFieldName === schema.primaryKey || actualFieldName.startsWith('_');
+			if (!isInternalField) {
+				try {
+					const scalarInClause = `${field} IN (SELECT value FROM json_each(?))`;
+					const arrayInClause = `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE value IN (SELECT value FROM json_each(?)))`;
+					const args = [JSON.stringify(nonNullValues), JSON.stringify(nonNullValues)];
+					
+					if (hasNull) {
+						return {
+							sql: `((${scalarInClause} OR ${arrayInClause}) OR ${field} IS NULL)`,
+							args
+						};
+					}
+					
+					return {
+						sql: `(${scalarInClause} OR ${arrayInClause})`,
+						args
+					};
+				} catch (e) {
+					return { sql: '1=0', args: [] };
+				}
 			}
 		}
 	}
@@ -357,6 +438,31 @@ export function translateNin<RxDocType>(
 				return { sql: `(${field} IS NULL OR ${ninClause})`, args };
 			} catch (e) {
 				return { sql: '1=1', args: [] };
+			}
+		}
+		
+		if (field !== 'value' && columnInfo.type === 'unknown' && !actualFieldName.includes('.')) {
+			const isInternalField = actualFieldName === schema.primaryKey || actualFieldName.startsWith('_');
+			if (!isInternalField) {
+				try {
+					const scalarNinClause = `${field} NOT IN (SELECT value FROM json_each(?))`;
+					const arrayNinClause = `NOT EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE value IN (SELECT value FROM json_each(?)))`;
+					const args = [JSON.stringify(nonNullValues), JSON.stringify(nonNullValues)];
+					
+					if (hasNull) {
+						return {
+							sql: `((${scalarNinClause} AND ${arrayNinClause}) AND ${field} IS NOT NULL)`,
+							args
+						};
+					}
+					
+					return {
+						sql: `(${field} IS NULL OR (${scalarNinClause} AND ${arrayNinClause}))`,
+						args
+					};
+				} catch (e) {
+					return { sql: '1=1', args: [] };
+				}
 			}
 		}
 	}
@@ -423,6 +529,22 @@ export function translateRegex<RxDocType>(
 			};
 		}
 		return null;
+	}
+	
+	if (field !== 'value' && columnInfo.type === 'unknown' && !fieldName.includes('.')) {
+		const isInternalField = fieldName === schema.primaryKey || fieldName.startsWith('_');
+		if (!isInternalField) {
+			const scalarMatch = smartRegexToLike(field, pattern, options, schema, fieldName);
+			const arrayMatch = smartRegexToLike('value', pattern, options, schema, fieldName);
+			
+			if (scalarMatch && arrayMatch) {
+				return {
+					sql: `(${scalarMatch.sql} OR EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(fieldName)}') WHERE ${arrayMatch.sql}))`,
+					args: [...scalarMatch.args, ...arrayMatch.args]
+				};
+			}
+			return null;
+		}
 	}
 	
 	const smartResult = smartRegexToLike(field, pattern, options, schema, fieldName);
@@ -593,7 +715,7 @@ export function translateElemMatch<RxDocType>(
 		const sql = fragments.map(f => `COALESCE((${f!.sql}), 0)`).join(' AND ');
 		const args = fragments.flatMap(f => f!.args);
 		return {
-			sql: `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${sql})`,
+			sql: `(json_type(data, '${buildJsonPath(actualFieldName)}') = 'array' AND EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${sql}))`,
 			args
 		};
 	}
@@ -604,7 +726,7 @@ export function translateElemMatch<RxDocType>(
 		const sql = fragments.map(f => `COALESCE((${f!.sql}), 0)`).join(' OR ');
 		const args = fragments.flatMap(f => f!.args);
 		return {
-			sql: `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${sql})`,
+			sql: `(json_type(data, '${buildJsonPath(actualFieldName)}') = 'array' AND EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${sql}))`,
 			args
 		};
 	}
@@ -615,7 +737,7 @@ export function translateElemMatch<RxDocType>(
 		const sql = fragments.map(f => `COALESCE((${f!.sql}), 0)`).join(' OR ');
 		const args = fragments.flatMap(f => f!.args);
 		return {
-			sql: `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE NOT (${sql}))`,
+			sql: `(json_type(data, '${buildJsonPath(actualFieldName)}') = 'array' AND EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE NOT (${sql})))`,
 			args
 		};
 	}
@@ -623,7 +745,7 @@ export function translateElemMatch<RxDocType>(
 	const fragment = buildElemMatchConditions(criteria as Record<string, unknown>, schema, actualFieldName);
 	if (!fragment) return null;
 	return {
-		sql: `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${asBoolean(fragment.sql)})`,
+		sql: `(json_type(data, '${buildJsonPath(actualFieldName)}') = 'array' AND EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${asBoolean(fragment.sql)}))`,
 		args: fragment.args
 	};
 }

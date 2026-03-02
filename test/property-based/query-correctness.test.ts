@@ -193,6 +193,29 @@ const MangoQueryArbitrary = () => {
 		{ unknownField: { $eq: 'item1' } }
 	);
 	
+	// JUNIOR BUG 1: $elemMatch on scalar values (should NOT match)
+	const elemMatchOnScalarArb = fc.constantFrom(
+		{ unknownField: { $elemMatch: { $eq: 'item1' } } },
+		{ tags: { $elemMatch: { $eq: 'admin' } } }
+	);
+	
+	// JUNIOR BUG 2: $regex on unknown field with array runtime data (should match by traversing)
+	const regexOnUnknownArrayArb = fc.constantFrom(
+		{ unknownField: { $regex: '^item' } },
+		{ unknownField: { $regex: 'item1' } },
+		{ unknownField: { $regex: '1$' } }
+	);
+	
+	// JUNIOR BUG 2 EXTENDED: Other operators on unknown arrays
+	const operatorsOnUnknownArrayArb = fc.constantFrom(
+		{ unknownField: { $gt: 'item0' } },
+		{ unknownField: { $gte: 'item1' } },
+		{ unknownField: { $lt: 'item3' } },
+		{ unknownField: { $lte: 'item2' } },
+		{ unknownField: { $in: ['item1', 'item2'] } },
+		{ unknownField: { $nin: ['item3', 'item4'] } }
+	);
+	
 	// EDGE CASE: $elemMatch should NOT trigger array traversal for nested fields
 	const elemMatchNoArrayTraversalArb = fc.constantFrom(
 		{ items: { $elemMatch: { name: 'item1' } } },
@@ -546,6 +569,9 @@ const MangoQueryArbitrary = () => {
 		objectEqualityArb,
 		notNullParadoxArb,
 		scalarVsArrayArb,
+		elemMatchOnScalarArb,
+		regexOnUnknownArrayArb,
+		operatorsOnUnknownArrayArb,
 		elemMatchNoArrayTraversalArb,
 		sizeKnownArrayArb,
 		nestedObjectEqualityArb,
