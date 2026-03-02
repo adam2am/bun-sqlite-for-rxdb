@@ -29,7 +29,7 @@ describe('$nin with undefined fields (MongoDB spec compliance)', () => {
 
 	it('should handle array fields with IS NULL check', () => {
 		const result = translateNin('tags', ['admin'], mockSchema, 'tags');
-		expect(result.sql).toBe('(tags IS NULL OR NOT EXISTS (SELECT 1 FROM jsonb_each(tags) WHERE value IN (SELECT value FROM json_each(?))))');
+		expect(result.sql).toBe('(tags IS NULL OR NOT EXISTS (SELECT 1 FROM jsonb_each(data, \'$.tags\') WHERE value IN (SELECT value FROM json_each(?))))');
 		expect(result.args).toEqual(['["admin"]']);
 	});
 });

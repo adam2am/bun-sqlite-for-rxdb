@@ -127,6 +127,30 @@ const MangoQueryArbitrary = () => {
 		value: fc.tuple(fc.integer({ min: 2, max: 5 }), fc.integer({ min: 0, max: 4 }))
 	});
 	
+	// LINUS TORVALDS TYPE MISMATCH BOUNDARIES
+	// Test 1: String vs Number (MongoDB enforces strict BSON type boundaries)
+	const typeMismatchStringNumberArb = fc.constantFrom(
+		{ age: '30' },              // String value for number field - should NOT match age: 30
+		{ age: { $gt: '25' } },     // String comparison on number field - should NOT match
+		{ score: '95.5' },          // String value for number field - should NOT match
+		{ score: { $lt: '80' } }    // String comparison on number field - should NOT match
+	);
+	
+	// Test 2: Array field with scalar query (MongoDB implicit $in)
+	const arrayScalarMatchArb = fc.constantFrom(
+		{ tags: 'admin' },          // Scalar query on array field - SHOULD match if "admin" in array
+		{ tags: 'user' },           // SHOULD match if "user" in array
+		{ tags: 'moderator' }       // SHOULD match if "moderator" in array
+	);
+	
+	// Test 3: null vs undefined (missing fields)
+	const nullVsUndefinedArb = fc.constantFrom(
+		{ optional: null },                      // SHOULD match missing OR null
+		{ optional: { $ne: null } },             // SHOULD match present (not null, not missing)
+		{ nonexistent: null },                   // SHOULD match all docs (field doesn't exist)
+		{ nonexistent: { $ne: null } }           // SHOULD match all docs (field doesn't exist)
+	);
+	
 	// Regex patterns: Simple patterns (SQL LIKE) + Complex patterns (in-memory)
 	const regexArb = fc.record({
 		field: fc.constantFrom('name'),
@@ -361,7 +385,10 @@ const MangoQueryArbitrary = () => {
 		elemMatchNotArb,
 		multiOpArb,
 		complexRegexArb.map(op => ({ [op.field]: { $regex: op.value, ...(op.options ? { $options: op.options } : {}) } })),
-		complexRegexWithOptionsArb
+		complexRegexWithOptionsArb,
+		typeMismatchStringNumberArb,
+		arrayScalarMatchArb,
+		nullVsUndefinedArb
 	);
 };
 
