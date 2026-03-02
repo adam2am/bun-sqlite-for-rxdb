@@ -30,8 +30,9 @@ describe('BLACK HOLE #3: Exact array matching with JSON.stringify', () => {
 		const value = ['admin', 'user'];
 		const result = translateEq(field, value, schema, 'tags');
 		
-		expect(result.sql).toContain('= json(?)');
-		expect(result.args).toEqual(['["admin","user"]']);
+		expect(result).not.toBeNull();
+		expect(result!.sql).toContain('= json(?)');
+		expect(result!.args).toEqual(['["admin","user"]']);
 	});
 
 	it('should preserve array order in JSON string', () => {
@@ -39,7 +40,8 @@ describe('BLACK HOLE #3: Exact array matching with JSON.stringify', () => {
 		const value = ['user', 'admin'];
 		const result = translateEq(field, value, schema, 'tags');
 		
-		expect(result.args).toEqual(['["user","admin"]']);
+		expect(result).not.toBeNull();
+		expect(result!.args).toEqual(['["user","admin"]']);
 	});
 
 	it('should handle empty arrays', () => {
@@ -47,8 +49,9 @@ describe('BLACK HOLE #3: Exact array matching with JSON.stringify', () => {
 		const value: string[] = [];
 		const result = translateEq(field, value, schema, 'tags');
 		
-		expect(result.sql).toContain('= json(?)');
-		expect(result.args).toEqual(['[]']);
+		expect(result).not.toBeNull();
+		expect(result!.sql).toContain('= json(?)');
+		expect(result!.args).toEqual(['[]']);
 	});
 });
 

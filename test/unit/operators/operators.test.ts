@@ -5,20 +5,23 @@ describe('Query Operators', () => {
 	describe('translateEq', () => {
 		it('translates equality with value', () => {
 			const result = translateEq('age', 18);
-			expect(result.sql).toBe('age = ?');
-			expect(result.args).toEqual([18]);
+			expect(result).not.toBeNull();
+			expect(result!.sql).toBe('age = ?');
+			expect(result!.args).toEqual([18]);
 		});
 
 		it('translates equality with null', () => {
 			const result = translateEq('status', null);
-			expect(result.sql).toBe('status IS NULL');
-			expect(result.args).toEqual([]);
+			expect(result).not.toBeNull();
+			expect(result!.sql).toBe('status IS NULL');
+			expect(result!.args).toEqual([]);
 		});
 
 		it('translates equality with string', () => {
 			const result = translateEq('name', 'Alice');
-			expect(result.sql).toBe('name = ?');
-			expect(result.args).toEqual(['Alice']);
+			expect(result).not.toBeNull();
+			expect(result!.sql).toBe('name = ?');
+			expect(result!.args).toEqual(['Alice']);
 		});
 	});
 
