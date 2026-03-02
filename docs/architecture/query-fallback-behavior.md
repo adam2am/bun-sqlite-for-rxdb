@@ -62,20 +62,23 @@ if (typeof value === 'object' && !Array.isArray(value) && !(value instanceof Dat
 }
 ```
 
-**Why:** SQLite's `json()` function preserves key order, but MongoDB treats objects as key-order independent.
+**Why:** MongoDB subdocument equality is order-sensitive (BSON comparison follows key appearance order), but implementing canonical key ordering in SQL adds overhead. We fall back to Mingo for 100% compatibility without canonicalization cost.
 
 **Example:**
 
 ```javascript
-// These are EQUAL in MongoDB, but NOT in SQLite
-{ a: 1, b: 2 } === { b: 2, a: 1 }  // MongoDB: true, SQLite: false
+// MongoDB BSON comparison IS order-sensitive
+{ a: 1, b: 2 } !== { b: 2, a: 1 }  // MongoDB: false (order matters)
+
+// We could canonicalize keys in SQL, but it's expensive:
+// json(?) = json(?) after sorting keys
 ```
 
 **Affects:** `{ field: { nested: 'object' } }` queries.
 
 **Rationale:**
-- **Correctness:** Mingo handles key-order independence correctly
-- **Performance:** Keeps writes fast (native `JSON.stringify`)
+- **Correctness:** Mingo matches MongoDB's exact BSON comparison behavior
+- **Performance:** Avoids canonicalization overhead on every query
 - **Guidance:** Encourages users to use dot-notation (`field.nested`) instead
 
 ---
@@ -101,7 +104,6 @@ return null;  // Fall back to Mingo
 ### Fast Path (No Type Guards)
 
 - **Simple field equality:** `{ name: 'Alice' }`
-- **Comparison operators:** `{ age: { $gt: 25 } }`
 - **$in, $nin:** `{ name: { $in: ['Alice', 'Bob'] } }`
 - **$exists:** `{ name: { $exists: true } }`
 - **$size on known arrays:** `{ tags: { $size: 3 } }`
@@ -110,8 +112,8 @@ return null;  // Fall back to Mingo
 
 ### Hybrid Path (SQL with Runtime Guards)
 
+- **Comparison operators:** `{ age: { $gt: 25 } }` - Adds BSON type guards to prevent SQLite's implicit type conversion
 - **$size on unknown fields:** Adds `json_type()` check before `json_array_length()`
-- **Comparison operators:** Adds BSON type guards to prevent SQLite's implicit type conversion
 
 ---
 
@@ -141,8 +143,6 @@ if (columnInfo.type === 'array' || columnInfo.type === 'unknown') {
 // - Test all edge cases
 // = 200+ lines of complex SQL generation logic
 ```
-
-**Linus Rule:** Complexity is the enemy. More code = more bugs.
 
 ---
 
@@ -233,7 +233,9 @@ EXISTS (
 
 ### Can Users Define Types Externally?
 
-**YES**, using JSON Schema's `$defs` and `$ref`:
+**YES**, two approaches:
+
+**1. JSON Schema `$defs` and `$ref`:**
 
 ```javascript
 {
@@ -252,6 +254,31 @@ EXISTS (
   }
 }
 ```
+
+**Note:** RxDB rejects `$ref` at runtime (check-schema.ts:102). Storage adapters will never see `$ref`.
+
+**2. TypeScript Schemas (Official/Recommended):**
+
+```typescript
+import { toTypedRxJsonSchema, ExtractDocumentTypeFromTypedRxJsonSchema } from 'rxdb';
+
+export const heroSchemaLiteral = {
+    version: 0,
+    primaryKey: 'id',
+    type: 'object',
+    properties: {
+        id: { type: 'string' },
+        name: { type: 'string' },
+        age: { type: 'number' }
+    },
+    required: ['id', 'name']
+} as const; // ← Critical for type inference
+
+const schemaTyped = toTypedRxJsonSchema(heroSchemaLiteral);
+export type HeroDocType = ExtractDocumentTypeFromTypedRxJsonSchema<typeof schemaTyped>;
+```
+
+**Industry Pattern:** All production RxDB codebases use TypeScript literals with `as const` - no separate JSON files needed.
 
 ### RxDB's Constraints
 
