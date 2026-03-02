@@ -1,8 +1,16 @@
 import type { RxDocumentData, MangoQuerySelector, MangoQueryOperators, MangoQueryRegexOptions } from 'rxdb';
 import { matchesRegex } from './regex-matcher';
+import { stableStringify } from '../utils/stable-stringify';
 
 type MatcherFn = (doc: any, selector: MangoQuerySelector<any>) => boolean;
 type OperatorFn = (value: any, arg: any, matcher: MatcherFn) => boolean;
+
+function isOperatorObject(obj: any): boolean {
+	if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return false;
+	const keys = Object.keys(obj);
+	if (keys.length === 0) return false;
+	return keys.every(k => k.startsWith('$'));
+}
 
 function getNestedValue(obj: any, path: string): any {
 	const segments = path.split('.');
@@ -30,14 +38,42 @@ function getNestedValue(obj: any, path: string): any {
 }
 
 const operators: Record<string, OperatorFn> = {
-	$eq: (a, b) => a === b,
-	$ne: (a, b) => a !== b,
+	$eq: (a, b) => {
+		if (typeof a === 'object' && typeof b === 'object' && a !== null && b !== null) {
+			return stableStringify(a) === stableStringify(b);
+		}
+		return a === b;
+	},
+	$ne: (a, b) => {
+		if (typeof a === 'object' && typeof b === 'object' && a !== null && b !== null) {
+			return stableStringify(a) !== stableStringify(b);
+		}
+		return a !== b;
+	},
 	$gt: (a, b) => a > b,
 	$gte: (a, b) => a >= b,
 	$lt: (a, b) => a < b,
 	$lte: (a, b) => a <= b,
-	$in: (a, b) => Array.isArray(b) && b.some(v => v === a),
-	$nin: (a, b) => Array.isArray(b) && !b.some(v => v === a),
+	$in: (a, b) => {
+		if (!Array.isArray(b)) return false;
+		const aStr = (typeof a === 'object' && a !== null) ? stableStringify(a) : undefined;
+		return b.some(v => {
+			if (aStr !== undefined && typeof v === 'object' && v !== null) {
+				return aStr === stableStringify(v);
+			}
+			return v === a;
+		});
+	},
+	$nin: (a, b) => {
+		if (!Array.isArray(b)) return false;
+		const aStr = (typeof a === 'object' && a !== null) ? stableStringify(a) : undefined;
+		return !b.some(v => {
+			if (aStr !== undefined && typeof v === 'object' && v !== null) {
+				return aStr === stableStringify(v);
+			}
+			return v === a;
+		});
+	},
 	$exists: (a, b) => (a !== undefined) === b,
 	$mod: (a, b) => Array.isArray(b) && b.length === 2 && typeof a === 'number' && a % b[0] === b[1],
 	$size: (a, b) => Array.isArray(a) && a.length === b,
@@ -60,16 +96,19 @@ const operators: Record<string, OperatorFn> = {
 
 		return Array.isArray(b) ? b.some(matchType) : matchType(b as string);
 	},
-	$not: (a, b, matcher) => !matchesOperators(a, b, matcher),
+	$not: (a, b, matcher) => {
+		if (isOperatorObject(b)) {
+			return !matchesOperators(a, b, matcher);
+		}
+		return operators.$ne(a, b, matcher);
+	},
 	$elemMatch: (val, query, matcher) => {
 		if (!Array.isArray(val)) return false;
 		
-		const isOperatorObj = typeof query === 'object' && query !== null && 
-			Object.keys(query).length > 0 &&
-			Object.keys(query).every(k => k.startsWith('$') && !['$and', '$or', '$nor'].includes(k));
+		const isOpObj = isOperatorObject(query) && !['$and', '$or', '$nor'].some(k => k in query);
 
 		return val.some(item => {
-			if (isOperatorObj) return matchesOperators(item, query, matcher);
+			if (isOpObj) return matchesOperators(item, query, matcher);
 			return matcher(item, query);
 		});
 	}
@@ -86,10 +125,12 @@ function matchesOperators(value: any, condition: Record<string, any>, matcher: M
 				operatorArg = { pattern: arg, options: condition.$options };
 			}
 
-			const isNegative = op === '$ne' || op === '$nin';
-			const isStructural = op === '$size' || op === '$type' || op === '$elemMatch';
-			
-			if (Array.isArray(value) && !isStructural) {
+		const isNegative = op === '$ne' || op === '$nin';
+		const isStructural = op === '$size' || op === '$type' || op === '$elemMatch';
+		const argIsArrayOrObject = typeof arg === 'object' && arg !== null;
+		const skipTraversal = argIsArrayOrObject && (op === '$eq' || op === '$ne');
+		
+		if (Array.isArray(value) && !isStructural && !skipTraversal) {
 				const predicate = (v: any) => fn(v, operatorArg, matcher);
 				if (isNegative ? !value.every(predicate) : !value.some(predicate)) return false;
 			} else {
@@ -116,7 +157,24 @@ export function matchesSelector<RxDocType>(
 		const value = getNestedValue(doc, field);
 		
 		if (typeof condition === 'object' && condition !== null && !Array.isArray(condition)) {
-			if (!matchesOperators(value, condition, matchesSelector)) return false;
+			const conditionUnknown = condition as unknown;
+			if (conditionUnknown instanceof Date || conditionUnknown instanceof RegExp) {
+				const eq = operators.$eq;
+				if (Array.isArray(value)) {
+					if (!value.some(v => eq(v, condition, matchesSelector))) return false;
+				} else {
+					if (!eq(value, condition, matchesSelector)) return false;
+				}
+			} else if (isOperatorObject(condition)) {
+				if (!matchesOperators(value, condition, matchesSelector)) return false;
+			} else {
+				const eq = operators.$eq;
+				if (Array.isArray(value)) {
+					if (!value.some(v => eq(v, condition, matchesSelector))) return false;
+				} else {
+					if (!eq(value, condition, matchesSelector)) return false;
+				}
+			}
 		} else {
 			const eq = operators.$eq;
 			if (Array.isArray(value)) {
