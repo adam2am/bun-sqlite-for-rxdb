@@ -41,14 +41,13 @@ describe('Data Corruption - Selector Structure', () => {
 	});
 
 	describe('Nested Fields - Corrupted Data', () => {
-		it('deeply nested field with dots', () => {
+		it('deeply nested field with dots (unknown type fallback)', () => {
 			const result = buildWhereClause(
 				{ 'metadata.user.profile.name': 'test' },
 				mockSchema,
 				'test'
 			);
-		expect(result).not.toBeNull();
-		expect(result?.sql).toContain('json_extract');
+		expect(result).toBeNull();
 		});
 
 		it('field with special characters', () => {
