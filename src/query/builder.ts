@@ -191,7 +191,7 @@ function processSelector<RxDocType>(
 
 		const columnInfo = getColumnInfo(field, schema);
 		const fieldName = columnInfo.column || `json_extract(data, '${buildJsonPath(field)}')`;
-		const actualFieldName = columnInfo.jsonPath?.replace(/^\$\./, '') || columnInfo.column || field;
+		const actualFieldName = field;
 
 		if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
 			const valueUnknown = value as unknown;
