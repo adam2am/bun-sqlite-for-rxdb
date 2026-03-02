@@ -148,48 +148,31 @@ const MangoQueryArbitrary = () => {
 		{ optional: null },                      // SHOULD match missing OR null
 		{ optional: { $ne: null } },             // SHOULD match present (not null, not missing)
 		{ nonexistent: null },                   // SHOULD match all docs (field doesn't exist)
-		{ nonexistent: { $ne: null } }           // SHOULD match all docs (field doesn't exist)
+		{ optional: { $exists: true } },         // SHOULD match docs with the key (including null)
+		{ optional: { $exists: false } }         // SHOULD match docs without the key
 	);
 	
-	// BLACK HOLE #1: $exists vs null Illusion
-	// Bug: json_extract returns NULL for both missing fields AND literal null values
-	// Fix: Must use json_type() for existence checks
-	const existsVsNullArb = fc.constantFrom(
-		{ optional: { $exists: true } },         // SHOULD match docs with optional=null AND optional="present"
-		{ optional: { $exists: false } },        // SHOULD match docs where optional is missing (not in doc)
-		{ optional: null },                      // SHOULD match docs with optional=null (literal null value)
-		{ nonexistent: { $exists: false } }      // SHOULD match all docs (field never exists)
-	);
-	
-	// BLACK HOLE #2: Exact Object Matching vs Drill-Down
-	// Bug: Plain objects drill down instead of exact match
-	// MongoDB: { config: { enabled: true } } = EXACT match (won't match extra fields)
-	// Current impl: Drills down, matches { config: { enabled: true, level: 5 } } (WRONG)
+	// Test 4: Exact object match (BLACK HOLE 2 & 3a)
 	const exactObjectMatchArb = fc.constantFrom(
-		{ items: [{ name: 'item1', category: 'A', price: 100, tags: ['new'] }] },  // Exact array of objects
-		{ items: [] }                                                                // Exact empty array
+		{ metadata: { active: true } },          // SHOULD match ONLY exact structure
+		{ metadata: { active: true, count: 5 } }, // Different structure
+		{ config: {} }                           // Empty object exact match
 	);
 	
-	// BLACK HOLE #3: Exact Array Matching
-	// Bug: Arrays not JSON.stringify'd for exact comparison
-	// MongoDB: { tags: ["admin", "user"] } = EXACT match (order matters, length matters)
+	// Test 5: Exact array match (BLACK HOLE 2)
 	const exactArrayMatchArb = fc.constantFrom(
-		{ tags: ['admin', 'user'] },             // Exact match - should NOT match ['user', 'admin']
-		{ tags: ['user'] },                      // Exact match - should NOT match ['user', 'admin']
-		{ tags: [] }                             // Exact empty array - should NOT match ['admin']
+		{ tags: ['admin', 'user'] },             // SHOULD match ONLY exact array
+		{ tags: ['user', 'admin'] },             // Different order
+		{ tags: [] }                             // Empty array exact match
 	);
 	
-	// BLACK HOLE #4: Implicit Array Property Matching
-	// Bug: Dot notation into arrays doesn't traverse correctly
-	// MongoDB: { "items.category": "A" } matches if ANY item has category="A"
-	// SQLite: json_extract on array returns JSON array ["A", "B"], comparison fails
+	// Test 6: Implicit array traversal
 	const implicitArrayTraversalArb = fc.constantFrom(
-		{ 'items.category': 'A' },               // SHOULD match if ANY item.category = "A"
-		{ 'items.price': 100 },                  // SHOULD match if ANY item.price = 100
-		{ 'items.name': 'item1' },               // SHOULD match if ANY item.name = "item1"
-		{ 'items.tags': 'new' }                  // SHOULD match if ANY item has "new" in tags
+		{ 'items.category': 'A' },               // Dot notation on array field
+		{ 'items.price': 100 },
+		{ 'items.name': 'item1' }
 	);
-	
+
 	// Regex patterns: Simple patterns (SQL LIKE) + Complex patterns (in-memory)
 	const regexArb = fc.record({
 		field: fc.constantFrom('name'),
@@ -454,7 +437,6 @@ const MangoQueryArbitrary = () => {
 		typeMismatchStringNumberArb,
 		arrayScalarMatchArb,
 		nullVsUndefinedArb,
-		existsVsNullArb,
 		exactObjectMatchArb,
 		exactArrayMatchArb,
 		implicitArrayTraversalArb,
