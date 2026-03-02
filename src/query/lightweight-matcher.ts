@@ -26,10 +26,94 @@ const operators: Record<string, Operator> = {
 };
 
 function getNestedValue<T>(obj: T, path: string): unknown {
-	return path.split('.').reduce(
-		(current, key) => (current as Record<string, unknown>)?.[key],
-		obj as unknown
-	);
+	const segments = path.split('.');
+	let value: unknown = obj;
+	
+	for (let i = 0; i < segments.length; i++) {
+		const field = segments[i];
+		const isNumericIndex = /^\d+$/.test(field);
+		
+		if (Array.isArray(value) && !isNumericIndex) {
+			const remainingPath = segments.slice(i).join('.');
+			const results: unknown[] = [];
+			for (const item of value) {
+				const resolved = getNestedValue(item, remainingPath);
+				if (resolved !== undefined) {
+					if (Array.isArray(resolved)) {
+						results.push(...resolved);
+					} else {
+						results.push(resolved);
+					}
+				}
+			}
+			return results.length > 0 ? results : undefined;
+		}
+		
+		value = (value as Record<string, unknown>)?.[field];
+		if (value === undefined) return undefined;
+	}
+	
+	return value;
+}
+
+function matchesValue(value: unknown, condition: unknown): boolean {
+	if (Array.isArray(value)) {
+		return value.includes(condition);
+	}
+	return value === condition;
+}
+
+function matchesOperators(value: unknown, conditions: Record<string, unknown>): boolean {
+	for (const [op, opValue] of Object.entries(conditions)) {
+		if (op === '$regex') {
+			const options = (conditions as MangoQueryOperators<unknown, unknown>).$options;
+			if (Array.isArray(value)) {
+				if (!value.some(v => matchesRegex(v, opValue as string, options))) return false;
+			} else {
+				if (!matchesRegex(value, opValue as string, options)) return false;
+			}
+			continue;
+		}
+
+		if (op === '$not') {
+			if (matchesOperator(value, opValue)) return false;
+			continue;
+		}
+
+	if (op === '$elemMatch') {
+		if (!Array.isArray(value)) return false;
+		
+		const isOperatorObj = typeof opValue === 'object' && opValue !== null && 
+			Object.keys(opValue).some(k => k.startsWith('$'));
+		
+		const hasMatch = value.some(item => {
+			if (isOperatorObj) return matchesOperators(item, opValue as Record<string, unknown>);
+			return matchesSelector(item, opValue as MangoQuerySelector<any>);
+		});
+		
+		if (!hasMatch) return false;
+		continue;
+	}
+
+		if (op === '$options') continue;
+
+	const operatorFn = operators[op];
+	if (!operatorFn) return false;
+	
+	const isStructuralOp = op === '$size' || op === '$type';
+	const isNegativeOp = op === '$ne' || op === '$nin';
+	
+	if (Array.isArray(value) && !isStructuralOp) {
+		if (isNegativeOp) {
+			if (!value.every(v => operatorFn(v, opValue))) return false;
+		} else {
+			if (!value.some(v => operatorFn(v, opValue))) return false;
+		}
+	} else {
+		if (!operatorFn(value, opValue)) return false;
+	}
+	}
+	return true;
 }
 
 export function matchesSelector<RxDocType>(
@@ -38,54 +122,27 @@ export function matchesSelector<RxDocType>(
 ): boolean {
 	if (!selector || typeof selector !== 'object') return true;
 
-	// Handle logical operators first
 	if (selector.$and) {
-		return Array.isArray(selector.$and) && selector.$and.every(s => matchesSelector(doc, s));
+		if (!Array.isArray(selector.$and) || !selector.$and.every(s => matchesSelector(doc, s))) return false;
 	}
 	if (selector.$or) {
-		return Array.isArray(selector.$or) && selector.$or.some(s => matchesSelector(doc, s));
+		if (!Array.isArray(selector.$or) || !selector.$or.some(s => matchesSelector(doc, s))) return false;
 	}
 	if (selector.$nor) {
-		return Array.isArray(selector.$nor) && !selector.$nor.some(s => matchesSelector(doc, s));
+		if (!Array.isArray(selector.$nor) || selector.$nor.some(s => matchesSelector(doc, s))) return false;
 	}
 
-	// Handle field operators
 	for (const [field, condition] of Object.entries(selector)) {
+		if (field.startsWith('$')) continue;
+		
 		const value = getNestedValue(doc, field);
-
-		// Direct equality (no operator)
-		if (typeof condition !== 'object' || condition === null || Array.isArray(condition)) {
-			if (value !== condition) return false;
-			continue;
-		}
-
-		// Handle operators
-		for (const [op, opValue] of Object.entries(condition)) {
-			if (op === '$regex') {
-				const options = (condition as MangoQueryOperators<unknown, unknown>).$options;
-				if (!matchesRegex(value, opValue as string, options)) return false;
-				continue;
+		
+		if (typeof condition === 'object' && condition !== null && !Array.isArray(condition)) {
+			if (!matchesOperators(value, condition as Record<string, unknown>)) {
+				return false;
 			}
-
-			if (op === '$not') {
-				if (matchesOperator(value, opValue)) return false;
-				continue;
-			}
-
-			if (op === '$elemMatch') {
-				if (!Array.isArray(value)) return false;
-				const hasMatch = value.some(item => 
-					matchesSelector(item, opValue as MangoQuerySelector<RxDocumentData<RxDocType>>)
-				);
-				if (!hasMatch) return false;
-				continue;
-			}
-
-			if (op === '$options') continue; // Skip $options (handled with $regex)
-
-			const operator = operators[op];
-			if (!operator) return false; // Unknown operator
-			if (!operator(value, opValue)) return false;
+		} else {
+			if (!matchesValue(value, condition)) return false;
 		}
 	}
 
@@ -94,19 +151,8 @@ export function matchesSelector<RxDocType>(
 
 function matchesOperator(value: unknown, operator: unknown | MangoQueryOperators<unknown, unknown>): boolean {
 	if (typeof operator !== 'object' || operator === null) {
-		return value === operator;
+		return matchesValue(value, operator);
 	}
 
-	for (const [op, opValue] of Object.entries(operator)) {
-		if (op === '$regex') {
-			const options = (operator as MangoQueryOperators<unknown, unknown>).$options;
-			return matchesRegex(value, opValue as string, options);
-		}
-
-		const operatorFn = operators[op];
-		if (!operatorFn) return false;
-		if (operatorFn(value, opValue)) return true;
-	}
-
-	return false;
+	return matchesOperators(value, operator as Record<string, unknown>);
 }
