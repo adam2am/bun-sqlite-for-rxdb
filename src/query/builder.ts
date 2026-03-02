@@ -22,7 +22,7 @@ export function buildWhereClause<RxDocType>(
 	if (!selector || typeof selector !== 'object') return null;
 
 	const actualCache = cache ?? getGlobalCache();
-	const cacheKey = `v3_${schema.version}_${stableStringify(selector)}`;
+	const cacheKey = `v4_${schema.version}_${stableStringify(selector)}`;
 	const cached = actualCache.get(cacheKey);
 	if (cached !== undefined) {
 		return cached;
@@ -127,6 +127,18 @@ function processSelector<RxDocType>(
 	const args: (string | number | boolean | null)[] = [];
 
 	for (const [field, value] of Object.entries(selector)) {
+		if (field.includes('.') && !field.startsWith('$')) {
+			const parts = field.split('.');
+			let currentPath = '';
+			for (const part of parts) {
+				currentPath = currentPath ? `${currentPath}.${part}` : part;
+				const columnInfo = getColumnInfo(currentPath, schema);
+				if (columnInfo.type === 'array') {
+					return null;
+				}
+			}
+		}
+
 		if (field === '$and' && Array.isArray(value)) {
 			const andFragments = value.map(subSelector => processSelector(subSelector, schema, logicalDepth + 1));
 			if (andFragments.some(f => f === null)) return null;

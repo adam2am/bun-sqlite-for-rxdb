@@ -151,6 +151,45 @@ const MangoQueryArbitrary = () => {
 		{ nonexistent: { $ne: null } }           // SHOULD match all docs (field doesn't exist)
 	);
 	
+	// BLACK HOLE #1: $exists vs null Illusion
+	// Bug: json_extract returns NULL for both missing fields AND literal null values
+	// Fix: Must use json_type() for existence checks
+	const existsVsNullArb = fc.constantFrom(
+		{ optional: { $exists: true } },         // SHOULD match docs with optional=null AND optional="present"
+		{ optional: { $exists: false } },        // SHOULD match docs where optional is missing (not in doc)
+		{ optional: null },                      // SHOULD match docs with optional=null (literal null value)
+		{ nonexistent: { $exists: false } }      // SHOULD match all docs (field never exists)
+	);
+	
+	// BLACK HOLE #2: Exact Object Matching vs Drill-Down
+	// Bug: Plain objects drill down instead of exact match
+	// MongoDB: { config: { enabled: true } } = EXACT match (won't match extra fields)
+	// Current impl: Drills down, matches { config: { enabled: true, level: 5 } } (WRONG)
+	const exactObjectMatchArb = fc.constantFrom(
+		{ items: [{ name: 'item1', category: 'A', price: 100, tags: ['new'] }] },  // Exact array of objects
+		{ items: [] }                                                                // Exact empty array
+	);
+	
+	// BLACK HOLE #3: Exact Array Matching
+	// Bug: Arrays not JSON.stringify'd for exact comparison
+	// MongoDB: { tags: ["admin", "user"] } = EXACT match (order matters, length matters)
+	const exactArrayMatchArb = fc.constantFrom(
+		{ tags: ['admin', 'user'] },             // Exact match - should NOT match ['user', 'admin']
+		{ tags: ['user'] },                      // Exact match - should NOT match ['user', 'admin']
+		{ tags: [] }                             // Exact empty array - should NOT match ['admin']
+	);
+	
+	// BLACK HOLE #4: Implicit Array Property Matching
+	// Bug: Dot notation into arrays doesn't traverse correctly
+	// MongoDB: { "items.category": "A" } matches if ANY item has category="A"
+	// SQLite: json_extract on array returns JSON array ["A", "B"], comparison fails
+	const implicitArrayTraversalArb = fc.constantFrom(
+		{ 'items.category': 'A' },               // SHOULD match if ANY item.category = "A"
+		{ 'items.price': 100 },                  // SHOULD match if ANY item.price = 100
+		{ 'items.name': 'item1' },               // SHOULD match if ANY item.name = "item1"
+		{ 'items.tags': 'new' }                  // SHOULD match if ANY item has "new" in tags
+	);
+	
 	// Regex patterns: Simple patterns (SQL LIKE) + Complex patterns (in-memory)
 	const regexArb = fc.record({
 		field: fc.constantFrom('name'),
@@ -382,6 +421,19 @@ const MangoQueryArbitrary = () => {
 		[field]: { $regex: pattern, $options: options }
 	}));
 	
+	// NEW: $and/$or/$nor with field conditions (EARLY RETURN BUG)
+	// Bug: Early return after checking logical operator, never checks field conditions
+	// Example: { $and: [{ age: { $gt: 20 } }], name: 'Alice' }
+	// Current: Returns after $and check, ignores name field
+	// Correct: Must check BOTH $and AND name field
+	const logicalWithFieldArb = fc.tuple(
+		numberValueArb,
+		stringValueArb
+	).map(([age, name]) => ({
+		$and: [{ age: { $gt: age } }],
+		name: { $eq: name }
+	}));
+
 	return fc.oneof(
 		singleOpArb.map(toMangoQuery),
 		andArb,
@@ -401,7 +453,12 @@ const MangoQueryArbitrary = () => {
 		complexRegexWithOptionsArb,
 		typeMismatchStringNumberArb,
 		arrayScalarMatchArb,
-		nullVsUndefinedArb
+		nullVsUndefinedArb,
+		existsVsNullArb,
+		exactObjectMatchArb,
+		exactArrayMatchArb,
+		implicitArrayTraversalArb,
+		logicalWithFieldArb
 	);
 };
 
