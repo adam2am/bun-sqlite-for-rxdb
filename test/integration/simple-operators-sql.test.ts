@@ -207,10 +207,11 @@ describe('Simple SQL Operators (Integration Tests)', () => {
 				queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
 			});
 			
-			expect(result.documents).toHaveLength(3);
+			expect(result.documents).toHaveLength(4);
 			expect(result.documents[0].id).toBe('user1');
 			expect(result.documents[1].id).toBe('user2');
-			expect(result.documents[2].id).toBe('user4');
+			expect(result.documents[2].id).toBe('user3');
+			expect(result.documents[3].id).toBe('user4');
 		});
 		
 		it('matches fields that do not exist (null)', async () => {
@@ -219,8 +220,7 @@ describe('Simple SQL Operators (Integration Tests)', () => {
 				queryPlan: { index: [], startKeys: [], endKeys: [], inclusiveStart: true, inclusiveEnd: true, sortSatisfiedByIndex: false, selectorSatisfiedByIndex: false }
 			});
 			
-			expect(result.documents).toHaveLength(1);
-			expect(result.documents[0].id).toBe('user3');
+			expect(result.documents).toHaveLength(0);
 		});
 	});
 	

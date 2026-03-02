@@ -40,9 +40,9 @@ describe('$exists Operator', () => {
 		expect(result.args).toEqual([]);
 	});
 
-	it('works with nested fields using json_extract', () => {
-		const result = translateExists("json_extract(data, '$.address.city')", true);
-		expect(result.sql).toBe("json_extract(data, '$.address.city') IS NOT NULL");
+	it('works with nested fields using json_type', () => {
+		const result = translateExists("json_type(data, '$.address.city')", true);
+		expect(result.sql).toBe("json_type(data, '$.address.city') IS NOT NULL");
 		expect(result.args).toEqual([]);
 	});
 
