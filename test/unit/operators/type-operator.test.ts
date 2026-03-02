@@ -65,4 +65,28 @@ describe('$type Operator', () => {
 		expect(result?.sql).toBe("json_type(data, '$.metadata') = 'object'");
 		expect(result?.args).toEqual([]);
 	});
+
+	it('handles $type with array of types (OR logic)', () => {
+		const result = buildWhereClause({ age: { $type: ['string', 'number'] } }, testSchema, 'test');
+		expect(result?.sql).toContain("json_type(data, '$.age') = 'text'");
+		expect(result?.sql).toContain("json_type(data, '$.age') IN ('integer', 'real')");
+		expect(result?.sql).toContain(' OR ');
+	});
+
+	it('handles $type with empty array', () => {
+		const result = buildWhereClause({ age: { $type: [] } }, testSchema, 'test');
+		expect(result?.sql).toBe('1=0');
+	});
+
+	it('handles $type with invalid types in array', () => {
+		const result = buildWhereClause({ age: { $type: ['invalidType'] } }, testSchema, 'test');
+		expect(result?.sql).toBe('1=0');
+	});
+
+	it('handles $type with mixed valid and invalid types', () => {
+		const result = buildWhereClause({ age: { $type: ['string', 'invalidType', 'number'] } }, testSchema, 'test');
+		expect(result?.sql).toContain("json_type(data, '$.age') = 'text'");
+		expect(result?.sql).toContain("json_type(data, '$.age') IN ('integer', 'real')");
+		expect(result?.sql).toContain(' OR ');
+	});
 });

@@ -186,6 +186,19 @@ const MangoQueryArbitrary = () => {
 		value: fc.constantFrom('string', 'null')
 	});
 	
+	// LINUS TORVALDS EDGE CASE: $type with array values (MongoDB/Mingo support OR logic)
+	const typeArrayArb = fc.record({
+		field: fc.constantFrom('age', 'name', 'tags', 'active', 'score'),
+		op: fc.constant('$type'),
+		value: fc.constantFrom(
+			['string', 'number'],
+			['number', 'null'],
+			['string', 'null'],
+			['array', 'null'],
+			['boolean', 'string']
+		)
+	});
+	
 	const existsOnOptionalArb = fc.record({
 		field: fc.constant('optional'),
 		op: fc.constant('$exists'),
@@ -241,7 +254,7 @@ const MangoQueryArbitrary = () => {
 		eqArb, neArb, gtArb, gteArb, ltArb, lteArb, 
 		inArb, ninArb, existsArb,
 		sizeArb, sizeOnNonArrayArb, modArb, regexArb, 
-		typeArb,
+		typeArb, typeArrayArb,
 		elemMatchSimpleArb,
 		elemMatchComplexArb,
 		arrayIndexArb,

@@ -632,6 +632,37 @@ export function translateLeafOperator<RxDocType>(
 				}
 			}
 
+			if (Array.isArray(value)) {
+				const types = value as string[];
+				if (types.length === 0) return { sql: '1=0', args: [] };
+				
+				if (useDirectType) {
+					const typeMap: Record<string, string> = {
+						'null': 'null',
+						'boolean': 'true',
+						'number': 'integer',
+						'string': 'text',
+						'array': 'array',
+						'object': 'object'
+					};
+					const conditions: string[] = [];
+					for (const t of types) {
+						const sqlType = typeMap[t];
+						if (!sqlType) continue;
+						if (t === 'boolean') conditions.push(`(type IN ('true', 'false'))`);
+						else if (t === 'number') conditions.push(`(type IN ('integer', 'real'))`);
+						else conditions.push(`type = '${sqlType}'`);
+					}
+					if (conditions.length === 0) return { sql: '1=0', args: [] };
+					return { sql: `(${conditions.join(' OR ')})`, args: [] };
+				} else {
+					const fragments = types.map(t => translateType(jsonCol, path, t, true)).filter(f => f !== null);
+					if (fragments.length === 0) return { sql: '1=0', args: [] };
+					const sql = fragments.map(f => f!.sql).join(' OR ');
+					return { sql: `(${sql})`, args: [] };
+				}
+			}
+
 			if (useDirectType) {
 				const typeMap: Record<string, string> = {
 					'null': 'null',
