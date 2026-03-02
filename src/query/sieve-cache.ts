@@ -2,8 +2,8 @@ export class SieveCache<K, V> {
 	readonly #capacity: number;
 	readonly #map: Map<K, number>;
 
-	readonly #keys: K[];
-	readonly #values: V[];
+	readonly #keys: (K | undefined)[];
+	readonly #values: (V | undefined)[];
 	readonly #visited: Uint8Array;
 
 	readonly #newer: Uint32Array;
@@ -81,8 +81,8 @@ export class SieveCache<K, V> {
 			this.#map.delete(key);
 			this.#removeNode(index);
 
-			(this.#keys as any)[index] = undefined;
-			(this.#values as any)[index] = undefined;
+			this.#keys[index] = undefined;
+			this.#values[index] = undefined;
 
 			this.#newer[index] = this.#freeHead;
 			this.#freeHead = index;
@@ -98,8 +98,8 @@ export class SieveCache<K, V> {
 		this.#hand = 0;
 		this.#freeHead = 0;
 		this.#nextFreeIndex = 1;
-		this.#keys.fill(undefined as any);
-		this.#values.fill(undefined as any);
+		this.#keys.fill(undefined);
+		this.#values.fill(undefined);
 		this.#newer.fill(0);
 		this.#older.fill(0);
 		this.#visited.fill(0);
@@ -129,7 +129,8 @@ export class SieveCache<K, V> {
 		this.#hand = this.#newer[hand];
 
 		const victimIndex = hand;
-		this.#map.delete(this.#keys[victimIndex]);
+		// INVARIANT: victimIndex is in the active list, so #keys[victimIndex] is defined
+		this.#map.delete(this.#keys[victimIndex]!);
 		this.#removeNode(victimIndex);
 
 		return victimIndex;
@@ -161,13 +162,15 @@ export class SieveCache<K, V> {
 
 	forEach(callbackfn: (value: V, key: K, map: SieveCache<K, V>) => void, thisArg?: any): void {
 		this.#map.forEach((index, key) => {
-			callbackfn.call(thisArg, this.#values[index], key, this);
+			// INVARIANT: index is in #map, so #values[index] is defined
+			callbackfn.call(thisArg, this.#values[index]!, key, this);
 		});
 	}
 
 	*entries(): IterableIterator<[K, V]> {
 		for (const [key, index] of this.#map.entries()) {
-			yield [key, this.#values[index]];
+			// INVARIANT: index is in #map, so #values[index] is defined
+			yield [key, this.#values[index]!];
 		}
 	}
 
@@ -179,7 +182,8 @@ export class SieveCache<K, V> {
 
 	*values(): IterableIterator<V> {
 		for (const index of this.#map.values()) {
-			yield this.#values[index];
+			// INVARIANT: index is in #map, so #values[index] is defined
+			yield this.#values[index]!;
 		}
 	}
 

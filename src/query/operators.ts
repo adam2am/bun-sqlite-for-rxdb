@@ -85,7 +85,7 @@ export function translateEq<RxDocType>(
 		
 		// Only add array traversal for truly unknown fields at the TOP level (not inside $elemMatch)
 		if (field !== 'value' && columnInfo.type === 'unknown' && !actualFieldName.includes('.')) {
-			const isInternalField = actualFieldName === (schema as any).primaryKey || actualFieldName.startsWith('_');
+			const isInternalField = actualFieldName === schema.primaryKey || actualFieldName.startsWith('_');
 			
 			if (!isInternalField) {
 				const comparison = 'value = ?';
@@ -781,8 +781,8 @@ export function translateLeafOperator<RxDocType>(
 					const frag = translateLeafOperator('$regex', field, val, schema, actualFieldName);
 					if (!frag) return null;
 					fragments.push(frag);
-				} else if (typeof val === 'object' && val !== null && !Array.isArray(val) && '$elemMatch' in val) {
-					const frag = translateElemMatch(actualFieldName, (val as any).$elemMatch as ElemMatchCriteria, schema, actualFieldName);
+			} else if (typeof val === 'object' && val !== null && !Array.isArray(val) && '$elemMatch' in val) {
+				const frag = translateElemMatch(actualFieldName, (val as { $elemMatch: ElemMatchCriteria }).$elemMatch, schema, actualFieldName);
 					if (!frag) return null;
 					fragments.push(frag);
 				} else {
