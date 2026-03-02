@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.6.1] - 2026-03-02
+
+### Fixed 🔥
+- **actualFieldName bug in query builder**
+  - Fixed to use original field name instead of mapped column name
+  - Was passing 'deleted' instead of '_deleted' to getColumnInfo
+  - Caused incorrect array traversal logic for internal RxDB fields
+  - One-line root cause fix
+- **MongoDB query semantics for SQLite storage**
+  - Mingo fallback for plain objects: SQLite json() preserves key order, MongoDB doesn't
+  - Array traversal for unknown fields: Matches MongoDB's implicit array traversal
+  - Hybrid $size router: Fast Path for known types, Safe Path for unknown types
+  - All changes are architectural fixes addressing root causes
+
+### Added
+- **Property-based edge case tests**
+  - Added 4 new edge case arbitraries for comprehensive coverage
+  - elemMatchNoArrayTraversal: verify no array traversal inside $elemMatch
+  - sizeKnownArray: verify Fast Path for known arrays (no type guard)
+  - nestedObjectEquality: verify Mingo fallback for nested objects
+  - mixedObjectAndArray: verify object equality + array traversal in same query
+
+### Changed
+- **Type safety improvements**
+  - Removed all 6 production `as any` casts
+  - SieveCache arrays now properly typed as `(K | undefined)[]` and `(V | undefined)[]`
+  - Added INVARIANT comments explaining non-null assertions
+  - Operators use specific type casts instead of `as any`
+
+### Documentation
+- **RxDB query pipeline and validation architecture**
+  - Explains what RxDB does (and doesn't do) when processing queries
+  - Documents RxDB's Ajv validation guarantees
+  - Provides clear guidance for storage adapter implementers
+
+### Technical Details
+- All 666 tests passing (100%)
+- Zero regressions
+- Type-safe without sacrificing correctness
+
+---
+
 ## [1.6.0] - 2026-03-02
 
 ### Added
