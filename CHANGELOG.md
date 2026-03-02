@@ -1,5 +1,53 @@
 # Changelog
 
+## [1.6.4] - 2026-03-02
+
+### Fixed 🔥
+- **CRITICAL:** Fixed `$elemMatch` matching scalar values when it should only match arrays (SQLite's `jsonb_each` treats scalars as single-element arrays, now guarded with explicit `json_type = 'array'` check)
+- **CRITICAL:** Fixed 7 operators (`$regex`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`) not traversing arrays for unknown-type fields, causing silent data loss when runtime data is an array but schema type is unknown
+
+### Changed
+- Added comprehensive property-based tests for unknown-type array traversal edge cases
+
+## [1.6.3] - 2026-03-02
+
+### Fixed 🔥
+- **SQL injection vulnerability in field names with single quotes**
+  - Field names containing single quotes (e.g., "user's_name") caused SQL syntax errors
+  - SQLite requires single quotes in string literals to be escaped by doubling them
+  - Added regression tests for both top-level and nested field names with single quotes
+  - Example: `{ "user's_name": "John" }` now works correctly
+- **Schema mapper nested traversal bug**
+  - Original implementation only checked top-level schema.properties[path]
+  - Failed on nested paths like "config.user's_setting"
+  - Now iteratively traverses schema tree through objects and arrays
+  - Vague objects (no properties): return 'unknown' (preserves runtime guards)
+  - Known objects (properties defined): return 'object' (enables optimization)
+  - Added SchemaField interface for type safety
+
+### Changed
+- **TypeScript test strictness improvements**
+  - Added explicit null checks before accessing result properties in operator tests
+  - Uses non-null assertion operator after verification to satisfy TypeScript strict mode
+  - No behavioral changes, only type safety improvements
+
+### Documentation
+- **Operator count updated to 18**
+  - Updated feature list to reflect 18 operators (17 → 18)
+  - The $all operator is now optimized in SQL when schema is defined
+  - Added note about schema incentives: defined schemas enable SQL optimization, schemaless behavior uses Mingo fallback
+- **Architectural patterns reorganization**
+  - Moved architectural-patterns.md to docs/architecture/ subdirectory
+  - Better documentation structure with dedicated architecture directory
+  - Git history preserved via rename tracking
+
+### Technical Details
+- All 685 tests passing (100%)
+- Zero regressions
+- 5 atomic commits following Linus Torvalds principles
+
+---
+
 ## [1.6.2] - 2026-03-02
 
 ### Fixed 🔥
