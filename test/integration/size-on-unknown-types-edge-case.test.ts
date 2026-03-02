@@ -69,6 +69,7 @@ describe('$size on Unknown Types - ACTUAL EDGE CASE', () => {
 				properties: {
 					id: { type: 'string', maxLength: 100 },
 					tags: { type: 'array', items: { type: 'string' } },
+					unknownField: { type: 'string' },
 					_deleted: { type: 'boolean' },
 					_attachments: { type: 'object' },
 					_rev: { type: 'string' },

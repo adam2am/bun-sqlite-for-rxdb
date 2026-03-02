@@ -56,7 +56,14 @@ describe('[REGRESSION] The 3 Architectural Black Holes (FIXED)', () => {
 	// ============================================================
 	describe('BLACK HOLE 2: JS Matcher uses stableStringify for Arrays/Objects (FIXED)', () => {
 		it('VERIFIES FIX: Matches identical arrays correctly', () => {
-			const doc = { id: '1', tags: ['admin', 'user'] };
+			const doc: RxDocumentData<{ id: string; tags: string[] }> = { 
+				id: '1', 
+				tags: ['admin', 'user'],
+				_deleted: false,
+				_attachments: {},
+				_rev: '1-a',
+				_meta: { lwt: 1000 }
+			};
 			const query = { tags: { $eq: ['admin', 'user'] } };
 
 			console.log('\n=== BLACK HOLE 2: Array Equality (FIXED) ===');
@@ -81,7 +88,14 @@ describe('[REGRESSION] The 3 Architectural Black Holes (FIXED)', () => {
 		
 		it('VERIFIES FIX 3a: Correctly rejects non-matching objects', () => {
 			// Document is in LA, query is for NY
-			const doc = { id: '1', address: { city: 'LA' } };
+			const doc: RxDocumentData<{ id: string; address: { city: string } }> = { 
+				id: '1', 
+				address: { city: 'LA' },
+				_deleted: false,
+				_attachments: {},
+				_rev: '1-a',
+				_meta: { lwt: 1000 }
+			};
 			const query = { address: { city: 'NY' } };
 
 			console.log('\n=== BLACK HOLE 3a: Literal Object Matching (FIXED) ===');
@@ -99,7 +113,14 @@ describe('[REGRESSION] The 3 Architectural Black Holes (FIXED)', () => {
 		});
 
 		it('VERIFIES FIX 3b: Handles primitives inside $not correctly', () => {
-			const doc = { id: '1', age: 10 };
+			const doc: RxDocumentData<{ id: string; age: number }> = { 
+				id: '1', 
+				age: 10,
+				_deleted: false,
+				_attachments: {},
+				_rev: '1-a',
+				_meta: { lwt: 1000 }
+			};
 			const query = { age: { $not: 5 } }; // Age is NOT 5
 
 			console.log('\n=== BLACK HOLE 3b: $not with primitive (FIXED) ===');

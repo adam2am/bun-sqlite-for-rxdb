@@ -23,12 +23,13 @@ const mockSchema = {
 };
 
 describe('Array Type Mismatch - CRITICAL BUG TEST', () => {
-	let storage: RxStorage<BunSQLiteInternals<TestDocType>, BunSQLiteStorageSettings>;
-	let instance: RxStorageInstance<TestDocType, BunSQLiteInternals<TestDocType>, BunSQLiteStorageSettings>;
+	let storage: RxStorage<BunSQLiteInternals, BunSQLiteStorageSettings>;
+	let instance: RxStorageInstance<TestDocType, BunSQLiteInternals, BunSQLiteStorageSettings>;
 
 	beforeEach(async () => {
-		storage = getRxStorageBunSQLite({ databaseName: ':memory:' });
+		storage = getRxStorageBunSQLite();
 		instance = await storage.createStorageInstance({
+			databaseInstanceToken: 'test-token-array-type-mismatch',
 			databaseName: 'test',
 			collectionName: 'array_type_test',
 			schema: mockSchema as any,
@@ -62,7 +63,7 @@ describe('Array Type Mismatch - CRITICAL BUG TEST', () => {
 
 		// Mingo behavior (CORRECT)
 		const mingoQuery = new Query(query);
-		const mingoResults = [doc].filter(d => mingoQuery.test(d));
+		const mingoResults = [doc].filter(d => mingoQuery.test(d as any));
 		expect(mingoResults.length).toBe(0); // Type mismatch → no matches
 
 		// Our SQLite behavior (CURRENTLY WRONG!)
@@ -100,7 +101,7 @@ describe('Array Type Mismatch - CRITICAL BUG TEST', () => {
 
 		// Mingo: Type mismatch → no matches
 		const mingoQuery = new Query(query);
-		const mingoResults = [doc].filter(d => mingoQuery.test(d));
+		const mingoResults = [doc].filter(d => mingoQuery.test(d as any));
 		expect(mingoResults.length).toBe(0);
 
 		// Our SQLite: Should match Mingo
@@ -134,7 +135,7 @@ describe('Array Type Mismatch - CRITICAL BUG TEST', () => {
 
 		// Mingo: Type matches → should match
 		const mingoQuery = new Query(query);
-		const mingoResults = [doc].filter(d => mingoQuery.test(d));
+		const mingoResults = [doc].filter(d => mingoQuery.test(d as any));
 		expect(mingoResults.length).toBe(1);
 
 		// Our SQLite: Should match Mingo
@@ -168,7 +169,7 @@ describe('Array Type Mismatch - CRITICAL BUG TEST', () => {
 
 		// Mingo: Type mismatch → no matches
 		const mingoQuery = new Query(query);
-		const mingoResults = [doc].filter(d => mingoQuery.test(d));
+		const mingoResults = [doc].filter(d => mingoQuery.test(d as any));
 		expect(mingoResults.length).toBe(0);
 
 		// Our SQLite: Should match Mingo
