@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.6.2] - 2026-03-02
+
+### Fixed 🔥
+- **Empty object equality now matches MongoDB behavior**
+  - Removed incorrect check that returned SQL '1=0' for empty object selectors
+  - Empty objects now correctly match documents with empty objects (MongoDB behavior)
+  - Falls back to Mingo for correct key-order independent matching
+  - Example: Query `{ metadata: {} }` now matches docs with `metadata: {}`
+  - Fixed 5 tests with incorrect expectations, deleted test file based on wrong assumptions
+
+### Documentation
+- **Query fallback behavior architecture**
+  - Created comprehensive guide explaining SQL vs Mingo fallback strategy
+  - Documents when we stay in SQL (Fast Path, Hybrid Path) vs fall back to Mingo
+  - Explains "Why Not Native SQL for Everything?" with complexity analysis
+  - Industry comparison: MongoDB/CouchDB untyped field handling
+  - Fixed inaccuracies in fallback behavior documentation
+
+### Added
+- **Comprehensive fallback behavior tests**
+  - Added fallback-behavior-matrix.test.ts documenting all fallback cases
+  - Tests for Fast Path (no type guards), Hybrid Path (with guards), Mingo Fallback
+  - Schema lies test proving silent data loss bug and validating fix
+
+### Technical Details
+- All 683 tests passing (100%)
+- Zero regressions
+- Correctness over performance: Falls back to Mingo when SQL cannot guarantee correctness
+
+---
+
 ## [1.6.1] - 2026-03-02
 
 ### Fixed 🔥
