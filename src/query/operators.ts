@@ -35,7 +35,53 @@ function normalizeValueForSQLite(value: unknown): string | number | boolean | nu
 	if (value === undefined) {
 		return null;
 	}
+	if (Array.isArray(value)) {
+		return JSON.stringify(value);
+	}
+	if (typeof value === 'object' && value !== null) {
+		return JSON.stringify(value);
+	}
 	return value as string | number | boolean | null;
+}
+
+export function translateEq<RxDocType>(
+	field: string,
+	value: unknown,
+	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
+	actualFieldName?: string
+): SqlFragment {
+	if (value === null) {
+		return { sql: `${field} IS NULL`, args: [] };
+	}
+
+	if (Array.isArray(value) || (typeof value === 'object' && value !== null && !(value instanceof Date) && !(value instanceof RegExp))) {
+		try {
+			return {
+				sql: `${field} = json(?)`,
+				args: [JSON.stringify(value)]
+			};
+		} catch (e) {
+			return { sql: '1=0', args: [] };
+		}
+	}
+
+	if (schema && actualFieldName) {
+		const columnInfo = getColumnInfo(actualFieldName, schema);
+		if (field !== 'value' && columnInfo.type === 'array') {
+			const comparison = 'value = ?';
+			const guardedSql = addTypeGuard('value', value, comparison);
+			return {
+				sql: `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${guardedSql})`,
+				args: [normalizeValueForSQLite(value)]
+			};
+		}
+	}
+
+	const comparison = `${field} = ?`;
+	return { 
+		sql: addTypeGuard(field, value, comparison), 
+		args: [normalizeValueForSQLite(value)] 
+	};
 }
 
 /**
@@ -75,35 +121,6 @@ function addTypeGuard(field: string, value: unknown, comparisonSql: string): str
 		return `(${typeExpr} IN ('true', 'false') AND ${comparisonSql})`;
 	}
 	return comparisonSql;
-}
-
-export function translateEq<RxDocType>(
-	field: string,
-	value: unknown,
-	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
-	actualFieldName?: string
-): SqlFragment {
-	if (value === null) {
-		return { sql: `${field} IS NULL`, args: [] };
-	}
-
-	if (schema && actualFieldName) {
-		const columnInfo = getColumnInfo(actualFieldName, schema);
-		if (field !== 'value' && columnInfo.type === 'array') {
-			const comparison = 'value = ?';
-			const guardedSql = addTypeGuard('value', value, comparison);
-			return {
-				sql: `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${guardedSql})`,
-				args: [normalizeValueForSQLite(value)]
-			};
-		}
-	}
-
-	const comparison = `${field} = ?`;
-	return { 
-		sql: addTypeGuard(field, value, comparison), 
-		args: [normalizeValueForSQLite(value)] 
-	};
 }
 
 export function translateNe<RxDocType>(
@@ -247,31 +264,39 @@ export function translateIn<RxDocType>(
 	if (schema && actualFieldName) {
 		const columnInfo = getColumnInfo(actualFieldName, schema);
 		if (field !== 'value' && columnInfo.type === 'array') {
-			const inClause = `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE value IN (SELECT value FROM json_each(?)))`;
-			const args = [JSON.stringify(nonNullValues)];
+			try {
+				const inClause = `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE value IN (SELECT value FROM json_each(?)))`;
+				const args = [JSON.stringify(nonNullValues)];
 
-			if (hasNull) {
-				return {
-					sql: `(${inClause} OR ${field} IS NULL)`,
-					args
-				};
+				if (hasNull) {
+					return {
+						sql: `(${inClause} OR ${field} IS NULL)`,
+						args
+					};
+				}
+
+				return { sql: inClause, args };
+			} catch (e) {
+				return { sql: '1=0', args: [] };
 			}
-
-			return { sql: inClause, args };
 		}
 	}
 
-	const inClause = `${field} IN (SELECT value FROM json_each(?))`;
-	const args = [JSON.stringify(nonNullValues)];
+	try {
+		const inClause = `${field} IN (SELECT value FROM json_each(?))`;
+		const args = [JSON.stringify(nonNullValues)];
 
-	if (hasNull) {
-		return {
-			sql: `(${inClause} OR ${field} IS NULL)`,
-			args
-		};
+		if (hasNull) {
+			return {
+				sql: `(${inClause} OR ${field} IS NULL)`,
+				args
+			};
+		}
+
+		return { sql: inClause, args };
+	} catch (e) {
+		return { sql: '1=0', args: [] };
 	}
-
-	return { sql: inClause, args };
 }
 
 export function translateNin<RxDocType>(
@@ -294,36 +319,63 @@ export function translateNin<RxDocType>(
 	if (schema && actualFieldName) {
 		const columnInfo = getColumnInfo(actualFieldName, schema);
 		if (field !== 'value' && columnInfo.type === 'array') {
-			const ninClause = `NOT EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE value IN (SELECT value FROM json_each(?)))`;
-			const args = [JSON.stringify(nonNullValues)];
+			try {
+				const ninClause = `NOT EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE value IN (SELECT value FROM json_each(?)))`;
+				const args = [JSON.stringify(nonNullValues)];
 
-			if (hasNull) {
-				return {
-					sql: `(${ninClause} AND ${field} IS NOT NULL)`,
-					args
-				};
+				if (hasNull) {
+					return {
+						sql: `(${ninClause} AND ${field} IS NOT NULL)`,
+						args
+					};
+				}
+
+				return { sql: `(${field} IS NULL OR ${ninClause})`, args };
+			} catch (e) {
+				return { sql: '1=1', args: [] };
 			}
-
-			return { sql: `(${field} IS NULL OR ${ninClause})`, args };
 		}
 	}
 
-	const ninClause = `${field} NOT IN (SELECT value FROM json_each(?))`;
-	const args = [JSON.stringify(nonNullValues)];
+	try {
+		const ninClause = `${field} NOT IN (SELECT value FROM json_each(?))`;
+		const args = [JSON.stringify(nonNullValues)];
 
-	if (hasNull) {
-		return {
-			sql: `(${ninClause} AND ${field} IS NOT NULL)`,
-			args
-		};
+		if (hasNull) {
+			return {
+				sql: `(${ninClause} AND ${field} IS NOT NULL)`,
+				args
+			};
+		}
+
+		return { sql: `(${field} IS NULL OR ${ninClause})`, args };
+	} catch (e) {
+		return { sql: '1=1', args: [] };
 	}
-
-	return { sql: `(${field} IS NULL OR ${ninClause})`, args };
 }
 
 export function translateExists(field: string, exists: boolean): SqlFragment {
+	let typeExpr = '';
+	
+	if (field === 'value') {
+		typeExpr = 'type';
+	} else if (field.includes('json_extract')) {
+		const match = field.match(/json_extract\(([^,]+),\s*'([^']+)'\)/);
+		if (match) {
+			const [, jsonColumn, jsonPath] = match;
+			typeExpr = `json_type(${jsonColumn}, '${jsonPath}')`;
+		}
+	}
+	
+	if (!typeExpr) {
+		return {
+			sql: exists ? `${field} IS NOT NULL` : `${field} IS NULL`,
+			args: []
+		};
+	}
+	
 	return {
-		sql: exists ? `${field} IS NOT NULL` : `${field} IS NULL`,
+		sql: exists ? `${typeExpr} IS NOT NULL` : `${typeExpr} IS NULL`,
 		args: []
 	};
 }
