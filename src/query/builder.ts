@@ -141,7 +141,7 @@ function processSelector<RxDocType>(
 			for (const part of parts) {
 				currentPath = currentPath ? `${currentPath}.${part}` : part;
 				const columnInfo = getColumnInfo(currentPath, schema);
-				if (columnInfo.type === 'array') {
+				if (columnInfo.type === 'array' || columnInfo.type === 'unknown') {
 					return null;
 				}
 			}
