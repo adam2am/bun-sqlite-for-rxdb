@@ -199,6 +199,14 @@ const MangoQueryArbitrary = () => {
 		{ tags: { $elemMatch: { $eq: 'admin' } } }
 	);
 	
+	// LINUS BUG 1: $regex on number fields (should NOT match - type guard required)
+	const regexOnNumberFieldArb = fc.constantFrom(
+		{ age: { $regex: '2' } },
+		{ age: { $regex: '^3' } },
+		{ score: { $regex: '5' } },
+		{ score: { $regex: '\\d+' } }
+	);
+	
 	// JUNIOR BUG 2: $regex on unknown field with array runtime data (should match by traversing)
 	const regexOnUnknownArrayArb = fc.constantFrom(
 		{ unknownField: { $regex: '^item' } },
@@ -569,6 +577,7 @@ const MangoQueryArbitrary = () => {
 		objectEqualityArb,
 		notNullParadoxArb,
 		scalarVsArrayArb,
+		regexOnNumberFieldArb,
 		elemMatchOnScalarArb,
 		regexOnUnknownArrayArb,
 		operatorsOnUnknownArrayArb,

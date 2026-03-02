@@ -1,5 +1,6 @@
 import type { RxJsonSchema, RxDocumentData } from 'rxdb';
 import { getIndexCache } from './cache';
+import { addTypeGuard } from './type-guards';
 
 export interface SqlFragment {
 	sql: string;
@@ -52,6 +53,24 @@ function escapeForLike(str: string): string {
 	return str.replace(/[\\%_]/g, '\\$&');
 }
 
+function addRegexTypeGuard(field: string, comparisonSql: string): string {
+	let typeExpr = '';
+	
+	if (field === 'value') {
+		typeExpr = 'type';
+	} else if (field.includes('json_extract')) {
+		const match = field.match(/json_extract\(([^,]+),\s*'([^']+)'\)/);
+		if (match) {
+			const [, jsonColumn, jsonPath] = match;
+			typeExpr = `json_type(${jsonColumn}, '${jsonPath}')`;
+		}
+	}
+	
+	if (!typeExpr) return comparisonSql;
+	
+	return `(${typeExpr} = 'text' AND ${comparisonSql})`;
+}
+
 export function smartRegexToLike<RxDocType>(
 	field: string,
 	pattern: string,
@@ -80,28 +99,20 @@ export function smartRegexToLike<RxDocType>(
 	const escaped = escapeForLike(unescaped);
 	
 	if (startsWithAnchor && endsWithAnchor) {
-		if (caseInsensitive) {
-			return { sql: `LOWER(${field}) = LOWER(?)`, args: [unescaped] };
-		}
-		return { sql: `${field} = ?`, args: [unescaped] };
+		const comparison = caseInsensitive ? `LOWER(${field}) = LOWER(?)` : `${field} = ?`;
+		return { sql: addTypeGuard(field, "string", comparison), args: [unescaped] };
 	}
 	
 	if (startsWithAnchor) {
-		if (caseInsensitive) {
-			return { sql: `LOWER(${field}) LIKE LOWER(?) ESCAPE '\\'`, args: [escaped + '%'] };
-		}
-		return { sql: `${field} LIKE ? ESCAPE '\\'`, args: [escaped + '%'] };
+		const comparison = caseInsensitive ? `LOWER(${field}) LIKE LOWER(?) ESCAPE '\\'` : `${field} LIKE ? ESCAPE '\\'`;
+		return { sql: addTypeGuard(field, "string", comparison), args: [escaped + '%'] };
 	}
 	
 	if (endsWithAnchor) {
-		if (caseInsensitive) {
-			return { sql: `LOWER(${field}) LIKE LOWER(?) ESCAPE '\\'`, args: ['%' + escaped] };
-		}
-		return { sql: `${field} LIKE ? ESCAPE '\\'`, args: ['%' + escaped] };
+		const comparison = caseInsensitive ? `LOWER(${field}) LIKE LOWER(?) ESCAPE '\\'` : `${field} LIKE ? ESCAPE '\\'`;
+		return { sql: addTypeGuard(field, "string", comparison), args: ['%' + escaped] };
 	}
 	
-	if (caseInsensitive) {
-		return { sql: `LOWER(${field}) LIKE LOWER(?) ESCAPE '\\'`, args: ['%' + escaped + '%'] };
-	}
-	return { sql: `${field} LIKE ? ESCAPE '\\'`, args: ['%' + escaped + '%'] };
+	const comparison = caseInsensitive ? `LOWER(${field}) LIKE LOWER(?) ESCAPE '\\'` : `${field} LIKE ? ESCAPE '\\'`;
+	return { sql: addTypeGuard(field, "string", comparison), args: ['%' + escaped + '%'] };
 }
