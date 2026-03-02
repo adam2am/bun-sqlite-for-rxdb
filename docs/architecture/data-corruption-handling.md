@@ -247,3 +247,8 @@ For `$ne`, type mismatch means "not equal" = TRUE (should match):
 **Trade-off accepted:** Silent failure (no error thrown) in exchange for ecosystem compatibility.
 
 **Future consideration:** Add optional logging/metrics for invalid operators (audit trail without breaking compatibility).
+
+*we handle $size specially*
+- Known non-array → return 1=0 (impossible to match)
+- Known array → Fast Path (no type guard)
+- Unknown type → Safe Path (runtime type guard)
