@@ -23,6 +23,28 @@ describe('Data Corruption - Malicious Input', () => {
 			expect(result).toBeDefined();
 		});
 
+		it('field name with single quote (regression: SQL syntax error)', () => {
+			const result = buildWhereClause(
+				{ "user's_name": 'Alice' },
+				mockSchema,
+				'test'
+			);
+			expect(result).not.toBeNull();
+			expect(result?.sql).toContain("user''s_name");
+			expect(result?.args).toContain('Alice');
+		});
+
+		it('nested field name with single quote', () => {
+			const result = buildWhereClause(
+				{ "config.user's_setting": 'enabled' },
+				mockSchema,
+				'test'
+			);
+			expect(result).not.toBeNull();
+			expect(result?.sql).toContain("user''s_setting");
+			expect(result?.args).toContain('enabled');
+		});
+
 		it('SQL keywords in values', () => {
 			const result = buildWhereClause(
 				{ name: 'SELECT * FROM users WHERE 1=1' },

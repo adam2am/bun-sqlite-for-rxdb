@@ -19,7 +19,8 @@ export function buildJsonPath(fieldName: string): string {
 		if (/^\d+$/.test(segment)) {
 			path += `[${segment}]`;
 		} else {
-			path += `.${segment}`;
+			const escaped = segment.replace(/'/g, "''");
+			path += `.${escaped}`;
 		}
 	}
 	return path;
