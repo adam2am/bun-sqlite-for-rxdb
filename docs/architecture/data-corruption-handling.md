@@ -139,6 +139,99 @@ it('PROOF: null from translateType converts to 1=0 via operator handler', () => 
 - Partial data
 - Selector structure
 
+## Type Mismatch Handling (MongoDB BSON Type Boundaries)
+
+### The Problem
+
+MongoDB enforces **strict BSON type boundaries**: `{ age: { $gt: "50" } }` (string) does NOT match `age: 30` (number).
+
+SQLite uses **manifest typing** and performs implicit type conversion, breaking MongoDB compatibility.
+
+**Example Bug:**
+- Query: `{ score: { $lt: "80" } }` (string "80" vs number field)
+- MongoDB/Mingo: Returns `[]` (no matches - type mismatch)
+- SQLite (without guards): Returns all docs (implicit conversion: `95.5 < "80"` → true)
+
+### Our Solution: SQL Type Guards
+
+Add `json_type()` guards to comparison operators to enforce type matching:
+
+```typescript
+// Before (WRONG - implicit conversion):
+sql: `json_extract(data, '$.age') > ?`
+
+// After (CORRECT - type guard):
+sql: `(json_type(data, '$.age') IN ('integer', 'real') AND json_extract(data, '$.age') > ?)`
+```
+
+**Operators with type guards:**
+- ✅ `$gt`, `$gte`, `$lt`, `$lte`: Always enforce type matching
+- ✅ `$eq`: Enforce type matching (except for null - preserves null = missing)
+- ❌ `$ne`: NO type guards (inverted logic - type mismatch means "not equal" = match)
+
+**Skip type guards for:**
+- Direct columns (not `json_extract`) - e.g., `deleted`, `rev`, `mtime_ms`
+- Inside `jsonb_each` (field === 'value') - already type-safe
+
+### Implementation
+
+**File:** `src/query/operators.ts`
+
+```typescript
+function addTypeGuard(field: string, value: unknown, comparisonSql: string): string {
+  if (field === 'value' || !field.includes('json_extract')) {
+    return comparisonSql; // Skip for direct columns and inside jsonb_each
+  }
+  
+  const match = field.match(/json_extract\(([^,]+),\s*'([^']+)'\)/);
+  if (!match) return comparisonSql;
+  
+  const [, jsonColumn, jsonPath] = match;
+  
+  if (typeof value === 'number') {
+    return `(json_type(${jsonColumn}, '${jsonPath}') IN ('integer', 'real') AND ${comparisonSql})`;
+  }
+  if (typeof value === 'string') {
+    return `(json_type(${jsonColumn}, '${jsonPath}') = 'text' AND ${comparisonSql})`;
+  }
+  if (typeof value === 'boolean') {
+    return `(json_type(${jsonColumn}, '${jsonPath}') IN ('true', 'false') AND ${comparisonSql})`;
+  }
+  return comparisonSql;
+}
+```
+
+### Why $ne Has NO Type Guards
+
+**The Inverted Logic Problem:**
+
+For `$ne`, type mismatch means "not equal" = TRUE (should match):
+- Query: `{ name: { $ne: false } }` (boolean false vs string field)
+- Expected: Match all docs (they're not equal due to type mismatch)
+- With type guards: Type guard fails → FALSE → wrapped with NOT → TRUE → matches ✗ WRONG!
+- Without type guards: SQLite comparison → not equal → matches ✓ CORRECT!
+
+**Proof from debugging:**
+```typescript
+// Query: { name: { $not: { $ne: false } } }
+// Mingo: [] (no matches)
+// With type guards on $ne: ["1","2","3","4","5"] (all docs) ✗ WRONG!
+// Without type guards on $ne: [] (no matches) ✓ CORRECT!
+```
+
+### Testing
+
+**Property-based tests:** `test/property-based/query-correctness.test.ts`
+- 1000 random queries tested against Mingo
+- All type mismatch scenarios covered
+- 624/624 tests passing
+
+**Coverage:**
+- String vs Number: `{ age: "30" }` → no matches
+- Number vs String: `{ score: { $lt: "80" } }` → no matches  
+- Boolean vs String: `{ name: { $eq: false } }` → no matches
+- Type mismatch with $not: `{ name: { $not: { $ne: false } } }` → no matches
+
 ## Conclusion
 
 **Our approach is correct:**
@@ -147,6 +240,7 @@ it('PROOF: null from translateType converts to 1=0 via operator handler', () => 
 3. SQL efficient (`1=0` is compile-time false)
 4. Safe (parameterized queries prevent injection)
 5. Consistent (same pattern for all invalid inputs)
+6. **NEW:** Enforces MongoDB's strict type boundaries via `json_type()` guards
 
 **Trade-off accepted:** Silent failure (no error thrown) in exchange for ecosystem compatibility.
 
