@@ -13,6 +13,8 @@ interface TestDocType {
 	active: boolean;
 	score: number;
 	optional?: string;
+	metadata?: Record<string, any>;
+	unknownField?: any;
 	items: Array<{
 		name: string;
 		category: string;
@@ -27,6 +29,9 @@ const mockDocs: RxDocumentData<TestDocType>[] = [
 	{ id: '3', name: 'Charlie', age: 35, tags: ['admin', 'moderator'], active: true, score: 88.3, optional: 'value', items: [{ name: 'item4', category: 'C', price: 300, tags: ['premium', 'new'] }], _deleted: false, _attachments: {}, _rev: '1-c', _meta: { lwt: 3000 } },
 	{ id: '4', name: 'David', age: 28, tags: ['user', 'moderator'], active: true, score: 92.1, items: [], _deleted: false, _attachments: {}, _rev: '1-d', _meta: { lwt: 4000 } },
 	{ id: '5', name: 'Eve', age: 22, tags: [], active: false, score: 75.0, optional: undefined, items: [{ name: 'item5', category: 'B', price: 50, tags: ['clearance'] }], _deleted: false, _attachments: {}, _rev: '1-e', _meta: { lwt: 5000 } },
+	{ id: '6', name: 'Frank', age: 40, tags: ['test'], active: true, score: 50, metadata: { a: 1, b: 2 }, unknownField: ['item1', 'item2'], items: [], _deleted: false, _attachments: {}, _rev: '1-f', _meta: { lwt: 6000 } },
+	{ id: '7', name: 'Grace', age: 45, tags: ['test'], active: false, score: 60, metadata: { b: 2, a: 1 }, unknownField: 'item1', items: [], _deleted: false, _attachments: {}, _rev: '1-g', _meta: { lwt: 7000 } },
+	{ id: '8', name: 'Hank', age: 50, tags: [], active: true, score: 10, optional: null as any, items: [], _deleted: false, _attachments: {}, _rev: '1-h', _meta: { lwt: 8000 } },
 ];
 
 // Arbitrary generators for Mango query operators
@@ -158,10 +163,61 @@ const MangoQueryArbitrary = () => {
 		{ age: { $all: ['30'] } }
 	);
 	
-	// EDGE CASE: Array vs object comparison (type guard test)
 	const arrayVsObjectComparisonArb = fc.constantFrom(
 		{ tags: { $gt: { foo: 'bar' } } },
 		{ tags: { $lt: ['a', 'b'] } }
+	);
+	
+	const schemaDefyingSizeArb = fc.constantFrom(
+		{ unknownField: { $size: 2 } },
+		{ unknownField: { $size: 0 } },
+		{ optional: { $size: 1 } }
+	);
+	
+	const objectEqualityArb = fc.constantFrom(
+		{ metadata: { a: 1, b: 2 } },
+		{ metadata: { b: 2, a: 1 } },
+		{ metadata: { a: 1 } }
+	);
+	
+	const notNullParadoxArb = fc.constantFrom(
+		{ optional: { $not: { $gt: 'm' } } },
+		{ nonexistent: { $not: { $lt: 50 } } },
+		{ optional: { $not: { $regex: '^v' } } }
+	);
+	
+	const scalarVsArrayArb = fc.constantFrom(
+		{ tags: 'admin' },
+		{ unknownField: 'item1' },
+		{ unknownField: { $eq: 'item1' } }
+	);
+	
+	// EDGE CASE: $elemMatch should NOT trigger array traversal for nested fields
+	const elemMatchNoArrayTraversalArb = fc.constantFrom(
+		{ items: { $elemMatch: { name: 'item1' } } },
+		{ items: { $elemMatch: { category: 'A' } } },
+		{ items: { $elemMatch: { price: 100 } } }
+	);
+	
+	// EDGE CASE: $size on known array field (Fast Path - no type guard)
+	const sizeKnownArrayArb = fc.constantFrom(
+		{ tags: { $size: 0 } },
+		{ tags: { $size: 1 } },
+		{ tags: { $size: 2 } },
+		{ items: { $size: 0 } },
+		{ items: { $size: 1 } }
+	);
+	
+	// EDGE CASE: Nested object equality (Mingo fallback)
+	const nestedObjectEqualityArb = fc.constantFrom(
+		{ 'items.0': { name: 'item1', category: 'A' } },
+		{ 'items.0': { category: 'A', name: 'item1' } }
+	);
+	
+	// EDGE CASE: Mixed object equality + array traversal in same query
+	const mixedObjectAndArrayArb = fc.constantFrom(
+		{ metadata: { a: 1, b: 2 }, unknownField: 'item1' },
+		{ metadata: { b: 2, a: 1 }, unknownField: 'item1' }
 	);
 	
 	// LINUS TORVALDS TYPE MISMATCH BOUNDARIES
@@ -484,7 +540,15 @@ const MangoQueryArbitrary = () => {
 		allWithRegexArb,
 		allWithDuplicatesArb,
 		allTypeMismatchArb,
-		arrayVsObjectComparisonArb
+		arrayVsObjectComparisonArb,
+		schemaDefyingSizeArb,
+		objectEqualityArb,
+		notNullParadoxArb,
+		scalarVsArrayArb,
+		elemMatchNoArrayTraversalArb,
+		sizeKnownArrayArb,
+		nestedObjectEqualityArb,
+		mixedObjectAndArrayArb
 	);
 };
 
@@ -509,8 +573,10 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 					tags: { type: 'array', items: { type: 'string' } },
 					active: { type: 'boolean' },
 					score: { type: 'number' },
-					optional: { type: 'string' },
-					items: {
+				optional: { type: 'string' },
+				metadata: { type: 'object' },
+				unknownField: {},
+				items: {
 						type: 'array',
 						items: {
 							type: 'object',
@@ -673,8 +739,8 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 			}
 		});
 		
-		expect(sqlResults.documents.length).toBe(5);
-		expect(mingoResults.length).toBe(5);
+		expect(sqlResults.documents.length).toBe(8);
+		expect(mingoResults.length).toBe(8);
 	});
 
 	it('handles mixed SQL + regex queries (partial pushdown)', async () => {
