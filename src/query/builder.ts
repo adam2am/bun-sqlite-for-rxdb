@@ -8,6 +8,14 @@ import { getGlobalCache } from './cache';
 
 export { getCacheSize, clearCache } from './cache';
 
+function isOperatorObject(value: any): boolean {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+	if (value instanceof Date || value instanceof RegExp) return false;
+	const keys = Object.keys(value);
+	if (keys.length === 0) return false;
+	return keys.every(k => k.startsWith('$'));
+}
+
 export interface BipartiteQuery<RxDocType> {
 	sqlWhere: SqlFragment | null;
 	jsSelector: MangoQuerySelector<RxDocumentData<RxDocType>> | null;
@@ -186,8 +194,25 @@ function processSelector<RxDocType>(
 		const actualFieldName = columnInfo.jsonPath?.replace(/^\$\./, '') || columnInfo.column || field;
 
 		if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+			const valueUnknown = value as unknown;
+			if (valueUnknown instanceof Date || valueUnknown instanceof RegExp) {
+				const fragment = translateLeafOperator('$eq', fieldName, value, schema, actualFieldName);
+				if (!fragment) return null;
+				conditions.push(fragment.sql);
+				args.push(...fragment.args);
+				continue;
+			}
+
 			if (Object.keys(value).length === 0) {
 				return { sql: '1=0', args: [] };
+			}
+
+			if (!isOperatorObject(value)) {
+				const fragment = translateLeafOperator('$eq', fieldName, value, schema, actualFieldName);
+				if (!fragment) return null;
+				conditions.push(fragment.sql);
+				args.push(...fragment.args);
+				continue;
 			}
 
 			const fieldFragments: SqlFragment[] = [];
