@@ -363,7 +363,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		const documents: RxDocumentData<RxDocType>[] = [];
 		let skipped = 0;
 		
-		for (const row of stmt.all(...queryArgs) as Array<{ data: string }>) {
+		for (const row of stmt.iterate(...queryArgs) as IterableIterator<{ data: string }>) {
 			const doc = JSON.parse(row.data) as RxDocumentData<RxDocType>;
 			
 			if (matchesSelector(doc, jsSelector)) {
