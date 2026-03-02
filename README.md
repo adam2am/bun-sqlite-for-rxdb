@@ -7,7 +7,8 @@
 RxDB storage adapter that translates Mango queries directly to bun:sqlite (except of $regex), bypassing slow in-memory filtering.
 
 ## Features
-- ✅ **17 Mango operators** directly using SQL ($eq, $ne, $gt, $gte, $lt, $lte, $in, $nin, $or, $and, $exists, $elemMatch, $not, $nor, $type, $size, $mod)
+- ✅ **18 Mango operators** directly using SQL ($eq, $ne, $gt, $gte, $lt, $lte, $in, $nin, $or, $and, $exists, $elemMatch, $not, $nor, $type, $size, $mod, $all if schema defined) 
+*"If users want performance, they should define their data structures. If they want sloppy schemaless behavior, they pay the Mingo tax. This aligns incentives correctly."*
 - ✅ **1 Mango operator optimized in memory** (complex $regex)
 - ✅ **Smart regex** - converts simple patterns to SQL LIKE (uses indexes)
 - ✅ **Attachments support** (base64 storage with digest validation)
