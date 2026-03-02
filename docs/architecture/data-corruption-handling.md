@@ -93,12 +93,14 @@ return typeFragment || { sql: '1=0', args: [] };
 
 ### Type Errors (Return `1=0`)
 4. **Invalid `$type`:** `{ age: { $type: "invalidType" } }` → `1=0`
-5. **Invalid `$mod`:** `{ age: { $mod: "not-array" } }` → `1=0`
-6. **Non-array logical ops:** `{ $and: "not-array" }` → `1=0`
+5. **Invalid `$type` array:** `{ age: { $type: ["invalidType"] } }` → `1=0`
+6. **Empty `$type` array:** `{ age: { $type: [] } }` → `1=0`
+7. **Invalid `$mod`:** `{ age: { $mod: "not-array" } }` → `1=0`
+8. **Non-array logical ops:** `{ $and: "not-array" }` → `1=0`
 
 ### Data Corruption (Return `1=0`)
-7. **Empty object in operator:** `{ age: { $not: {} } }` → `1=0`
-8. **Empty `$elemMatch`:** `{ tags: { $elemMatch: {} } }` → `1=0`
+9. **Empty object in operator:** `{ age: { $not: {} } }` → `1=0`
+10. **Empty `$elemMatch`:** `{ tags: { $elemMatch: {} } }` → `1=0`
 
 ## SQL Injection Protection
 
