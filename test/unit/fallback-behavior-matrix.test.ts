@@ -114,11 +114,10 @@ describe('Fallback Behavior Matrix: SQL vs Mingo', () => {
 			expect(result?.sql).toBe('1=0');
 		});
 
-		it('Empty object selector', () => {
-			const result = buildWhereClause({ name: {} }, schema, 'test');
-			expect(result).not.toBeNull();
-			expect(result?.sql).toBe('1=0');
-		});
+	it('Empty object selector (falls back to Mingo)', () => {
+		const result = buildWhereClause({ name: {} }, schema, 'test');
+		expect(result).toBeNull();
+	});
 	});
 });
 

@@ -32,6 +32,7 @@ const mockDocs: RxDocumentData<TestDocType>[] = [
 	{ id: '6', name: 'Frank', age: 40, tags: ['test'], active: true, score: 50, metadata: { a: 1, b: 2 }, unknownField: ['item1', 'item2'], items: [], _deleted: false, _attachments: {}, _rev: '1-f', _meta: { lwt: 6000 } },
 	{ id: '7', name: 'Grace', age: 45, tags: ['test'], active: false, score: 60, metadata: { b: 2, a: 1 }, unknownField: 'item1', items: [], _deleted: false, _attachments: {}, _rev: '1-g', _meta: { lwt: 7000 } },
 	{ id: '8', name: 'Hank', age: 50, tags: [], active: true, score: 10, optional: null as any, items: [], _deleted: false, _attachments: {}, _rev: '1-h', _meta: { lwt: 8000 } },
+	{ id: '9', name: 'Ivy', age: 33, tags: [], active: true, score: 70, metadata: {}, items: [], _deleted: false, _attachments: {}, _rev: '1-i', _meta: { lwt: 9000 } },
 ];
 
 // Arbitrary generators for Mango query operators
@@ -444,8 +445,8 @@ const MangoQueryArbitrary = () => {
 		]
 	}));
 	
-	const emptyObjectArb = fc.constantFrom('optional', 'name', 'age').map(field => ({
-		field: {}
+	const emptyObjectArb = fc.constantFrom('optional', 'metadata').map(field => ({
+		[field]: {}
 	}));
 	
 	// NEW: $not with nested $and/$or
@@ -739,8 +740,40 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 			}
 		});
 		
-		expect(sqlResults.documents.length).toBe(8);
-		expect(mingoResults.length).toBe(8);
+		expect(sqlResults.documents.length).toBe(9);
+		expect(mingoResults.length).toBe(9);
+	});
+
+	it('BUG 2: Empty object equality should match documents with empty objects', async () => {
+		const query = { metadata: {} };
+		
+		const mingoQuery = new Query<TestDocType>(query);
+		const mingoResults = mingoQuery.find<TestDocType>(mockDocs).all();
+		const mingoIds = mingoResults.map(doc => doc.id).sort();
+		
+		const sqlResults = await instance.query({
+			query: {
+				selector: query,
+				sort: [{ id: 'asc' }],
+				skip: 0
+			},
+			queryPlan: {
+				index: ['id'],
+				sortSatisfiedByIndex: false,
+				selectorSatisfiedByIndex: false,
+				startKeys: [],
+				endKeys: [],
+				inclusiveStart: true,
+				inclusiveEnd: true
+			}
+		});
+		const sqlIds = sqlResults.documents.map(doc => doc.id).sort();
+		
+		console.log('Query:', JSON.stringify(query));
+		console.log('Mingo result:', mingoIds);
+		console.log('SQL result:', sqlIds);
+		
+		expect(sqlIds).toEqual(mingoIds);
 	});
 
 	it('handles mixed SQL + regex queries (partial pushdown)', async () => {

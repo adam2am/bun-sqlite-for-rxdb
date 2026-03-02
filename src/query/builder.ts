@@ -195,19 +195,15 @@ function processSelector<RxDocType>(
 
 		if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
 			const valueUnknown = value as unknown;
-			if (valueUnknown instanceof Date || valueUnknown instanceof RegExp) {
-				const fragment = translateLeafOperator('$eq', fieldName, value, schema, actualFieldName);
-				if (!fragment) return null;
-				conditions.push(fragment.sql);
-				args.push(...fragment.args);
-				continue;
-			}
+		if (valueUnknown instanceof Date || valueUnknown instanceof RegExp) {
+			const fragment = translateLeafOperator('$eq', fieldName, value, schema, actualFieldName);
+			if (!fragment) return null;
+			conditions.push(fragment.sql);
+			args.push(...fragment.args);
+			continue;
+		}
 
-			if (Object.keys(value).length === 0) {
-				return { sql: '1=0', args: [] };
-			}
-
-			if (!isOperatorObject(value)) {
+		if (!isOperatorObject(value)) {
 				const fragment = translateLeafOperator('$eq', fieldName, value, schema, actualFieldName);
 				if (!fragment) return null;
 				conditions.push(fragment.sql);
