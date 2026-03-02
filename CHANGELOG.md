@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.6.5] - 2026-03-03
+
+### Fixed 🔥
+- **CRITICAL:** Fixed SQLite type coercion in `$regex` operator causing false positives
+  - SQLite's LIKE operator implicitly casts numbers to strings (e.g., `25` → `"25"`)
+  - Query `{ age: { $regex: "2" } }` incorrectly matched numeric value `25`
+  - Added `(type = 'text' AND ...)` type guards to all LIKE operations
+  - Now correctly returns no matches, enforcing MongoDB's strict BSON type boundaries
+  - Prevents silent data corruption from cross-type pattern matching
+
+### Changed
+- **Infrastructure refactoring**
+  - Extracted `addTypeGuard()` to shared `src/query/type-guards.ts` module
+  - Enables reuse across operators (DRY principle)
+  - Applied type guards to all regex SQL fragments in `smartRegexToLike()`
+  - Updated 8 unit test expectations to include type guards
+
+### Added
+- **Regression test coverage**
+  - Added `regexOnNumberFieldArb` to property-based tests
+  - Prevents future regressions of type coercion bugs
+  - Tests $regex on number fields (age, score) with various patterns
+
+### Technical Details
+- All 685 tests passing (100%)
+- Zero regressions
+- Proper infrastructure: Shared type guard module for future operators
+- 2 atomic commits: refactor → fix (Linus Torvalds style)
+
+---
+
 ## [1.6.4] - 2026-03-02
 
 ### Fixed 🔥
