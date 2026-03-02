@@ -14,8 +14,32 @@ const operators: Record<string, Operator> = {
 	$nin: (a, b) => Array.isArray(b) && !b.some(v => v === a),
 	$exists: (a, b) => (a !== undefined) === b,
 	$type: (a, b) => {
-		const type = Array.isArray(a) ? 'array' : typeof a;
-		return type === b;
+		let type: string;
+		if (a === null) type = 'null';
+		else if (Array.isArray(a)) type = 'array';
+		else type = typeof a;
+
+		const matchType = (targetType: string) => {
+			switch (targetType) {
+				case 'null': return type === 'null';
+				case 'boolean':
+				case 'bool': return type === 'boolean';
+				case 'number':
+				case 'int':
+				case 'long':
+				case 'double':
+				case 'decimal': return type === 'number';
+				case 'string': return type === 'string';
+				case 'array': return type === 'array';
+				case 'object': return type === 'object';
+				default: return false;
+			}
+		};
+
+		if (Array.isArray(b)) {
+			return b.some(t => matchType(t));
+		}
+		return matchType(b as string);
 	},
 	$mod: (a, b) => {
 		if (!Array.isArray(b) || b.length !== 2) return false;
@@ -83,8 +107,11 @@ function matchesOperators(value: unknown, conditions: Record<string, unknown>): 
 	if (op === '$elemMatch') {
 		if (!Array.isArray(value)) return false;
 		
+		// MongoDB: $elemMatch is scalar condition ONLY if ALL keys are field-level operators
+		// If it contains logical operators ($and/$or/$nor) or field names, it's a document query
 		const isOperatorObj = typeof opValue === 'object' && opValue !== null && 
-			Object.keys(opValue).some(k => k.startsWith('$'));
+			Object.keys(opValue).length > 0 &&
+			Object.keys(opValue).every(k => k.startsWith('$') && k !== '$and' && k !== '$or' && k !== '$nor');
 		
 		const hasMatch = value.some(item => {
 			if (isOperatorObj) return matchesOperators(item, opValue as Record<string, unknown>);
