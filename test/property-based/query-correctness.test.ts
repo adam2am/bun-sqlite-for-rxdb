@@ -127,6 +127,43 @@ const MangoQueryArbitrary = () => {
 		value: fc.tuple(fc.integer({ min: 2, max: 5 }), fc.integer({ min: 0, max: 4 }))
 	});
 	
+	const allArb = fc.record({
+		field: fc.constant('tags'),
+		op: fc.constant('$all'),
+		value: fc.array(fc.constantFrom('admin', 'user', 'moderator'), { minLength: 1, maxLength: 2 })
+	});
+	
+	// EDGE CASE: $all with empty array (should match nothing)
+	const allWithEmptyArrayArb = fc.constantFrom(
+		{ tags: { $all: [] } },
+		{ items: { $all: [] } }
+	);
+	
+	// EDGE CASE: $all with regex patterns
+	const allWithRegexArb = fc.constantFrom(
+		{ tags: { $all: [/^a/, /r$/] } },
+		{ tags: { $all: [/admin/] } }
+	);
+	
+	// EDGE CASE: $all with duplicate values
+	const allWithDuplicatesArb = fc.constantFrom(
+		{ tags: { $all: ['admin', 'admin'] } },
+		{ tags: { $all: ['user', 'user', 'user'] } }
+	);
+	
+	// EDGE CASE: $all with type mismatches
+	const allTypeMismatchArb = fc.constantFrom(
+		{ tags: { $all: [123, 456] } },
+		{ tags: { $all: [true, false] } },
+		{ age: { $all: ['30'] } }
+	);
+	
+	// EDGE CASE: Array vs object comparison (type guard test)
+	const arrayVsObjectComparisonArb = fc.constantFrom(
+		{ tags: { $gt: { foo: 'bar' } } },
+		{ tags: { $lt: ['a', 'b'] } }
+	);
+	
 	// LINUS TORVALDS TYPE MISMATCH BOUNDARIES
 	// Test 1: String vs Number (MongoDB enforces strict BSON type boundaries)
 	const typeMismatchStringNumberArb = fc.constantFrom(
@@ -275,7 +312,9 @@ const MangoQueryArbitrary = () => {
 	const singleOpArb = fc.oneof(
 		eqArb, neArb, gtArb, gteArb, ltArb, lteArb, 
 		inArb, ninArb, existsArb,
-		sizeArb, sizeOnNonArrayArb, modArb, regexArb, 
+		sizeArb, sizeOnNonArrayArb, modArb, 
+		allArb,
+		regexArb, 
 		typeArb, typeArrayArb,
 		elemMatchSimpleArb,
 		elemMatchComplexArb,
@@ -440,7 +479,12 @@ const MangoQueryArbitrary = () => {
 		exactObjectMatchArb,
 		exactArrayMatchArb,
 		implicitArrayTraversalArb,
-		logicalWithFieldArb
+		logicalWithFieldArb,
+		allWithEmptyArrayArb,
+		allWithRegexArb,
+		allWithDuplicatesArb,
+		allTypeMismatchArb,
+		arrayVsObjectComparisonArb
 	);
 };
 

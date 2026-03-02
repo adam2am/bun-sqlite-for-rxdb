@@ -12,6 +12,12 @@ function isOperatorObject(obj: any): boolean {
 	return keys.every(k => k.startsWith('$'));
 }
 
+function isSameBsonType(a: any, b: any): boolean {
+	if (a === null || b === null) return a === b;
+	if (Array.isArray(a) !== Array.isArray(b)) return false;
+	return typeof a === typeof b;
+}
+
 function getNestedValue(obj: any, path: string): any {
 	const segments = path.split('.');
 	let value: any = obj;
@@ -50,10 +56,10 @@ const operators: Record<string, OperatorFn> = {
 		}
 		return a !== b;
 	},
-	$gt: (a, b) => a > b,
-	$gte: (a, b) => a >= b,
-	$lt: (a, b) => a < b,
-	$lte: (a, b) => a <= b,
+	$gt: (a, b) => isSameBsonType(a, b) && a > b,
+	$gte: (a, b) => isSameBsonType(a, b) && a >= b,
+	$lt: (a, b) => isSameBsonType(a, b) && a < b,
+	$lte: (a, b) => isSameBsonType(a, b) && a <= b,
 	$in: (a, b) => {
 		if (!Array.isArray(b)) return false;
 		const aStr = (typeof a === 'object' && a !== null) ? stableStringify(a) : undefined;
@@ -111,6 +117,28 @@ const operators: Record<string, OperatorFn> = {
 			if (isOpObj) return matchesOperators(item, query, matcher);
 			return matcher(item, query);
 		});
+	},
+	$all: (a, b, matcher) => {
+		if (!Array.isArray(b)) return false;
+		if (!Array.isArray(a)) return false;
+		return b.every(req => {
+			if (typeof req === 'object' && req !== null && !Array.isArray(req) && !(req instanceof Date) && !(req instanceof RegExp)) {
+				if (req.$elemMatch) {
+					return operators.$elemMatch(a, req.$elemMatch, matcher);
+				}
+			}
+			if (req instanceof RegExp) {
+				return a.some(item => matchesRegex(item, req.source, req.flags));
+			}
+			
+			const reqStr = typeof req === 'object' && req !== null ? stableStringify(req) : undefined;
+			return a.some(item => {
+				if (reqStr !== undefined && typeof item === 'object' && item !== null) {
+					return reqStr === stableStringify(item);
+				}
+				return item === req;
+			});
+		});
 	}
 };
 
@@ -126,7 +154,7 @@ function matchesOperators(value: any, condition: Record<string, any>, matcher: M
 			}
 
 		const isNegative = op === '$ne' || op === '$nin';
-		const isStructural = op === '$size' || op === '$type' || op === '$elemMatch';
+		const isStructural = op === '$size' || op === '$type' || op === '$elemMatch' || op === '$all' || op === '$exists';
 		const argIsArrayOrObject = typeof arg === 'object' && arg !== null;
 		const skipTraversal = argIsArrayOrObject && (op === '$eq' || op === '$ne');
 		

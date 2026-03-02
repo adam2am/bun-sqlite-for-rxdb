@@ -409,7 +409,7 @@ export function translateRegex<RxDocType>(
 
 // Operator classification for O(1) lookups
 const LOGICAL_OPERATORS = new Set(['$and', '$or', '$nor', '$not']);
-const LEAF_OPERATORS = new Set(['$eq', '$ne', '$gt', '$gte', '$lt', '$lte', '$in', '$nin', '$exists', '$regex', '$type', '$size', '$mod', '$elemMatch']);
+const LEAF_OPERATORS = new Set(['$eq', '$ne', '$gt', '$gte', '$lt', '$lte', '$in', '$nin', '$exists', '$regex', '$type', '$size', '$mod', '$elemMatch', '$all']);
 
 function isLogicalOperator(key: string): boolean {
 	return LOGICAL_OPERATORS.has(key);
@@ -739,6 +739,30 @@ export function translateLeafOperator<RxDocType>(
 
 			const typeFragment = translateType(jsonCol, path, value as string, true);
 			return typeFragment || { sql: '1=0', args: [] };
+		}
+		case '$all': {
+			if (!Array.isArray(value) || value.length === 0) return { sql: '1=0', args: [] };
+			
+			const fragments: SqlFragment[] = [];
+			for (const val of value) {
+				if (val instanceof RegExp) {
+					const frag = translateLeafOperator('$regex', field, val, schema, actualFieldName);
+					if (!frag) return null;
+					fragments.push(frag);
+				} else if (typeof val === 'object' && val !== null && !Array.isArray(val) && '$elemMatch' in val) {
+					const frag = translateElemMatch(actualFieldName, (val as any).$elemMatch as ElemMatchCriteria, schema, actualFieldName);
+					if (!frag) return null;
+					fragments.push(frag);
+				} else {
+					const frag = translateLeafOperator('$eq', field, val, schema, actualFieldName);
+					if (!frag) return null;
+					fragments.push(frag);
+				}
+			}
+			return {
+				sql: `(${fragments.map(f => f.sql).join(' AND ')})`,
+				args: fragments.flatMap(f => f.args)
+			};
 		}
 		default:
 			return translateEq(field, value, schema, actualFieldName);
