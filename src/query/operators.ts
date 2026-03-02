@@ -49,12 +49,18 @@ export function translateEq<RxDocType>(
 	value: unknown,
 	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
 	actualFieldName?: string
-): SqlFragment {
+): SqlFragment | null {
 	if (value === null) {
 		return { sql: `${field} IS NULL`, args: [] };
 	}
 
-	if (Array.isArray(value) || (typeof value === 'object' && value !== null && !(value instanceof Date) && !(value instanceof RegExp))) {
+	// Plain objects: Force Mingo fallback (SQLite json() preserves key order, MongoDB doesn't)
+	if (typeof value === 'object' && value !== null && !Array.isArray(value) && !(value instanceof Date) && !(value instanceof RegExp)) {
+		return null;
+	}
+
+	// Arrays: Keep in SQL (arrays ARE ordered in MongoDB)
+	if (Array.isArray(value)) {
 		try {
 			return {
 				sql: `${field} = json(?)`,
@@ -67,6 +73,7 @@ export function translateEq<RxDocType>(
 
 	if (schema && actualFieldName) {
 		const columnInfo = getColumnInfo(actualFieldName, schema);
+		
 		if (field !== 'value' && columnInfo.type === 'array') {
 			const comparison = 'value = ?';
 			const guardedSql = addTypeGuard('value', value, comparison);
@@ -74,6 +81,22 @@ export function translateEq<RxDocType>(
 				sql: `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${guardedSql})`,
 				args: [normalizeValueForSQLite(value)]
 			};
+		}
+		
+		// Only add array traversal for truly unknown fields at the TOP level (not inside $elemMatch)
+		if (field !== 'value' && columnInfo.type === 'unknown' && !actualFieldName.includes('.')) {
+			const isInternalField = actualFieldName === (schema as any).primaryKey || actualFieldName.startsWith('_');
+			
+			if (!isInternalField) {
+				const comparison = 'value = ?';
+				const guardedSql = addTypeGuard('value', value, comparison);
+				const exactMatch = addTypeGuard(field, value, `${field} = ?`);
+				const arrayTraversal = `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${guardedSql})`;
+				return {
+					sql: `(${exactMatch} OR ${arrayTraversal})`,
+					args: [normalizeValueForSQLite(value), normalizeValueForSQLite(value)]
+				};
+			}
 		}
 	}
 
@@ -623,24 +646,33 @@ export function translateLeafOperator<RxDocType>(
 		case '$exists': return translateExists(field, value as boolean);
 	case '$size': {
 		const columnInfo = getColumnInfo(actualFieldName, schema);
-		// Known non-array types → impossible (data corruption per docs/architecture/data-corruption-handling.md)
-		// Unknown types → execute and let SQL handle it (matches Mingo: try, then handle result)
+		
+		// 1. Fast Path: Known non-array (RxDB guarantees schema adherence at write-time)
 		if (columnInfo.type !== 'array' && columnInfo.type !== 'unknown') {
 			return { sql: '1=0', args: [] };
 		}
 		
-		// Extract column and path for two-parameter form (matches translateType pattern)
 		let jsonColumn = 'data';
 		let jsonPath = actualFieldName;
 		let isDirectPath = false;
 		
 		if (field === 'value') {
-			// Inside $elemMatch - use value directly
 			jsonColumn = 'value';
 			jsonPath = '';
 			isDirectPath = true;
 		}
 		
+		const path = isDirectPath ? jsonPath : `$.${jsonPath}`;
+
+		// 2. Fast Path: Known array (No dynamic type guard needed, saves CPU)
+		if (columnInfo.type === 'array' && !isDirectPath) {
+			return {
+				sql: `json_array_length(${jsonColumn}, '${path}') = ?`,
+				args: [value as number]
+			};
+		}
+		
+		// 3. Safe Path: Unknown type or inside jsonb_each (Dynamic runtime guard)
 		return translateSize(jsonColumn, jsonPath, value as number, isDirectPath);
 	}
 		case '$mod': {
@@ -816,8 +848,16 @@ export function translateSize(
 	isDirectPath: boolean = false
 ): SqlFragment {
 	const path = isDirectPath ? jsonPath : `$.${jsonPath}`;
+	
+	if (isDirectPath && jsonPath === '') {
+		return {
+			sql: `(type = 'array' AND json_array_length(${jsonColumn}) = ?)`,
+			args: [size]
+		};
+	}
+	
 	return {
-		sql: `json_array_length(${jsonColumn}, '${path}') = ?`,
+		sql: `(json_type(${jsonColumn}, '${path}') = 'array' AND json_array_length(${jsonColumn}, '${path}') = ?)`,
 		args: [size]
 	};
 }

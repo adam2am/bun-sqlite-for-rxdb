@@ -30,19 +30,19 @@ const testSchema: RxJsonSchema<RxDocumentData<TestDoc>> = {
 describe('$size Operator', () => {
 	it('translates array size check to json_array_length', () => {
 		const result = translateSize('data', 'tags', 3);
-		expect(result?.sql).toBe("json_array_length(data, '$.tags') = ?");
+		expect(result?.sql).toBe("(json_type(data, '$.tags') = 'array' AND json_array_length(data, '$.tags') = ?)");
 		expect(result?.args).toEqual([3]);
 	});
 
 	it('handles size 0', () => {
 		const result = translateSize('data', 'items', 0);
-		expect(result?.sql).toBe("json_array_length(data, '$.items') = ?");
+		expect(result?.sql).toBe("(json_type(data, '$.items') = 'array' AND json_array_length(data, '$.items') = ?)");
 		expect(result?.args).toEqual([0]);
 	});
 
 	it('handles large array sizes', () => {
 		const result = translateSize('data', 'myArray', 100);
-		expect(result?.sql).toBe("json_array_length(data, '$.myArray') = ?");
+		expect(result?.sql).toBe("(json_type(data, '$.myArray') = 'array' AND json_array_length(data, '$.myArray') = ?)");
 		expect(result?.args).toEqual([100]);
 	});
 
