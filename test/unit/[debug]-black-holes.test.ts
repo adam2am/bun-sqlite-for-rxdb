@@ -33,7 +33,7 @@ describe('[REGRESSION] The 3 Architectural Black Holes (FIXED)', () => {
 	// BLACK HOLE 1: Exact Object Match (FIXED)
 	// ============================================================
 	describe('BLACK HOLE 1: SQL Builder Does Exact Match (FIXED)', () => {
-	it('VERIFIES FIX: Translates { address: { city: "NY" } } to Mingo fallback', () => {
+	it('VERIFIES FIX: Translates { address: { city: "NY" } } using json() comparison', () => {
 		const query = { address: { city: 'NY' } };
 		
 		console.log('\n=== BLACK HOLE 1: Exact Object Match (FIXED) ===');
@@ -42,11 +42,11 @@ describe('[REGRESSION] The 3 Architectural Black Holes (FIXED)', () => {
 		const result = buildWhereClause(query, mockSchema, 'test');
 		
 		console.log('Generated SQL:', result?.sql);
-		console.log('Expected: null (Mingo fallback for plain objects)');
+		console.log('Expected: json(?) comparison (Optimization 3)');
 		console.log('Actual:', result?.sql);
 
-		// Should return null for plain objects (Mingo fallback handles key order correctly)
-		expect(result).toBeNull();
+		expect(result).not.toBeNull();
+		expect(result?.sql).toContain('json(?)');
 	});
 	});
 
