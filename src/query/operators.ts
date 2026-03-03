@@ -764,11 +764,11 @@ function wrapWithArrayTraversal(elementFragment: SqlFragment, jsonPath: string, 
 	
 	const flattenCte = `
 		WITH RECURSIVE flattened(value, type, depth_remaining) AS (
-			SELECT json_each.value, json_each.type, ${depth}
-			FROM json_each(data, '${jsonPath}')
+			SELECT jsonb_each.value, jsonb_each.type, ${depth}
+			FROM jsonb_each(data, '${jsonPath}')
 			UNION ALL
-			SELECT json_each.value, json_each.type, flattened.depth_remaining - 1
-			FROM flattened, json_each(flattened.value)
+			SELECT jsonb_each.value, jsonb_each.type, flattened.depth_remaining - 1
+			FROM flattened, jsonb_each(flattened.value)
 			WHERE flattened.type = 'array' AND flattened.depth_remaining > 0
 		)
 	`;
