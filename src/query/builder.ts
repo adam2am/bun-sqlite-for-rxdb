@@ -129,7 +129,7 @@ export function buildLogicalOperator<RxDocType>(
 	const args = fragments.flatMap(f => f!.args);
 
 	if (operator === 'nor') {
-		return { sql: `NOT(${coerceToBoolean(sql)})`, args };
+		return { sql: `NOT(COALESCE((${sql}), 0))`, args };
 	}
 
 	return { sql, args };
