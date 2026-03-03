@@ -9,3 +9,4 @@ dist/
 benchmark.db*
 test-wal.db*
 sketch
+.serena
