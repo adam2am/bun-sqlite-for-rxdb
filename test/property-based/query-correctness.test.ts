@@ -24,18 +24,24 @@ interface TestDocType {
 	}>;
 	'first name'?: string;
 	'user-name'?: string;
+	role?: string;
+	matrix?: number[][];
+	data?: any;
+	count?: any;
 }
 
 const mockDocs: RxDocumentData<TestDocType>[] = [
-	{ id: '1', name: 'Alice', age: 30, tags: ['admin', 'user'], active: true, score: 95.5, scores: [85, 90, 92], optional: 'present', 'first name': 'Alice', items: [{ name: 'item1', category: 'A', price: 100, tags: ['new'] }, { name: 'item2', category: 'B', price: 200, tags: ['sale'] }], _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: 1000 } },
-	{ id: '2', name: 'Bob', age: 25, tags: ['user'], active: false, score: 80.0, scores: [80, 88], 'user-name': 'bob123', items: [{ name: 'item3', category: 'A', price: 150, tags: [] }], _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: 2000 } },
-	{ id: '3', name: 'Charlie', age: 35, tags: ['admin', 'moderator'], active: true, score: 88.3, scores: [75, 81, 95], optional: 'value', items: [{ name: 'item4', category: 'C', price: 300, tags: ['premium', 'new'] }], _deleted: false, _attachments: {}, _rev: '1-c', _meta: { lwt: 3000 } },
-	{ id: '4', name: 'Café', age: 28, tags: ['user', 'moderator'], active: true, score: 92.1, scores: [91, 93], items: [], _deleted: false, _attachments: {}, _rev: '1-d', _meta: { lwt: 4000 } },
-	{ id: '5', name: 'Eve', age: 22, tags: [], active: false, score: 75.0, scores: [70, 75, 80], optional: undefined, items: [{ name: 'item5', category: 'B', price: 50, tags: ['clearance'] }], _deleted: false, _attachments: {}, _rev: '1-e', _meta: { lwt: 5000 } },
-	{ id: '6', name: 'Frank', age: 40, tags: ['test'], active: true, score: 50, scores: [50, 55], metadata: { '0': 'value0', '1': 'value1' }, unknownField: ['item1', 'item2'], items: [], _deleted: false, _attachments: {}, _rev: '1-f', _meta: { lwt: 6000 } },
-	{ id: '7', name: 'Grace', age: 45, tags: ['test'], active: false, score: 60, scores: [60, 65], metadata: { b: 2, a: 1 }, unknownField: 'item1', items: [], _deleted: false, _attachments: {}, _rev: '1-g', _meta: { lwt: 7000 } },
+	{ id: '1', name: 'Alice', age: 30, tags: ['admin', 'user'], active: true, score: 95.5, scores: [85, 90, 92], optional: 'present', 'first name': 'Alice', role: 'admin', items: [{ name: 'item1', category: 'A', price: 100, tags: ['new'] }, { name: 'item2', category: 'B', price: 200, tags: ['sale'] }], _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: 1000 } },
+	{ id: '2', name: 'Bob', age: 25, tags: ['user'], active: false, score: 80.0, scores: [80, 88], 'user-name': 'bob123', role: 'user', count: 1, items: [{ name: 'item3', category: 'A', price: 150, tags: [] }], _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: 2000 } },
+	{ id: '3', name: 'Charlie', age: 35, tags: ['admin', 'moderator'], active: true, score: 88.3, scores: [75, 81, 95], optional: 'value', matrix: [[1, 2], [3, 4]], items: [{ name: 'item4', category: 'C', price: 300, tags: ['premium', 'new'] }], _deleted: false, _attachments: {}, _rev: '1-c', _meta: { lwt: 3000 } },
+	{ id: '4', name: 'Café', age: 28, tags: ['user', 'moderator'], active: true, score: 92.1, scores: [91, 93], matrix: [[5, 6], [7, 8]], items: [], _deleted: false, _attachments: {}, _rev: '1-d', _meta: { lwt: 4000 } },
+	{ id: '5', name: 'Eve', age: 22, tags: [], active: false, score: 75.0, scores: [70, 75, 80], optional: undefined, matrix: [[1, 2], [3, 10]], count: "1", items: [{ name: 'item5', category: 'B', price: 50, tags: ['clearance'] }], _deleted: false, _attachments: {}, _rev: '1-e', _meta: { lwt: 5000 } },
+	{ id: '6', name: 'Frank', age: 40, tags: ['test'], active: true, score: 50, scores: [50, 55], metadata: { '0': 'value0', '1': 'value1' }, unknownField: ['item1', 'item2'], data: "admin", items: [], _deleted: false, _attachments: {}, _rev: '1-f', _meta: { lwt: 6000 } },
+	{ id: '7', name: 'Grace', age: 45, tags: ['test'], active: false, score: 60, scores: [60, 65], metadata: { b: 2, a: 1 }, unknownField: 'item1', data: [15], items: [], _deleted: false, _attachments: {}, _rev: '1-g', _meta: { lwt: 7000 } },
 	{ id: '8', name: 'Hank', age: 50, tags: [], active: true, score: 10, scores: [10, 15], optional: null as any, items: [], _deleted: false, _attachments: {}, _rev: '1-h', _meta: { lwt: 8000 } },
 	{ id: '9', name: 'Ivy', age: 33, tags: [], active: true, score: 70, scores: [70, 72], metadata: {}, items: [], _deleted: false, _attachments: {}, _rev: '1-i', _meta: { lwt: 9000 } },
+	{ id: '10', name: 'user1', age: 27, tags: [], active: true, score: 85, items: [], _deleted: false, _attachments: {}, _rev: '1-j', _meta: { lwt: 10000 } },
+	{ id: '11', name: 'user2', age: 29, tags: [], active: false, score: 90, items: [], _deleted: false, _attachments: {}, _rev: '1-k', _meta: { lwt: 11000 } },
 ];
 
 // Arbitrary generators for Mango query operators
@@ -597,6 +603,52 @@ const MangoQueryArbitrary = () => {
 		name: { $eq: name }
 	}));
 
+	// GAP 2: Array/Object in Range Operators (Lexicographical Comparison Bug)
+	const arrayObjectRangeArb = fc.constantFrom(
+		{ score: { $gt: [10] } },           // Should NOT match strings via lexicographical comparison
+		{ score: { $lt: [100] } },
+		{ data: { $gt: { a: 1 } } },        // Should NOT match strings
+		{ data: { $lt: { z: 99 } } },
+		{ unknownField: { $gte: [5, 10] } },
+		{ unknownField: { $lte: { key: 'value' } } }
+	);
+
+	// GAP 4: Type Coercion in $in/$nin (Boolean vs Number, String vs Number)
+	const typeCoercionInArb = fc.constantFrom(
+		{ active: { $in: [1, 0] } },        // Should NOT match boolean true/false
+		{ active: { $nin: [1, 0] } },
+		{ count: { $in: [1] } },            // Should NOT match string "1"
+		{ count: { $nin: ["1"] } },         // Should NOT match number 1
+		{ age: { $in: ["30", "25"] } },     // Should NOT match number 30/25
+		{ score: { $in: [95.5, "80"] } }    // Mixed types
+	);
+
+	// GAP 5: Nested $elemMatch (Context Tracking Bug)
+	const nestedElemMatchArb = fc.constantFrom(
+		{ matrix: { $elemMatch: { $elemMatch: { $gt: 5 } } } },
+		{ matrix: { $elemMatch: { $elemMatch: { $lt: 10 } } } },
+		{ matrix: { $elemMatch: { $elemMatch: { $eq: 7 } } } }
+	);
+
+	// GAP 7: isComplexRegex Missing Escape Sequences (\d, \w, \s, \b)
+	const regexEscapeSequencesArb = fc.constantFrom(
+		{ name: /^user\d$/ },               // \d should match digits
+		{ name: /\w+@\w+/ },                // \w should match word chars
+		{ name: /\s+/ },                    // \s should match whitespace
+		{ name: /\bAlice\b/ },              // \b should match word boundary
+		{ optional: /^\w{3,}$/ },           // Combined escape sequences
+		{ name: { $regex: 'user\\d', $options: '' } },  // Sibling syntax
+		{ name: { $regex: '\\w+', $options: 'i' } }
+	);
+
+	// GAP 8: $all on Scalar Values (Should NOT Match)
+	const allOnScalarArb = fc.constantFrom(
+		{ role: { $all: ["admin"] } },      // Should NOT match scalar "admin"
+		{ name: { $all: ["Alice"] } },      // Should NOT match scalar "Alice"
+		{ optional: { $all: ["present"] } }, // Should NOT match scalar "present"
+		{ unknownField: { $all: ["item1"] } } // Should NOT match scalar "item1"
+	);
+
 	return fc.oneof(
 		singleOpArb.map(toMangoQuery),
 		andArb,
@@ -642,7 +694,12 @@ const MangoQueryArbitrary = () => {
 		bsonNumericTypeArb.map(toMangoQuery),
 		unicodeRegexArb.map(op => ({ [op.field]: { $regex: op.value, $options: op.options } })),
 		rawColumnTypeMismatchArb,
-		numericObjectKeyArb
+		numericObjectKeyArb,
+		arrayObjectRangeArb,
+		typeCoercionInArb,
+		nestedElemMatchArb,
+		regexEscapeSequencesArb,
+		allOnScalarArb
 	);
 };
 
@@ -673,6 +730,10 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 			unknownField: {},
 			'first name': { type: 'string' },
 			'user-name': { type: 'string' },
+			role: { type: 'string' },
+			matrix: { type: 'array', items: { type: 'array', items: { type: 'number' } } },
+			data: {},
+			count: {},
 				items: {
 						type: 'array',
 						items: {
@@ -836,8 +897,8 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 			}
 		});
 		
-		expect(sqlResults.documents.length).toBe(9);
-		expect(mingoResults.length).toBe(9);
+		expect(sqlResults.documents.length).toBe(11);
+		expect(mingoResults.length).toBe(11);
 	});
 
 	it('BUG 2: Empty object equality should match documents with empty objects', async () => {
