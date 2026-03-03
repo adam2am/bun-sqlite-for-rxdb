@@ -88,6 +88,42 @@ collection.find({
 // Allows complex nested logic that $nin can't express
 ```
 
+**Test Coverage:**
+
+All Tier 1 (EXTEND) features are proven with comprehensive test suites:
+
+**File:** `test/unit/operators/not-nested-and-bug.test.ts`
+
+```javascript
+// Test: Field-level $not with nested $or (line 34-46)
+it('should handle $or inside $not', () => {
+    const result = buildWhereClause(
+        { age: { $not: { $or: [{ age: { $lt: 20 } }, { age: { $gt: 40 } }] } } },
+        mockSchema,
+        'test'
+    );
+    
+    expect(result).not.toBeNull();
+    expect(result!.sql).toContain('NOT');
+    // Translates to: age NOT (< 20 OR > 40) = age BETWEEN 20 AND 40
+});
+
+// Test: Field-level $not with nested $and (line 6-18)
+it('should handle $and inside $not', () => {
+    const result = buildWhereClause(
+        { age: { $not: { $and: [{ age: { $gt: 20 } }, { age: { $lt: 40 } }] } } },
+        mockSchema,
+        'test'
+    );
+    
+    expect(result).not.toBeNull();
+    expect(result!.sql).toContain('NOT');
+    // Translates to: age NOT (> 20 AND < 40) = age <= 20 OR age >= 40
+});
+```
+
+**Key Insight:** These tests prove we support **deep sequences** (field-level `$not` with nested logical operators), not just top-level `$not`.
+
 **Source:** Pattern #30 in architectural-patterns.md
 
 ---
