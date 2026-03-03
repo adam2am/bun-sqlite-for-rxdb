@@ -109,9 +109,9 @@ describe('Nested Query Builder - Depth Tracking', () => {
 
 	expect(result).not.toBeNull();
 	expect(result!.sql).toBe(
-		"(EXISTS (SELECT 1 FROM json_each(?) je WHERE je.value = json_extract(data, '$.age') AND je.type = json_type(data, '$.age')) OR (json_type(data, '$.status') = 'text' AND json_extract(data, '$.status') = ?)) AND (json_type(data, '$.verified') IN ('true', 'false') AND json_extract(data, '$.verified') = ?)"
+		"((json_type(data, '$.age') IN ('integer', 'real') AND json_extract(data, '$.age') IN (?, ?, ?)) OR (json_type(data, '$.status') = 'text' AND json_extract(data, '$.status') = ?)) AND (json_type(data, '$.verified') IN ('true', 'false') AND json_extract(data, '$.verified') = ?)"
 	);
-	expect(result!.args).toEqual(['[18,19,20]', 'student', true]);
+	expect(result!.args).toEqual([18, 19, 20, 'student', true]);
 	});
 
 	test('four-level nesting with mixed operators', () => {
@@ -163,9 +163,9 @@ describe('Nested Query Builder - Depth Tracking', () => {
 
 	expect(result).not.toBeNull();
 	expect(result!.sql).toBe(
-		"(((json_extract(data, '$.status') IS NULL OR NOT EXISTS (SELECT 1 FROM json_each(?) je WHERE je.value = json_extract(data, '$.status') AND je.type = json_type(data, '$.status'))) AND (json_type(data, '$.age') IN ('integer', 'real') AND json_extract(data, '$.age') > ?)) OR EXISTS (SELECT 1 FROM json_each(?) je WHERE je.value = json_extract(data, '$.role') AND je.type = json_type(data, '$.role')))"
+		"(((json_extract(data, '$.status') IS NULL OR NOT EXISTS (SELECT 1 FROM json_each(?) je WHERE je.value = json_extract(data, '$.status') AND je.type = json_type(data, '$.status'))) AND (json_type(data, '$.age') IN ('integer', 'real') AND json_extract(data, '$.age') > ?)) OR (json_type(data, '$.role') = 'text' AND json_extract(data, '$.role') IN (?, ?)))"
 	);
-	expect(result!.args).toEqual(['["banned","suspended"]', 21, '["admin","moderator"]']);
+	expect(result!.args).toEqual(['["banned","suspended"]', 21, 'admin', 'moderator']);
 	});
 
 	test('parentheses placement with single $or at root', () => {
