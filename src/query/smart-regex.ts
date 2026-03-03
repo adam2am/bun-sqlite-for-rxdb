@@ -87,6 +87,10 @@ export function smartRegexToLike<RxDocType>(
 	const caseInsensitive = options?.includes('i') ?? false;
 	const hasLowerIndex = hasExpressionIndex(fieldName, schema);
 	
+	if (caseInsensitive && /[^\x00-\x7F]/.test(pattern)) {
+		return null;
+	}
+	
 	const startsWithAnchor = pattern.startsWith('^');
 	const endsWithAnchor = pattern.endsWith('$');
 	let cleanPattern = pattern.replace(/^\^/, '').replace(/\$$/, '');
