@@ -46,7 +46,7 @@ function isValidRegexOptions(options: string): boolean {
 }
 
 function isComplexRegex(pattern: string): boolean {
-	return /[*+?()[\]{}|]/.test(pattern.replace(/\\\./g, ''));
+	return /[*+?()[\]{}|]|\\[a-zA-Z]/.test(pattern.replace(/\\\./g, ''));
 }
 
 function escapeForLike(str: string): string {
