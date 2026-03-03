@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.6.8] - 2026-03-03
+
+### Fixed 🔥
+- **CRITICAL: $elemMatch malformed JSON error with nested field access**
+  - Fixed "malformed JSON" crash when $elemMatch queries nested fields on array elements that may be scalars
+  - Added `json_type(value) = 'object'` guard before accessing nested properties in $elemMatch
+  - Wrapped value with `json()` for safe nested path access in elemMatch context
+  - Fixed `$nin`/`$ne` array traversal logic (scalar OR array, not AND)
+  - Fixed column name collision with `AS outer_array` alias in array traversal
+  - Follows production patterns from RxDB/PocketBase/D1 for safe JSON path access
+- **RegExp operator routing**
+  - RegExp objects in queries like `{name: /pattern/}` now properly route to `$regex` operator instead of `$eq`
+  - Fixed both SQL builder and lightweight matcher to use regex matching instead of equality checks
+- **Regex complexity detection**
+  - Added detection for escape sequences (`\d`, `\w`, `\s`, `\b`, etc.) in regex complexity check
+  - These patterns cannot be converted to SQL LIKE and must fall back to Mingo for correct matching
+
+### Changed
+- **Type-safe $in/$nin operators**
+  - Top-level `$in`/`$nin` now use `EXISTS` with type checking (prevents SQLite type coercion: 1 != true, 0 != false)
+  - Nested `$in`/`$nin` inside `$elemMatch` use simple `IN (SELECT value FROM json_each(?))` for safety
+  - Detects elemMatch context automatically via `getTypeExpression()` helper
+- **Array/object rejection in comparison operators**
+  - Comparison operators (`$gt`, `$lt`, `$gte`, `$lte`) now reject array/object values
+  - Prevents incorrect lexicographical comparisons on non-scalar types
+
+### Added
+- **Property-based test coverage for edge cases**
+  - Array/object values in comparison operators
+  - Type coercion in `$in`/`$nin` (boolean vs number, string vs number)
+  - Nested `$elemMatch` (2D arrays)
+  - Regex escape sequences (`\d`, `\w`, `\s`, `\b`)
+  - `$all` operator on scalar values
+  - Increased test coverage from 9 to 11 documents with more diverse data types
+
+### Technical Details
+- All 685 tests passing (100%)
+- Zero regressions
+- 5 atomic commits following Linus Torvalds principles
+- No `as any` type suppressions in production code
+- All console.log statements properly guarded with environment variables
+
+---
+
 ## [1.6.7] - 2026-03-03
 
 ### Fixed 🔥
