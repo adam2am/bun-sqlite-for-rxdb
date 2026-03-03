@@ -28,6 +28,7 @@ interface TestDocType {
 	matrix?: number[][];
 	data?: any;
 	count?: any;
+	strVal?: string;
 }
 
 const mockDocs: RxDocumentData<TestDocType>[] = [
@@ -43,6 +44,7 @@ const mockDocs: RxDocumentData<TestDocType>[] = [
 	{ id: '10', name: 'user1', age: 27, tags: [], active: true, score: 85, items: [], _deleted: false, _attachments: {}, _rev: '1-j', _meta: { lwt: 10000 } },
 	{ id: '11', name: 'user2', age: 29, tags: [], active: false, score: 90, items: [], _deleted: false, _attachments: {}, _rev: '1-k', _meta: { lwt: 11000 } },
 	{ id: '12', name: 'Overflow', age: -9223372036854775808, tags: [], active: true, score: -9223372036854775808, items: [], _deleted: false, _attachments: {}, _rev: '1-l', _meta: { lwt: 12000 } },
+	{ id: '13', name: 'MultiLine', age: 30, tags: [], active: true, score: 85, items: [], strVal: "Line1\nLine2", _deleted: false, _attachments: {}, _rev: '1-m', _meta: { lwt: 13000 } },
 ];
 
 function hasKnownMingoBug(query: any): boolean {
@@ -747,6 +749,74 @@ const MangoQueryArbitrary = () => {
 		{ count: { $mod: [-1, 0] } }        // On unknown field
 	);
 
+	// HAPPY PATH: $in with same-type primitives (native IN optimization)
+	const inSameTypeStringsArb = fc.constantFrom(
+		{ name: { $in: ['Alice', 'Bob', 'Charlie'] } },
+		{ name: { $in: ['Eve'] } },
+		{ role: { $in: ['admin', 'user', 'moderator'] } }
+	);
+
+	const inSameTypeNumbersArb = fc.constantFrom(
+		{ age: { $in: [25, 30, 35] } },
+		{ age: { $in: [22] } },
+		{ score: { $in: [80, 85, 90, 95] } }
+	);
+
+	const inSameTypeBooleansArb = fc.constantFrom(
+		{ active: { $in: [true] } },
+		{ active: { $in: [false] } },
+		{ active: { $in: [true, false] } }
+	);
+
+	// HAPPY PATH: $in on array fields (should match if any element matches)
+	const inOnArrayFieldArb = fc.constantFrom(
+		{ tags: { $in: ['admin', 'user'] } },
+		{ tags: { $in: ['moderator'] } },
+		{ scores: { $in: [85, 90, 95] } }
+	);
+
+	// HAPPY PATH: $in with many values (10+)
+	const inManyValuesArb = fc.constantFrom(
+		{ age: { $in: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] } },
+		{ name: { $in: ['Alice', 'Bob', 'Charlie', 'David', 'Eve', 'Frank', 'Grace', 'Hank', 'Ivy', 'user1', 'user2'] } }
+	);
+
+	// HAPPY PATH: $in on nested fields
+	const inNestedFieldArb = fc.constantFrom(
+		{ 'items.0.category': { $in: ['A', 'B', 'C'] } },
+		{ 'items.0.name': { $in: ['item1', 'item2', 'item3'] } }
+	);
+
+	// UNHAPPY PATH: $in with mixed types (should still work but less optimized)
+	const inMixedTypesArb = fc.constantFrom(
+		{ unknownField: { $in: ['item1', 123, true] } },
+		{ data: { $in: ['admin', 15, false] } }
+	);
+
+	// UNHAPPY PATH: $in with duplicate values
+	const inDuplicatesArb = fc.constantFrom(
+		{ name: { $in: ['Alice', 'Alice', 'Bob', 'Bob'] } },
+		{ age: { $in: [25, 25, 30, 30, 35] } }
+	);
+
+	// UNHAPPY PATH: $in on unknown field with array runtime data
+	const inUnknownArrayArb = fc.constantFrom(
+		{ unknownField: { $in: ['item1', 'item2'] } },
+		{ data: { $in: ['admin', 'user'] } }
+	);
+
+	// UNHAPPY PATH: $in with type mismatch (should not match)
+	const inTypeMismatchArb = fc.constantFrom(
+		{ age: { $in: ['25', '30', '35'] } },
+		{ name: { $in: [123, 456] } },
+		{ active: { $in: ['true', 'false'] } }
+	);
+
+	// UNHAPPY PATH: $in with very large array (100+ values)
+	const inLargeArrayArb = fc.constant({
+		age: { $in: Array.from({ length: 100 }, (_, i) => i + 1) }
+	});
+
 	return fc.oneof(
 		singleOpArb.map(toMangoQuery),
 		andArb,
@@ -804,7 +874,18 @@ const MangoQueryArbitrary = () => {
 		nestedArrayExactMatchArb,
 		twoDArrayFlatteningArb,
 		floatModuloArb,
-		modOverflowArb
+		modOverflowArb,
+		inSameTypeStringsArb,
+		inSameTypeNumbersArb,
+		inSameTypeBooleansArb,
+		inOnArrayFieldArb,
+		inManyValuesArb,
+		inNestedFieldArb,
+		inMixedTypesArb,
+		inDuplicatesArb,
+		inUnknownArrayArb,
+		inTypeMismatchArb,
+		inLargeArrayArb
 	);
 };
 
@@ -839,6 +920,7 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 			matrix: { type: 'array', items: { type: 'array', items: { type: 'number' } } },
 			data: {},
 			count: {},
+			strVal: { type: 'string' },
 				items: {
 						type: 'array',
 						items: {
@@ -1008,8 +1090,8 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 			}
 		});
 		
-		expect(sqlResults.documents.length).toBe(12);
-		expect(mingoResults.length).toBe(12);
+		expect(sqlResults.documents.length).toBe(13);
+		expect(mingoResults.length).toBe(13);
 	});
 
 	it('BUG 2: Empty object equality should match documents with empty objects', async () => {
@@ -1078,5 +1160,34 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 
 			expect(sqlIds).toEqual(mingoIds);
 		}
+	});
+
+	it('GAP 25: Multiline regex with m flag should match correctly', async () => {
+		const query = { strVal: { $regex: '^Line2', $options: 'm' } };
+		
+		const mingoQuery = new Query<TestDocType>(query);
+		const mingoResults = mingoQuery.find<TestDocType>(mockDocs).all();
+		const mingoIds = mingoResults.map(doc => doc.id).sort();
+		
+		const sqlResults = await instance.query({
+			query: {
+				selector: query,
+				sort: [{ id: 'asc' }],
+				skip: 0
+			},
+			queryPlan: {
+				index: ['id'],
+				sortSatisfiedByIndex: false,
+				selectorSatisfiedByIndex: false,
+				startKeys: [],
+				endKeys: [],
+				inclusiveStart: true,
+				inclusiveEnd: true
+			}
+		});
+		const sqlIds = sqlResults.documents.map(doc => doc.id).sort();
+		
+		expect(sqlIds).toEqual(mingoIds);
+		expect(mingoIds).toEqual(['13']);
 	});
 });
