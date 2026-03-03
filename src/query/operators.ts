@@ -111,7 +111,14 @@ export function translateEq(field: string, value: unknown): SqlFragment | null {
 	}
 
 	if (typeof value === 'object' && value !== null && !Array.isArray(value) && !(value instanceof Date) && !(value instanceof RegExp)) {
-		return null;
+		try {
+			return {
+				sql: `${field} = json(?)`,
+				args: [JSON.stringify(value)]
+			};
+		} catch {
+			return null;
+		}
 	}
 
 	if (Array.isArray(value)) {
@@ -189,6 +196,20 @@ export function translateIn(field: string, values: unknown[]): SqlFragment | nul
 
 	if (nonNullValues.length === 0) {
 		return { sql: `${field} IS NULL`, args: [] };
+	}
+
+	const allPrimitives = values.every(v => v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean');
+	
+	if (allPrimitives && nonNullValues.length > 0) {
+		const firstType = typeof values.find(v => v !== null);
+		const allSameType = nonNullValues.every(v => typeof v === firstType);
+		
+		if (allSameType) {
+			const placeholders = nonNullValues.map(() => '?').join(', ');
+			const inClause = `${field} IN (${placeholders})`;
+			const guardedClause = addTypeGuard(field, nonNullValues[0], inClause);
+			return hasNull ? { sql: `(${guardedClause} OR ${field} IS NULL)`, args: nonNullValues } : { sql: guardedClause, args: nonNullValues };
+		}
 	}
 
 	try {
@@ -882,6 +903,13 @@ export function translateSize(
 export function translateMod(field: string, value: unknown): SqlFragment | null {
 	if (!Array.isArray(value) || value.length !== 2) return { sql: '1=0', args: [] };
 	const [divisor, remainder] = value;
+	
+	if (divisor === -1) {
+		return {
+			sql: `((${field} = -9223372036854775808 AND ? = 0) OR (${field} != -9223372036854775808 AND (${field} - (CAST(${field} / ? AS INTEGER) * ?)) = ?))`,
+			args: [remainder, divisor, divisor, remainder]
+		};
+	}
 	
 	// Float modulo: SQLite's CAST AS INTEGER loses precision
 	// Bailout to JS for float divisors/remainders (rare edge case)

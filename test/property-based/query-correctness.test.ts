@@ -42,6 +42,7 @@ const mockDocs: RxDocumentData<TestDocType>[] = [
 	{ id: '9', name: 'Ivy', age: 33, tags: [], active: true, score: 70, scores: [70, 72], metadata: {}, items: [], _deleted: false, _attachments: {}, _rev: '1-i', _meta: { lwt: 9000 } },
 	{ id: '10', name: 'user1', age: 27, tags: [], active: true, score: 85, items: [], _deleted: false, _attachments: {}, _rev: '1-j', _meta: { lwt: 10000 } },
 	{ id: '11', name: 'user2', age: 29, tags: [], active: false, score: 90, items: [], _deleted: false, _attachments: {}, _rev: '1-k', _meta: { lwt: 11000 } },
+	{ id: '12', name: 'Overflow', age: -9223372036854775808, tags: [], active: true, score: -9223372036854775808, items: [], _deleted: false, _attachments: {}, _rev: '1-l', _meta: { lwt: 12000 } },
 ];
 
 function hasKnownMingoBug(query: any): boolean {
@@ -51,6 +52,7 @@ function hasKnownMingoBug(query: any): boolean {
 		if (val && typeof val === 'object' && !Array.isArray(val)) {
 			if (val.$in && Array.isArray(val.$in) && val.$in.some((v: any) => v instanceof RegExp)) return true;
 			if (val.$nin && Array.isArray(val.$nin) && val.$nin.some((v: any) => v instanceof RegExp)) return true;
+			if (val.$mod && Array.isArray(val.$mod)) return true;
 			
 			const keys = Object.keys(val);
 			if (isTopLevel) {
@@ -738,6 +740,13 @@ const MangoQueryArbitrary = () => {
 		{ age: { $mod: [7.2, 1.2] } }       // Float divisor on integer field
 	);
 
+	// BUG FIX 3: INT64_MIN Overflow in $mod (DocumentDB pattern)
+	const modOverflowArb = fc.constantFrom(
+		{ age: { $mod: [-1, 0] } },         // INT64_MIN % -1 overflow
+		{ score: { $mod: [-1, 0] } },       // Should handle gracefully
+		{ count: { $mod: [-1, 0] } }        // On unknown field
+	);
+
 	return fc.oneof(
 		singleOpArb.map(toMangoQuery),
 		andArb,
@@ -794,7 +803,8 @@ const MangoQueryArbitrary = () => {
 		typeArrayTraversalArb,
 		nestedArrayExactMatchArb,
 		twoDArrayFlatteningArb,
-		floatModuloArb
+		floatModuloArb,
+		modOverflowArb
 	);
 };
 
@@ -998,8 +1008,8 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 			}
 		});
 		
-		expect(sqlResults.documents.length).toBe(11);
-		expect(mingoResults.length).toBe(11);
+		expect(sqlResults.documents.length).toBe(12);
+		expect(mingoResults.length).toBe(12);
 	});
 
 	it('BUG 2: Empty object equality should match documents with empty objects', async () => {
