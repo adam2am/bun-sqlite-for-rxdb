@@ -45,22 +45,15 @@ function normalizeValueForSQLite(value: unknown): string | number | boolean | nu
 	return value as string | number | boolean | null;
 }
 
-export function translateEq<RxDocType>(
-	field: string,
-	value: unknown,
-	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
-	actualFieldName?: string
-): SqlFragment | null {
+export function translateEq(field: string, value: unknown): SqlFragment | null {
 	if (value === null) {
 		return { sql: `${field} IS NULL`, args: [] };
 	}
 
-	// Plain objects: Force Mingo fallback (SQLite json() preserves key order, MongoDB doesn't)
 	if (typeof value === 'object' && value !== null && !Array.isArray(value) && !(value instanceof Date) && !(value instanceof RegExp)) {
 		return null;
 	}
 
-	// Arrays: Keep in SQL (arrays ARE ordered in MongoDB)
 	if (Array.isArray(value)) {
 		try {
 			return {
@@ -69,35 +62,6 @@ export function translateEq<RxDocType>(
 			};
 		} catch (e) {
 			return { sql: '1=0', args: [] };
-		}
-	}
-
-	if (schema && actualFieldName) {
-		const columnInfo = getColumnInfo(actualFieldName, schema);
-		
-		if (field !== 'value' && columnInfo.type === 'array') {
-			const comparison = 'value = ?';
-			const guardedSql = addTypeGuard('value', value, comparison);
-			return {
-				sql: `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${guardedSql})`,
-				args: [normalizeValueForSQLite(value)]
-			};
-		}
-		
-		// Only add array traversal for truly unknown fields at the TOP level (not inside $elemMatch)
-		if (field !== 'value' && columnInfo.type === 'unknown' && !actualFieldName.includes('.')) {
-			const isInternalField = actualFieldName === schema.primaryKey || actualFieldName.startsWith('_');
-			
-			if (!isInternalField) {
-				const comparison = 'value = ?';
-				const guardedSql = addTypeGuard('value', value, comparison);
-				const exactMatch = addTypeGuard(field, value, `${field} = ?`);
-				const arrayTraversal = `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${guardedSql})`;
-				return {
-					sql: `(${exactMatch} OR ${arrayTraversal})`,
-					args: [normalizeValueForSQLite(value), normalizeValueForSQLite(value)]
-				};
-			}
 		}
 	}
 
@@ -110,62 +74,14 @@ export function translateEq<RxDocType>(
 
 import { addTypeGuard } from './type-guards';
 
-export function translateNe<RxDocType>(
-	field: string,
-	value: unknown,
-	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
-	actualFieldName?: string
-): SqlFragment {
+export function translateNe(field: string, value: unknown): SqlFragment {
 	if (value === null) {
 		return { sql: `${field} IS NOT NULL`, args: [] };
 	}
-
-	if (schema && actualFieldName) {
-		const columnInfo = getColumnInfo(actualFieldName, schema);
-		if (field !== 'value' && columnInfo.type === 'array') {
-			const comparison = 'value = ?';
-			const guardedSql = addTypeGuard('value', value, comparison);
-			return {
-				sql: `NOT EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${guardedSql})`,
-				args: [normalizeValueForSQLite(value)]
-			};
-		}
-	}
-
 	return { sql: `(${field} <> ? OR ${field} IS NULL)`, args: [normalizeValueForSQLite(value)] };
 }
 
-export function translateGt<RxDocType>(
-	field: string,
-	value: unknown,
-	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
-	actualFieldName?: string
-): SqlFragment {
-	if (schema && actualFieldName) {
-		const columnInfo = getColumnInfo(actualFieldName, schema);
-		if (field !== 'value' && columnInfo.type === 'array') {
-			const comparison = 'value > ?';
-			const guardedSql = addTypeGuard('value', value, comparison);
-			return {
-				sql: `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${guardedSql})`,
-				args: [normalizeValueForSQLite(value)]
-			};
-		}
-		
-		if (field !== 'value' && columnInfo.type === 'unknown' && !actualFieldName.includes('.')) {
-			const isInternalField = actualFieldName === schema.primaryKey || actualFieldName.startsWith('_');
-			if (!isInternalField) {
-				const scalarComparison = `${field} > ?`;
-				const scalarMatch = addTypeGuard(field, value, scalarComparison);
-				const arrayComparison = 'value > ?';
-				const arrayMatch = addTypeGuard('value', value, arrayComparison);
-				return {
-					sql: `(${scalarMatch} OR EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${arrayMatch}))`,
-					args: [normalizeValueForSQLite(value), normalizeValueForSQLite(value)]
-				};
-			}
-		}
-	}
+export function translateGt(field: string, value: unknown): SqlFragment {
 	const comparison = `${field} > ?`;
 	return { 
 		sql: addTypeGuard(field, value, comparison), 
@@ -173,37 +89,7 @@ export function translateGt<RxDocType>(
 	};
 }
 
-export function translateGte<RxDocType>(
-	field: string,
-	value: unknown,
-	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
-	actualFieldName?: string
-): SqlFragment {
-	if (schema && actualFieldName) {
-		const columnInfo = getColumnInfo(actualFieldName, schema);
-		if (field !== 'value' && columnInfo.type === 'array') {
-			const comparison = 'value >= ?';
-			const guardedSql = addTypeGuard('value', value, comparison);
-			return {
-				sql: `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${guardedSql})`,
-				args: [normalizeValueForSQLite(value)]
-			};
-		}
-		
-		if (field !== 'value' && columnInfo.type === 'unknown' && !actualFieldName.includes('.')) {
-			const isInternalField = actualFieldName === schema.primaryKey || actualFieldName.startsWith('_');
-			if (!isInternalField) {
-				const scalarComparison = `${field} >= ?`;
-				const scalarMatch = addTypeGuard(field, value, scalarComparison);
-				const arrayComparison = 'value >= ?';
-				const arrayMatch = addTypeGuard('value', value, arrayComparison);
-				return {
-					sql: `(${scalarMatch} OR EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${arrayMatch}))`,
-					args: [normalizeValueForSQLite(value), normalizeValueForSQLite(value)]
-				};
-			}
-		}
-	}
+export function translateGte(field: string, value: unknown): SqlFragment {
 	const comparison = `${field} >= ?`;
 	return { 
 		sql: addTypeGuard(field, value, comparison), 
@@ -211,37 +97,7 @@ export function translateGte<RxDocType>(
 	};
 }
 
-export function translateLt<RxDocType>(
-	field: string,
-	value: unknown,
-	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
-	actualFieldName?: string
-): SqlFragment {
-	if (schema && actualFieldName) {
-		const columnInfo = getColumnInfo(actualFieldName, schema);
-		if (field !== 'value' && columnInfo.type === 'array') {
-			const comparison = 'value < ?';
-			const guardedSql = addTypeGuard('value', value, comparison);
-			return {
-				sql: `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${guardedSql})`,
-				args: [normalizeValueForSQLite(value)]
-			};
-		}
-		
-		if (field !== 'value' && columnInfo.type === 'unknown' && !actualFieldName.includes('.')) {
-			const isInternalField = actualFieldName === schema.primaryKey || actualFieldName.startsWith('_');
-			if (!isInternalField) {
-				const scalarComparison = `${field} < ?`;
-				const scalarMatch = addTypeGuard(field, value, scalarComparison);
-				const arrayComparison = 'value < ?';
-				const arrayMatch = addTypeGuard('value', value, arrayComparison);
-				return {
-					sql: `(${scalarMatch} OR EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${arrayMatch}))`,
-					args: [normalizeValueForSQLite(value), normalizeValueForSQLite(value)]
-				};
-			}
-		}
-	}
+export function translateLt(field: string, value: unknown): SqlFragment {
 	const comparison = `${field} < ?`;
 	return { 
 		sql: addTypeGuard(field, value, comparison), 
@@ -249,37 +105,7 @@ export function translateLt<RxDocType>(
 	};
 }
 
-export function translateLte<RxDocType>(
-	field: string,
-	value: unknown,
-	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
-	actualFieldName?: string
-): SqlFragment {
-	if (schema && actualFieldName) {
-		const columnInfo = getColumnInfo(actualFieldName, schema);
-		if (field !== 'value' && columnInfo.type === 'array') {
-			const comparison = 'value <= ?';
-			const guardedSql = addTypeGuard('value', value, comparison);
-			return {
-				sql: `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${guardedSql})`,
-				args: [normalizeValueForSQLite(value)]
-			};
-		}
-		
-		if (field !== 'value' && columnInfo.type === 'unknown' && !actualFieldName.includes('.')) {
-			const isInternalField = actualFieldName === schema.primaryKey || actualFieldName.startsWith('_');
-			if (!isInternalField) {
-				const scalarComparison = `${field} <= ?`;
-				const scalarMatch = addTypeGuard(field, value, scalarComparison);
-				const arrayComparison = 'value <= ?';
-				const arrayMatch = addTypeGuard('value', value, arrayComparison);
-				return {
-					sql: `(${scalarMatch} OR EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${arrayMatch}))`,
-					args: [normalizeValueForSQLite(value), normalizeValueForSQLite(value)]
-				};
-			}
-		}
-	}
+export function translateLte(field: string, value: unknown): SqlFragment {
 	const comparison = `${field} <= ?`;
 	return { 
 		sql: addTypeGuard(field, value, comparison), 
@@ -287,16 +113,10 @@ export function translateLte<RxDocType>(
 	};
 }
 
-export function translateIn<RxDocType>(
-	field: string,
-	values: unknown[],
-	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
-	actualFieldName?: string
-): SqlFragment {
+export function translateIn(field: string, values: unknown[]): SqlFragment {
 	if (!Array.isArray(values) || values.length === 0) {
 		return { sql: '1=0', args: [] };
 	}
-
 	const hasNull = values.includes(null);
 	const nonNullValues = values.filter(v => v !== null).map(v => normalizeValueForSQLite(v));
 
@@ -304,79 +124,19 @@ export function translateIn<RxDocType>(
 		return { sql: `${field} IS NULL`, args: [] };
 	}
 
-	if (schema && actualFieldName) {
-		const columnInfo = getColumnInfo(actualFieldName, schema);
-		if (field !== 'value' && columnInfo.type === 'array') {
-			try {
-				const inClause = `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE value IN (SELECT value FROM json_each(?)))`;
-				const args = [JSON.stringify(nonNullValues)];
-
-				if (hasNull) {
-					return {
-						sql: `(${inClause} OR ${field} IS NULL)`,
-						args
-					};
-				}
-
-				return { sql: inClause, args };
-			} catch (e) {
-				return { sql: '1=0', args: [] };
-			}
-		}
-		
-		if (field !== 'value' && columnInfo.type === 'unknown' && !actualFieldName.includes('.')) {
-			const isInternalField = actualFieldName === schema.primaryKey || actualFieldName.startsWith('_');
-			if (!isInternalField) {
-				try {
-					const scalarInClause = `${field} IN (SELECT value FROM json_each(?))`;
-					const arrayInClause = `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE value IN (SELECT value FROM json_each(?)))`;
-					const args = [JSON.stringify(nonNullValues), JSON.stringify(nonNullValues)];
-					
-					if (hasNull) {
-						return {
-							sql: `((${scalarInClause} OR ${arrayInClause}) OR ${field} IS NULL)`,
-							args
-						};
-					}
-					
-					return {
-						sql: `(${scalarInClause} OR ${arrayInClause})`,
-						args
-					};
-				} catch (e) {
-					return { sql: '1=0', args: [] };
-				}
-			}
-		}
-	}
-
 	try {
 		const inClause = `${field} IN (SELECT value FROM json_each(?))`;
 		const args = [JSON.stringify(nonNullValues)];
-
-		if (hasNull) {
-			return {
-				sql: `(${inClause} OR ${field} IS NULL)`,
-				args
-			};
-		}
-
-		return { sql: inClause, args };
+		return hasNull ? { sql: `(${inClause} OR ${field} IS NULL)`, args } : { sql: inClause, args };
 	} catch (e) {
 		return { sql: '1=0', args: [] };
 	}
 }
 
-export function translateNin<RxDocType>(
-	field: string,
-	values: unknown[],
-	schema?: RxJsonSchema<RxDocumentData<RxDocType>>,
-	actualFieldName?: string
-): SqlFragment {
+export function translateNin(field: string, values: unknown[]): SqlFragment {
 	if (!Array.isArray(values) || values.length === 0) {
 		return { sql: '1=1', args: [] };
 	}
-
 	const hasNull = values.includes(null);
 	const nonNullValues = values.filter(v => v !== null).map(v => normalizeValueForSQLite(v));
 
@@ -384,64 +144,10 @@ export function translateNin<RxDocType>(
 		return { sql: `${field} IS NOT NULL`, args: [] };
 	}
 
-	if (schema && actualFieldName) {
-		const columnInfo = getColumnInfo(actualFieldName, schema);
-		if (field !== 'value' && columnInfo.type === 'array') {
-			try {
-				const ninClause = `NOT EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE value IN (SELECT value FROM json_each(?)))`;
-				const args = [JSON.stringify(nonNullValues)];
-
-				if (hasNull) {
-					return {
-						sql: `(${ninClause} AND ${field} IS NOT NULL)`,
-						args
-					};
-				}
-
-				return { sql: `(${field} IS NULL OR ${ninClause})`, args };
-			} catch (e) {
-				return { sql: '1=1', args: [] };
-			}
-		}
-		
-		if (field !== 'value' && columnInfo.type === 'unknown' && !actualFieldName.includes('.')) {
-			const isInternalField = actualFieldName === schema.primaryKey || actualFieldName.startsWith('_');
-			if (!isInternalField) {
-				try {
-					const scalarNinClause = `${field} NOT IN (SELECT value FROM json_each(?))`;
-					const arrayNinClause = `NOT EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE value IN (SELECT value FROM json_each(?)))`;
-					const args = [JSON.stringify(nonNullValues), JSON.stringify(nonNullValues)];
-					
-					if (hasNull) {
-						return {
-							sql: `((${scalarNinClause} AND ${arrayNinClause}) AND ${field} IS NOT NULL)`,
-							args
-						};
-					}
-					
-					return {
-						sql: `(${field} IS NULL OR (${scalarNinClause} AND ${arrayNinClause}))`,
-						args
-					};
-				} catch (e) {
-					return { sql: '1=1', args: [] };
-				}
-			}
-		}
-	}
-
 	try {
 		const ninClause = `${field} NOT IN (SELECT value FROM json_each(?))`;
 		const args = [JSON.stringify(nonNullValues)];
-
-		if (hasNull) {
-			return {
-				sql: `(${ninClause} AND ${field} IS NOT NULL)`,
-				args
-			};
-		}
-
-		return { sql: `(${field} IS NULL OR ${ninClause})`, args };
+		return hasNull ? { sql: `(${ninClause} AND ${field} IS NOT NULL)`, args } : { sql: `(${field} IS NULL OR ${ninClause})`, args };
 	} catch (e) {
 		return { sql: '1=1', args: [] };
 	}
@@ -720,20 +426,9 @@ export function translateLeafOperator<RxDocType>(
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	actualFieldName: string
 ): SqlFragment | null {
-	switch (op) {
-		case '$eq': return translateEq(field, value, schema, actualFieldName);
-		case '$ne': return translateNe(field, value, schema, actualFieldName);
-		case '$gt': return translateGt(field, value, schema, actualFieldName);
-		case '$gte': return translateGte(field, value, schema, actualFieldName);
-		case '$lt': return translateLt(field, value, schema, actualFieldName);
-		case '$lte': return translateLte(field, value, schema, actualFieldName);
-		case '$in': return translateIn(field, value as unknown[], schema, actualFieldName);
-		case '$nin': return translateNin(field, value as unknown[], schema, actualFieldName);
-		case '$exists': return translateExists(field, value as boolean);
-	case '$size': {
+	// Special operators that don't use standard array traversal
+	if (op === '$size') {
 		const columnInfo = getColumnInfo(actualFieldName, schema);
-		
-		// 1. Fast Path: Known non-array (RxDB guarantees schema adherence at write-time)
 		if (columnInfo.type !== 'array' && columnInfo.type !== 'unknown') {
 			return { sql: '1=0', args: [] };
 		}
@@ -749,148 +444,228 @@ export function translateLeafOperator<RxDocType>(
 		}
 		
 		const path = isDirectPath ? jsonPath : `$.${jsonPath}`;
-
-		// 2. Fast Path: Known array (No dynamic type guard needed, saves CPU)
 		if (columnInfo.type === 'array' && !isDirectPath) {
 			return {
 				sql: `json_array_length(${jsonColumn}, '${path}') = ?`,
 				args: [value as number]
 			};
 		}
-		
-		// 3. Safe Path: Unknown type or inside jsonb_each (Dynamic runtime guard)
 		return translateSize(jsonColumn, jsonPath, value as number, isDirectPath);
 	}
-		case '$mod': {
-			const result = translateMod(field, value);
-			if (!result) return translateEq(field, value, schema, actualFieldName);
-			return result;
+
+	if (op === '$elemMatch') {
+		return translateElemMatch(field, value as ElemMatchCriteria, schema, actualFieldName);
+	}
+
+	if (op === '$exists') {
+		return translateExists(field, value as boolean);
+	}
+
+	if (op === '$regex') {
+		let pattern: string;
+		let options: string | undefined;
+
+		if (value instanceof RegExp) {
+			pattern = value.source;
+			options = value.flags;
+		} else if (typeof value === 'string') {
+			pattern = value;
+		} else if (typeof value === 'object' && value !== null) {
+			const regexObj = value as Record<string, unknown>;
+			pattern = regexObj.pattern as string || regexObj.$regex as string;
+			options = regexObj.$options as string | undefined;
+		} else {
+			return null;
 		}
-		case '$regex': {
-			let pattern: string;
-			let options: string | undefined;
+		return translateRegex(field, pattern, options, schema, actualFieldName);
+	}
 
-			if (value instanceof RegExp) {
-				pattern = value.source;
-				options = value.flags;
-			} else if (typeof value === 'string') {
-				pattern = value;
-			} else if (typeof value === 'object' && value !== null) {
-				const regexObj = value as Record<string, unknown>;
-				pattern = regexObj.pattern as string || regexObj.$regex as string;
-				options = regexObj.$options as string | undefined;
-			} else {
-				return null;
+	if (op === '$type') {
+		let jsonCol = 'data';
+		let path = `$.${actualFieldName}`;
+		let useDirectType = false;
+
+		if (field === 'value') {
+			jsonCol = 'value';
+			path = '';
+			useDirectType = true;
+		} else if (field.startsWith('json_extract(')) {
+			const match = field.match(/json_extract\(([^,]+),\s*'([^']+)'\)/);
+			if (match && match[1] && match[2]) {
+				jsonCol = match[1];
+				path = match[2];
 			}
-
-			return translateRegex(field, pattern, options, schema, actualFieldName);
 		}
-		case '$type': {
-			let jsonCol = 'data';
-			let path = `$.${actualFieldName}`;
-			let useDirectType = false;
 
-			if (field === 'value') {
-				jsonCol = 'value';
-				path = '';
-				useDirectType = true;
-			} else if (field.startsWith('json_extract(')) {
-				const match = field.match(/json_extract\(([^,]+),\s*'([^']+)'\)/);
-				if (match && match[1] && match[2]) {
-					jsonCol = match[1];
-					path = match[2];
-				}
-			}
-
-			if (Array.isArray(value)) {
-				const types = value as string[];
-				if (types.length === 0) return { sql: '1=0', args: [] };
-				
-				if (useDirectType) {
-					const typeMap: Record<string, string> = {
-						'null': 'null',
-						'boolean': 'true',
-						'number': 'integer',
-						'string': 'text',
-						'array': 'array',
-						'object': 'object'
-					};
-					const conditions: string[] = [];
-					for (const t of types) {
-						const sqlType = typeMap[t];
-						if (!sqlType) continue;
-						if (t === 'boolean') conditions.push(`(type IN ('true', 'false'))`);
-						else if (t === 'number') conditions.push(`(type IN ('integer', 'real'))`);
-						else conditions.push(`type = '${sqlType}'`);
-					}
-					if (conditions.length === 0) return { sql: '1=0', args: [] };
-					return { sql: `(${conditions.join(' OR ')})`, args: [] };
-				} else {
-					const fragments = types.map(t => translateType(jsonCol, path, t, true)).filter(f => f !== null);
-					if (fragments.length === 0) return { sql: '1=0', args: [] };
-					const sql = fragments.map(f => f!.sql).join(' OR ');
-					return { sql: `(${sql})`, args: [] };
-				}
-			}
-
+		if (Array.isArray(value)) {
+			const types = value as string[];
+			if (types.length === 0) return { sql: '1=0', args: [] };
+			
 			if (useDirectType) {
 				const typeMap: Record<string, string> = {
-					'null': 'null',
-					'boolean': 'true',
-					'number': 'integer',
-					'string': 'text',
-					'array': 'array',
-					'object': 'object'
+					'null': 'null', 'boolean': 'true', 'number': 'integer',
+					'string': 'text', 'array': 'array', 'object': 'object'
 				};
-				const sqlType = typeMap[value as string];
-				if (!sqlType) return { sql: '1=0', args: [] };
-
-				if (value === 'boolean') {
-					return { sql: `(type IN ('true', 'false'))`, args: [] };
+				const conditions: string[] = [];
+				for (const t of types) {
+					const sqlType = typeMap[t];
+					if (!sqlType) continue;
+					if (t === 'boolean') conditions.push(`(type IN ('true', 'false'))`);
+					else if (t === 'number') conditions.push(`(type IN ('integer', 'real'))`);
+					else conditions.push(`type = '${sqlType}'`);
 				}
-				if (value === 'number') {
-					return { sql: `(type IN ('integer', 'real'))`, args: [] };
-				}
-
-				return { sql: `type = '${sqlType}'`, args: [] };
+				if (conditions.length === 0) return { sql: '1=0', args: [] };
+				return { sql: `(${conditions.join(' OR ')})`, args: [] };
+			} else {
+				const fragments = types.map(t => translateType(jsonCol, path, t, true)).filter(f => f !== null);
+				if (fragments.length === 0) return { sql: '1=0', args: [] };
+				const sql = fragments.map(f => f!.sql).join(' OR ');
+				return { sql: `(${sql})`, args: [] };
 			}
-
-			const typeFragment = translateType(jsonCol, path, value as string, true);
-			return typeFragment || { sql: '1=0', args: [] };
 		}
-		case '$all': {
-			if (!Array.isArray(value) || value.length === 0) return { sql: '1=0', args: [] };
-			
-			const fragments: SqlFragment[] = [];
-			for (const val of value) {
-				if (val instanceof RegExp) {
-					const frag = translateLeafOperator('$regex', field, val, schema, actualFieldName);
-					if (!frag) return null;
-					fragments.push(frag);
+
+		if (useDirectType) {
+			const typeMap: Record<string, string> = {
+				'null': 'null', 'boolean': 'true', 'number': 'integer',
+				'string': 'text', 'array': 'array', 'object': 'object'
+			};
+			const sqlType = typeMap[value as string];
+			if (!sqlType) return { sql: '1=0', args: [] };
+
+			if (value === 'boolean') return { sql: `(type IN ('true', 'false'))`, args: [] };
+			if (value === 'number') return { sql: `(type IN ('integer', 'real'))`, args: [] };
+			return { sql: `type = '${sqlType}'`, args: [] };
+		}
+
+		const typeFragment = translateType(jsonCol, path, value as string, true);
+		return typeFragment || { sql: '1=0', args: [] };
+	}
+
+	if (op === '$all') {
+		if (!Array.isArray(value) || value.length === 0) return { sql: '1=0', args: [] };
+		
+		const jsonPath = buildJsonPath(actualFieldName);
+		const fragments: SqlFragment[] = [];
+		
+		for (const val of value) {
+			if (val instanceof RegExp) {
+				const frag = translateRegex('value', val.source, val.flags, schema, actualFieldName);
+				if (!frag) return null;
+				fragments.push(wrapWithArrayTraversal(frag, jsonPath, '$eq'));
 			} else if (typeof val === 'object' && val !== null && !Array.isArray(val) && '$elemMatch' in val) {
 				const frag = translateElemMatch(actualFieldName, (val as { $elemMatch: ElemMatchCriteria }).$elemMatch, schema, actualFieldName);
-					if (!frag) return null;
-					fragments.push(frag);
-				} else {
-					const frag = translateLeafOperator('$eq', field, val, schema, actualFieldName);
-					if (!frag) return null;
-					fragments.push(frag);
-				}
+				if (!frag) return null;
+				fragments.push(frag);
+			} else {
+				const frag = translateEq('value', val);
+				if (!frag) return null;
+				fragments.push(wrapWithArrayTraversal(frag, jsonPath, '$eq'));
 			}
-			return {
-				sql: `(${fragments.map(f => f.sql).join(' AND ')})`,
-				args: fragments.flatMap(f => f.args)
-			};
 		}
+		return {
+			sql: `(${fragments.map(f => f.sql).join(' AND ')})`,
+			args: fragments.flatMap(f => f.args)
+		};
+	}
+
+	// Standard operators with centralized array traversal
+	let scalarFragment: SqlFragment | null = null;
+	let elementFragment: SqlFragment | null = null;
+
+	switch (op) {
+		case '$eq':
+			scalarFragment = translateEq(field, value);
+			elementFragment = translateEq('value', value);
+			break;
+		case '$ne':
+			scalarFragment = translateNe(field, value);
+			elementFragment = translateEq('value', value);
+			break;
+		case '$gt':
+			scalarFragment = translateGt(field, value);
+			elementFragment = translateGt('value', value);
+			break;
+		case '$gte':
+			scalarFragment = translateGte(field, value);
+			elementFragment = translateGte('value', value);
+			break;
+		case '$lt':
+			scalarFragment = translateLt(field, value);
+			elementFragment = translateLt('value', value);
+			break;
+		case '$lte':
+			scalarFragment = translateLte(field, value);
+			elementFragment = translateLte('value', value);
+			break;
+		case '$in':
+			scalarFragment = translateIn(field, value as unknown[]);
+			elementFragment = translateIn('value', value as unknown[]);
+			break;
+		case '$nin':
+			scalarFragment = translateNin(field, value as unknown[]);
+			elementFragment = translateIn('value', value as unknown[]);
+			break;
+		case '$mod':
+			scalarFragment = translateMod(field, value);
+			elementFragment = translateMod('value', value);
+			break;
 		default:
-			return translateEq(field, value, schema, actualFieldName);
+			scalarFragment = translateEq(field, value);
+			elementFragment = translateEq('value', value);
+			break;
+	}
+
+	if (!scalarFragment) return null;
+
+	// Check if array traversal is needed
+	if (field === 'value' || !schema || !actualFieldName) {
+		return scalarFragment;
+	}
+
+	const isInternalField = actualFieldName === schema.primaryKey || actualFieldName.startsWith('_');
+	if (isInternalField || actualFieldName.includes('.')) {
+		return scalarFragment;
+	}
+
+	const columnInfo = getColumnInfo(actualFieldName, schema);
+	if (columnInfo.type !== 'array' && columnInfo.type !== 'unknown') {
+		return scalarFragment;
+	}
+
+	if (!elementFragment) return null;
+
+	const jsonPath = buildJsonPath(actualFieldName);
+	const arrayTraversal = wrapWithArrayTraversal(elementFragment, jsonPath, op);
+
+	if (op === '$ne' || op === '$nin') {
+		return {
+			sql: `(${scalarFragment.sql} AND ${arrayTraversal.sql})`,
+			args: [...scalarFragment.args, ...arrayTraversal.args]
+		};
+	} else {
+		return {
+			sql: `(${scalarFragment.sql} OR ${arrayTraversal.sql})`,
+			args: [...scalarFragment.args, ...arrayTraversal.args]
+		};
 	}
 }
 
-/**
- * Forces any SQL expression into strict 0/1 boolean (NULL → 0)
- * to match MongoDB/Mingo two-valued logic.
- */
+function wrapWithArrayTraversal(elementFragment: SqlFragment, jsonPath: string, op: string): SqlFragment {
+	const existsSql = `EXISTS (SELECT 1 FROM jsonb_each(data, '${jsonPath}') WHERE ${elementFragment.sql})`;
+	
+	if (op === '$ne' || op === '$nin') {
+		return {
+			sql: `NOT ${existsSql}`,
+			args: elementFragment.args
+		};
+	}
+	
+	return {
+		sql: existsSql,
+		args: elementFragment.args
+	};
+}
+
 function asBoolean(sql: string): string {
 	return `COALESCE((${sql}), 0)`;
 }
@@ -951,10 +726,9 @@ export function translateSize(
 export function translateMod(field: string, value: unknown): SqlFragment | null {
 	if (!Array.isArray(value) || value.length !== 2) return { sql: '1=0', args: [] };
 	const [divisor, remainder] = value;
-	// SQLite's % operator casts to INTEGER, but MongoDB's $mod preserves decimals
-	// Use: value - (CAST(value / divisor AS INTEGER) * divisor) = remainder
-	return {
-		sql: `(${field} - (CAST(${field} / ? AS INTEGER) * ?)) = ?`,
-		args: [divisor, divisor, remainder]
+	const comparison = `(${field} - (CAST(${field} / ? AS INTEGER) * ?)) = ?`;
+	return { 
+		sql: addTypeGuard(field, 0, comparison), 
+		args: [divisor, divisor, remainder] 
 	};
 }

@@ -12,6 +12,7 @@ interface TestDocType {
 	tags: string[];
 	active: boolean;
 	score: number;
+	scores?: number[];
 	optional?: string;
 	metadata?: Record<string, any>;
 	unknownField?: any;
@@ -24,15 +25,15 @@ interface TestDocType {
 }
 
 const mockDocs: RxDocumentData<TestDocType>[] = [
-	{ id: '1', name: 'Alice', age: 30, tags: ['admin', 'user'], active: true, score: 95.5, optional: 'present', items: [{ name: 'item1', category: 'A', price: 100, tags: ['new'] }, { name: 'item2', category: 'B', price: 200, tags: ['sale'] }], _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: 1000 } },
-	{ id: '2', name: 'Bob', age: 25, tags: ['user'], active: false, score: 80.0, items: [{ name: 'item3', category: 'A', price: 150, tags: [] }], _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: 2000 } },
-	{ id: '3', name: 'Charlie', age: 35, tags: ['admin', 'moderator'], active: true, score: 88.3, optional: 'value', items: [{ name: 'item4', category: 'C', price: 300, tags: ['premium', 'new'] }], _deleted: false, _attachments: {}, _rev: '1-c', _meta: { lwt: 3000 } },
-	{ id: '4', name: 'David', age: 28, tags: ['user', 'moderator'], active: true, score: 92.1, items: [], _deleted: false, _attachments: {}, _rev: '1-d', _meta: { lwt: 4000 } },
-	{ id: '5', name: 'Eve', age: 22, tags: [], active: false, score: 75.0, optional: undefined, items: [{ name: 'item5', category: 'B', price: 50, tags: ['clearance'] }], _deleted: false, _attachments: {}, _rev: '1-e', _meta: { lwt: 5000 } },
-	{ id: '6', name: 'Frank', age: 40, tags: ['test'], active: true, score: 50, metadata: { a: 1, b: 2 }, unknownField: ['item1', 'item2'], items: [], _deleted: false, _attachments: {}, _rev: '1-f', _meta: { lwt: 6000 } },
-	{ id: '7', name: 'Grace', age: 45, tags: ['test'], active: false, score: 60, metadata: { b: 2, a: 1 }, unknownField: 'item1', items: [], _deleted: false, _attachments: {}, _rev: '1-g', _meta: { lwt: 7000 } },
-	{ id: '8', name: 'Hank', age: 50, tags: [], active: true, score: 10, optional: null as any, items: [], _deleted: false, _attachments: {}, _rev: '1-h', _meta: { lwt: 8000 } },
-	{ id: '9', name: 'Ivy', age: 33, tags: [], active: true, score: 70, metadata: {}, items: [], _deleted: false, _attachments: {}, _rev: '1-i', _meta: { lwt: 9000 } },
+	{ id: '1', name: 'Alice', age: 30, tags: ['admin', 'user'], active: true, score: 95.5, scores: [85, 90, 92], optional: 'present', items: [{ name: 'item1', category: 'A', price: 100, tags: ['new'] }, { name: 'item2', category: 'B', price: 200, tags: ['sale'] }], _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: 1000 } },
+	{ id: '2', name: 'Bob', age: 25, tags: ['user'], active: false, score: 80.0, scores: [80, 88], items: [{ name: 'item3', category: 'A', price: 150, tags: [] }], _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: 2000 } },
+	{ id: '3', name: 'Charlie', age: 35, tags: ['admin', 'moderator'], active: true, score: 88.3, scores: [75, 81, 95], optional: 'value', items: [{ name: 'item4', category: 'C', price: 300, tags: ['premium', 'new'] }], _deleted: false, _attachments: {}, _rev: '1-c', _meta: { lwt: 3000 } },
+	{ id: '4', name: 'David', age: 28, tags: ['user', 'moderator'], active: true, score: 92.1, scores: [91, 93], items: [], _deleted: false, _attachments: {}, _rev: '1-d', _meta: { lwt: 4000 } },
+	{ id: '5', name: 'Eve', age: 22, tags: [], active: false, score: 75.0, scores: [70, 75, 80], optional: undefined, items: [{ name: 'item5', category: 'B', price: 50, tags: ['clearance'] }], _deleted: false, _attachments: {}, _rev: '1-e', _meta: { lwt: 5000 } },
+	{ id: '6', name: 'Frank', age: 40, tags: ['test'], active: true, score: 50, scores: [50, 55], metadata: { a: 1, b: 2 }, unknownField: ['item1', 'item2'], items: [], _deleted: false, _attachments: {}, _rev: '1-f', _meta: { lwt: 6000 } },
+	{ id: '7', name: 'Grace', age: 45, tags: ['test'], active: false, score: 60, scores: [60, 65], metadata: { b: 2, a: 1 }, unknownField: 'item1', items: [], _deleted: false, _attachments: {}, _rev: '1-g', _meta: { lwt: 7000 } },
+	{ id: '8', name: 'Hank', age: 50, tags: [], active: true, score: 10, scores: [10, 15], optional: null as any, items: [], _deleted: false, _attachments: {}, _rev: '1-h', _meta: { lwt: 8000 } },
+	{ id: '9', name: 'Ivy', age: 33, tags: [], active: true, score: 70, scores: [70, 72], metadata: {}, items: [], _deleted: false, _attachments: {}, _rev: '1-i', _meta: { lwt: 9000 } },
 ];
 
 // Arbitrary generators for Mango query operators
@@ -132,6 +133,18 @@ const MangoQueryArbitrary = () => {
 		op: fc.constant('$mod'),
 		value: fc.tuple(fc.integer({ min: 2, max: 5 }), fc.integer({ min: 0, max: 4 }))
 	});
+	
+	const modOnArrayArb = fc.record({
+		field: fc.constant('scores'),
+		op: fc.constant('$mod'),
+		value: fc.tuple(fc.integer({ min: 2, max: 5 }), fc.integer({ min: 0, max: 4 }))
+	});
+	
+	const modOnUnknownArrayArb = fc.constantFrom(
+		{ unknownField: { $mod: [5, 0] } },
+		{ unknownField: { $mod: [2, 0] } },
+		{ unknownField: { $mod: [3, 1] } }
+	);
 	
 	const allArb = fc.record({
 		field: fc.constant('tags'),
@@ -400,7 +413,7 @@ const MangoQueryArbitrary = () => {
 	const singleOpArb = fc.oneof(
 		eqArb, neArb, gtArb, gteArb, ltArb, lteArb, 
 		inArb, ninArb, existsArb,
-		sizeArb, sizeOnNonArrayArb, modArb, 
+		sizeArb, sizeOnNonArrayArb, modArb, modOnArrayArb,
 		allArb,
 		regexArb, 
 		typeArb, typeArrayArb,
@@ -584,7 +597,8 @@ const MangoQueryArbitrary = () => {
 		elemMatchNoArrayTraversalArb,
 		sizeKnownArrayArb,
 		nestedObjectEqualityArb,
-		mixedObjectAndArrayArb
+		mixedObjectAndArrayArb,
+		modOnUnknownArrayArb
 	);
 };
 
@@ -603,15 +617,16 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 				primaryKey: 'id',
 				type: 'object',
 				properties: {
-					id: { type: 'string', maxLength: 100 },
-					name: { type: 'string' },
-					age: { type: 'number' },
-					tags: { type: 'array', items: { type: 'string' } },
-					active: { type: 'boolean' },
-					score: { type: 'number' },
-				optional: { type: 'string' },
-				metadata: { type: 'object' },
-				unknownField: {},
+				id: { type: 'string', maxLength: 100 },
+				name: { type: 'string' },
+				age: { type: 'number' },
+				tags: { type: 'array', items: { type: 'string' } },
+				active: { type: 'boolean' },
+				score: { type: 'number' },
+				scores: { type: 'array', items: { type: 'number' } },
+			optional: { type: 'string' },
+			metadata: { type: 'object' },
+			unknownField: {},
 				items: {
 						type: 'array',
 						items: {

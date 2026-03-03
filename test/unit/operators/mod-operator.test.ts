@@ -16,7 +16,7 @@ describe('$mod Operator', () => {
 
 	it('handles divisor of 1', () => {
 		const result = translateMod('value', [1, 0]);
-		expect(result?.sql).toBe('(value - (CAST(value / ? AS INTEGER) * ?)) = ?');
+		expect(result?.sql).toBe('(type IN (\'integer\', \'real\') AND (value - (CAST(value / ? AS INTEGER) * ?)) = ?)');
 		expect(result?.args).toEqual([1, 1, 0]);
 	});
 });
