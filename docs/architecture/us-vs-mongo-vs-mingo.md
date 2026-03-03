@@ -1,18 +1,133 @@
-# Mingo Correctness: Why Our Implementation is More Accurate
+# Us vs MongoDB vs Mingo: Our Query Philosophy
 
 ## Executive Summary
 
-Our SQLite-based query engine achieves **100% MongoDB specification compliance** in edge cases where Mingo (the reference JavaScript MongoDB query engine) deviates from official MongoDB behavior.
+Our SQLite-based query engine follows a **3-tier decision framework** that balances MongoDB compatibility, user experience, and correctness.
+
+**Our Philosophy:**
+- **Tier 1 (EXTEND)**: Go beyond MongoDB spec when it improves UX
+- **Tier 2 (FOLLOW)**: Match MongoDB spec when Mingo deviates
+- **Tier 3 (TOLERANT)**: Accept both formats, normalize internally
 
 **Test Results:**
 - **Our Implementation**: 10/10 tests correct (100%)
 - **Mingo Implementation**: 6/10 tests with Mingo comparison, 1 correct (17%)
 
-This document explains why these differences exist, provides official MongoDB documentation as proof, and demonstrates why our stricter implementation is a feature, not a bug.
+This document explains our decision-making framework, provides official MongoDB documentation as proof, and demonstrates why our approach is consistent and correct.
 
 ---
 
-## The Four Critical Differences
+## Our 3-Tier Decision Framework
+
+### Tier 1: EXTEND Beyond MongoDB (Better UX)
+
+We support features that MongoDB/Mingo REJECT when they improve user experience and are semantically correct.
+
+**Example: Top-level `$not` operator**
+
+```javascript
+// MongoDB/Mingo: REJECT
+{ $not: { $and: [{ price: { $gt: 20 } }, { price: { $lt: 100 } }] } }
+
+// Us: SUPPORT (cleaner than De Morgan's law)
+// Translates to: NOT (price > 20 AND price < 100)
+```
+
+**Rationale:**
+- Cleaner code (no mental gymnastics with De Morgan's law)
+- Trivial SQL translation: `NOT (...)`
+- Semantically correct transformation
+- Consistent with Tolerant Reader pattern
+
+**Real-world use case:**
+```javascript
+// ❌ WITHOUT top-level $not (De Morgan's law - brain hurts)
+collection.find({
+  $or: [
+    { price: { $lte: 20 } },
+    { price: { $gte: 100 } }
+  ]
+})
+
+// ✅ WITH top-level $not (reads like English)
+collection.find({
+  $not: {
+    $and: [
+      { price: { $gt: 20 } },
+      { price: { $lt: 100 } }
+    ]
+  }
+})
+// "NOT (price > 20 AND price < 100)" = "price NOT between 20 and 100"
+```
+
+**Source:** Pattern #30 in architectural-patterns.md
+
+---
+
+### Tier 2: FOLLOW MongoDB Spec (Mingo Deviates)
+
+We match MongoDB's official behavior when Mingo deviates from the spec.
+
+**Example: RegExp in `$in`/`$nin` arrays**
+
+```javascript
+// MongoDB: SUPPORTS (documented feature)
+{ name: { $in: ["admin", /^guest/] } }
+
+// Mingo: IGNORES RegExp (bug, not design choice)
+// Us: FOLLOW MongoDB spec
+```
+
+**Rationale:**
+- MongoDB OFFICIALLY supports this (not an extension we invented)
+- Security-critical: `$nin` with RegExp prevents unauthorized access
+- Mingo is objectively wrong (ignores documented MongoDB feature)
+- Consistent with our pattern: Follow spec when Mingo deviates
+
+---
+
+### Tier 3: TOLERANT Reader (Accept Both)
+
+We accept both MongoDB format AND Mingo format, normalizing internally.
+
+**Example: Date/RegExp normalization**
+
+```javascript
+// Accept both formats
+{ createdAt: new Date('2024-01-01') }  // MongoDB format
+{ name: /pattern/i }                    // Mingo format
+
+// Normalize internally for SQLite
+Date → ISO 8601 string (toISOString)
+RegExp → JSON with source/flags
+undefined → null
+```
+
+**Rationale:**
+- "Be liberal in what you accept, conservative in what you send" (Postel's Law)
+- Maintains RxDB ecosystem compatibility
+- SQLite requires primitives in bindings (no objects)
+
+---
+
+## Comparison Table: Us vs MongoDB vs Mingo
+
+| Decision | MongoDB | Mingo | Us | Tier | Rationale |
+|----------|---------|-------|-----|------|-----------|
+| **Top-level $not** | ❌ Reject | ❌ Reject | ✅ Support | 1 (EXTEND) | Better UX, cleaner code |
+| **Field $not + $or** | ❌ Reject | ❌ Reject | ✅ Support | 1 (EXTEND) | RxDB passes raw queries |
+| **RegExp in $in/$nin** | ✅ Support | ❌ Ignore | ✅ Support | 2 (FOLLOW) | Follow spec, security-critical |
+| **Object key-order** | ✅ Strict | ❌ Loose | ✅ Strict | 2 (FOLLOW) | BSON semantics |
+| **Cross-type compare** | ❌ Reject | ✅ Allow | ❌ Reject | 2 (FOLLOW) | Type safety |
+| **Empty array nested** | ✅ Strict | ❌ Loose | ✅ Strict | 2 (FOLLOW) | Array traversal semantics |
+| **Date/RegExp format** | ✅ Objects | ✅ Objects | ✅ Both | 3 (TOLERANT) | Accept more, normalize |
+
+**Pattern:** We EXTEND for UX (Tier 1), FOLLOW spec when Mingo deviates (Tier 2), ACCEPT both formats (Tier 3).
+
+---
+
+## The Four Critical Differences (Tier 2: FOLLOW Spec)
 
 **Note:** While we document four areas where Mingo deviates from MongoDB, the `$all` operator with RegExp works correctly in both implementations (test 1c confirms this).
 
@@ -343,14 +458,56 @@ Mingo Comparisons:   6/10 tests compare against Mingo
 
 ---
 
-## Conclusion
+## Conclusion: Consistent Philosophy, Not Contradictions
 
-Our implementation prioritizes **MongoDB specification compliance** over **Mingo compatibility**. This is a deliberate design decision backed by:
+Our 3-tier framework is **internally consistent**:
 
-1. ✅ Official MongoDB documentation
-2. ✅ MongoDB's own test suite
-3. ✅ Real-world production usage patterns
-4. ✅ Comprehensive test coverage (100% pass rate)
+### Tier 1 (EXTEND): Better UX
+- Top-level `$not`: MongoDB says NO, we say YES
+- Field-level `$not` + nested operators: MongoDB says NO, we say YES
+- **Why**: Improves developer experience, semantically correct, trivial SQL translation
+
+### Tier 2 (FOLLOW): MongoDB Spec Compliance
+- RegExp in `$in`/`$nin`: MongoDB says YES, Mingo says NO → We follow MongoDB
+- Object key-order: MongoDB says STRICT, Mingo says LOOSE → We follow MongoDB
+- Cross-type comparisons: MongoDB says REJECT, Mingo says ALLOW → We follow MongoDB
+- **Why**: MongoDB is the source of truth, not Mingo
+
+### Tier 3 (TOLERANT): Accept More Input
+- Date/RegExp normalization: Accept both formats, normalize internally
+- **Why**: "Be liberal in what you accept, conservative in what you send"
+
+### The Key Distinction
+
+**EXTENDING (Tier 1):**
+```javascript
+// MongoDB says NO, we say YES (better UX)
+{ $not: { $and: [{ price: { $gt: 20 } }, { price: { $lt: 100 } }] } }
+```
+
+**FOLLOWING SPEC (Tier 2):**
+```javascript
+// MongoDB says YES, Mingo says NO (Mingo bug)
+{ role: { $nin: [/^admin/] } }  // Security-critical!
+```
+
+### Why RegExp in `$in`/`$nin` is Tier 2 (Not Tier 1)
+
+1. MongoDB OFFICIALLY supports it (not an extension we invented)
+2. Security-critical (`$nin` with RegExp prevents unauthorized access)
+3. Mingo is objectively wrong (ignores documented MongoDB feature)
+4. Consistent with our documented pattern: Follow MongoDB when Mingo deviates
+
+### Summary
+
+We're not contradicting ourselves - we're applying the same framework:
+- **Tier 1**: Extend beyond MongoDB for UX (top-level `$not`)
+- **Tier 2**: Follow MongoDB when Mingo deviates (RegExp in `$in`/`$nin`)
+- **Tier 3**: Accept both formats (Date/RegExp normalization)
+
+**The real question isn't "MongoDB vs Mingo" - it's "What does the spec say?"**
+
+And the spec says RegExp in `$in`/`$nin` is supported. We're not being MORE strict than MongoDB - we're matching MongoDB's OFFICIAL behavior.
 
 **The "failures" in Mingo-based tests are actually proof that we're MORE correct than the reference implementation.**
 
