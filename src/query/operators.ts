@@ -698,13 +698,12 @@ export function translateLeafOperator<RxDocType>(
 		const target = field === 'value' ? 'value' : `data, '${jsonPath}'`;
 		const arrayCheck = field === 'value' ? `type = 'array'` : `json_type(${target}) = 'array'`;
 		const fragments: SqlFragment[] = [];
-		const depth = Math.max(1, actualFieldName.split('.').length - 1);
 		
 		for (const val of value) {
 			if (val instanceof RegExp) {
 				const frag = translateRegex('value', val.source, val.flags, schema, actualFieldName);
 				if (!frag) return null;
-				fragments.push(wrapWithArrayTraversal(frag, jsonPath, '$eq', depth));
+				fragments.push(wrapWithArrayTraversal(frag, jsonPath, '$eq', 0));
 			} else if (typeof val === 'object' && val !== null && !Array.isArray(val) && '$elemMatch' in val) {
 				const frag = translateElemMatch(field, (val as { $elemMatch: ElemMatchCriteria }).$elemMatch, schema, actualFieldName);
 				if (!frag) return null;
@@ -712,7 +711,7 @@ export function translateLeafOperator<RxDocType>(
 			} else {
 				const frag = translateEq('value', val);
 				if (!frag) return null;
-				fragments.push(wrapWithArrayTraversal(frag, jsonPath, '$eq', depth));
+				fragments.push(wrapWithArrayTraversal(frag, jsonPath, '$eq', 0));
 			}
 		}
 		return {
@@ -864,8 +863,13 @@ export function translateType(
 		case 'null': return { sql: `json_type(${safeColumn}, '${jsonPath}') = 'null'`, args: [] };
 		case 'boolean':
 		case 'bool': return { sql: `json_type(${safeColumn}, '${jsonPath}') IN ('true', 'false')`, args: [] };
-		case 'number':
 		case 'int':
+		case '16':
+			return { 
+				sql: `(json_type(${safeColumn}, '${jsonPath}') IN ('integer', 'real') AND CAST(json_extract(${safeColumn}, '${jsonPath}') AS INTEGER) = json_extract(${safeColumn}, '${jsonPath}'))`, 
+				args: [] 
+			};
+		case 'number':
 		case 'long':
 		case 'double':
 		case 'decimal': return { sql: `json_type(${safeColumn}, '${jsonPath}') IN ('integer', 'real')`, args: [] };
