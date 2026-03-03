@@ -12,12 +12,33 @@ export type ElemMatchCriteria = QueryValue | OperatorExpression;
 
 import { smartRegexToLike } from './smart-regex';
 
-export function buildJsonPath(fieldName: string): string {
+export function buildJsonPath(fieldName: string, schema?: RxJsonSchema<any>): string {
 	const segments = fieldName.split('.');
 	let path = '$';
-	for (const segment of segments) {
+	
+	for (let i = 0; i < segments.length; i++) {
+		const segment = segments[i];
+		
 		if (/^\d+$/.test(segment)) {
-			path += `[${segment}]`;
+			// Determine if this is an object key or array index
+			if (schema) {
+				const parentPath = segments.slice(0, i).join('.');
+				const parentInfo = parentPath ? getColumnInfo(parentPath, schema) : { type: 'unknown' };
+				
+				if (parentInfo.type === 'object') {
+					// Numeric object key - use quoted syntax
+					path += `."${segment}"`;
+				} else if (parentInfo.type === 'array') {
+					// Array index - use bracket syntax
+					path += `[${segment}]`;
+				} else {
+					// Unknown - use bracket (default behavior)
+					path += `[${segment}]`;
+				}
+			} else {
+				// No schema - default to array index
+				path += `[${segment}]`;
+			}
 		} else {
 			const escaped = segment.replace(/'/g, "''");
 			path += `.${escaped}`;
@@ -193,7 +214,7 @@ export function translateRegex<RxDocType>(
 		const smartResult = smartRegexToLike('value', pattern, options, schema, fieldName);
 		if (smartResult) {
 			return {
-				sql: `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(fieldName)}') WHERE ${smartResult.sql})`,
+				sql: `EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(fieldName, schema)}') WHERE ${smartResult.sql})`,
 				args: smartResult.args
 			};
 		}
@@ -208,7 +229,7 @@ export function translateRegex<RxDocType>(
 			
 			if (scalarMatch && arrayMatch) {
 				return {
-					sql: `(${scalarMatch.sql} OR EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(fieldName)}') WHERE ${arrayMatch.sql}))`,
+					sql: `(${scalarMatch.sql} OR EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(fieldName, schema)}') WHERE ${arrayMatch.sql}))`,
 					args: [...scalarMatch.args, ...arrayMatch.args]
 				};
 			}
@@ -280,7 +301,7 @@ function handleFieldCondition<RxDocType>(
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	baseFieldName: string
 ): SqlFragment | null {
-	const propertyField = `json_extract(value, '${buildJsonPath(fieldName)}')`;
+	const propertyField = `json_extract(value, '${buildJsonPath(fieldName, schema)}')`;
 	const nestedFieldName = `${baseFieldName}.${fieldName}`;
 
 	if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
@@ -378,13 +399,15 @@ export function translateElemMatch<RxDocType>(
 		return null;
 	}
 
+	const jsonPath = buildJsonPath(actualFieldName, schema);
+
 	if (criteria.$and && Array.isArray(criteria.$and)) {
 		const fragments = criteria.$and.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond, schema, actualFieldName));
 		if (fragments.some(f => f === null)) return null;
 		const sql = fragments.map(f => `COALESCE((${f!.sql}), 0)`).join(' AND ');
 		const args = fragments.flatMap(f => f!.args);
 		return {
-			sql: `(json_type(data, '${buildJsonPath(actualFieldName)}') = 'array' AND EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${sql}))`,
+			sql: `(json_type(data, '${jsonPath}') = 'array' AND EXISTS (SELECT 1 FROM jsonb_each(data, '${jsonPath}') WHERE ${sql}))`,
 			args
 		};
 	}
@@ -395,7 +418,7 @@ export function translateElemMatch<RxDocType>(
 		const sql = fragments.map(f => `COALESCE((${f!.sql}), 0)`).join(' OR ');
 		const args = fragments.flatMap(f => f!.args);
 		return {
-			sql: `(json_type(data, '${buildJsonPath(actualFieldName)}') = 'array' AND EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${sql}))`,
+			sql: `(json_type(data, '${jsonPath}') = 'array' AND EXISTS (SELECT 1 FROM jsonb_each(data, '${jsonPath}') WHERE ${sql}))`,
 			args
 		};
 	}
@@ -406,7 +429,7 @@ export function translateElemMatch<RxDocType>(
 		const sql = fragments.map(f => `COALESCE((${f!.sql}), 0)`).join(' OR ');
 		const args = fragments.flatMap(f => f!.args);
 		return {
-			sql: `(json_type(data, '${buildJsonPath(actualFieldName)}') = 'array' AND EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE NOT (${sql})))`,
+			sql: `(json_type(data, '${jsonPath}') = 'array' AND EXISTS (SELECT 1 FROM jsonb_each(data, '${jsonPath}') WHERE NOT (${sql})))`,
 			args
 		};
 	}
@@ -414,7 +437,7 @@ export function translateElemMatch<RxDocType>(
 	const fragment = buildElemMatchConditions(criteria as Record<string, unknown>, schema, actualFieldName);
 	if (!fragment) return null;
 	return {
-		sql: `(json_type(data, '${buildJsonPath(actualFieldName)}') = 'array' AND EXISTS (SELECT 1 FROM jsonb_each(data, '${buildJsonPath(actualFieldName)}') WHERE ${asBoolean(fragment.sql)}))`,
+		sql: `(json_type(data, '${jsonPath}') = 'array' AND EXISTS (SELECT 1 FROM jsonb_each(data, '${jsonPath}') WHERE ${asBoolean(fragment.sql)}))`,
 		args: fragment.args
 	};
 }
@@ -426,9 +449,40 @@ export function translateLeafOperator<RxDocType>(
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	actualFieldName: string
 ): SqlFragment | null {
+	const columnInfo = getColumnInfo(actualFieldName, schema);
+	const isRawColumn = !!columnInfo.column;
+
+	if (isRawColumn && value !== null && value !== undefined) {
+		const valueType = Array.isArray(value) ? 'array' : typeof value;
+		const schemaType = String(columnInfo.type);
+		
+		if (schemaType !== valueType && schemaType !== 'unknown') {
+			if (['$eq', '$gt', '$gte', '$lt', '$lte', '$in', '$mod', '$regex'].includes(op)) {
+				return { sql: '1=0', args: [] };
+			}
+			if (['$ne', '$nin'].includes(op)) {
+				return { sql: '1=1', args: [] };
+			}
+		}
+	}
+
+	if (op === '$type' && isRawColumn) {
+		const targetTypes = Array.isArray(value) ? value : [value];
+		const schemaType = String(columnInfo.type);
+		const match = targetTypes.some(t => {
+			const typeStr = String(t);
+			if (typeStr === 'string' || typeStr === '2') return schemaType === 'string';
+			if (['number', '1', '16', '18', '19'].includes(typeStr)) return schemaType === 'number';
+			if (typeStr === 'boolean' || typeStr === '8') return schemaType === 'boolean';
+			if (typeStr === 'array' || typeStr === '4') return schemaType === 'array';
+			if (typeStr === 'object' || typeStr === '3') return schemaType === 'object';
+			return false;
+		});
+		return { sql: match ? '1=1' : '1=0', args: [] };
+	}
+
 	// Special operators that don't use standard array traversal
 	if (op === '$size') {
-		const columnInfo = getColumnInfo(actualFieldName, schema);
 		if (columnInfo.type !== 'array' && columnInfo.type !== 'unknown') {
 			return { sql: '1=0', args: [] };
 		}
@@ -544,7 +598,7 @@ export function translateLeafOperator<RxDocType>(
 	if (op === '$all') {
 		if (!Array.isArray(value) || value.length === 0) return { sql: '1=0', args: [] };
 		
-		const jsonPath = buildJsonPath(actualFieldName);
+		const jsonPath = buildJsonPath(actualFieldName, schema);
 		const fragments: SqlFragment[] = [];
 		
 		for (const val of value) {
@@ -627,14 +681,13 @@ export function translateLeafOperator<RxDocType>(
 		return scalarFragment;
 	}
 
-	const columnInfo = getColumnInfo(actualFieldName, schema);
 	if (columnInfo.type !== 'array' && columnInfo.type !== 'unknown') {
 		return scalarFragment;
 	}
 
 	if (!elementFragment) return null;
 
-	const jsonPath = buildJsonPath(actualFieldName);
+	const jsonPath = buildJsonPath(actualFieldName, schema);
 	const arrayTraversal = wrapWithArrayTraversal(elementFragment, jsonPath, op);
 
 	if (op === '$ne' || op === '$nin') {
@@ -681,12 +734,19 @@ export function wrapWithNot(innerFragment: SqlFragment): SqlFragment {
 export function translateType(
 	jsonColumn: string,
 	fieldName: string,
-	type: string,
+	type: string | number,
 	isDirectPath: boolean = false
 ): SqlFragment | null {
 	const jsonPath = isDirectPath ? fieldName : `$.${fieldName}`;
 
-	switch (type) {
+	let typeStr = String(type);
+	const bsonMap: Record<string, string> = {
+		'1': 'number', '2': 'string', '3': 'object', '4': 'array',
+		'8': 'boolean', '10': 'null', '16': 'number', '18': 'number', '19': 'number'
+	};
+	if (bsonMap[typeStr]) typeStr = bsonMap[typeStr];
+
+	switch (typeStr) {
 		case 'null': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'null'`, args: [] };
 		case 'boolean':
 		case 'bool': return { sql: `json_type(${jsonColumn}, '${jsonPath}') IN ('true', 'false')`, args: [] };
@@ -698,7 +758,7 @@ export function translateType(
 		case 'string': return { sql: `COALESCE(json_type(${jsonColumn}, '${jsonPath}') = 'text', 0)`, args: [] };
 		case 'array': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'array'`, args: [] };
 		case 'object': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'object'`, args: [] };
-		default: return null; // Fallback to SQL 1=0 (matches Mingo behavior)
+		default: return null;
 	}
 }
 

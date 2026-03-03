@@ -190,7 +190,7 @@ function processSelector<RxDocType>(
 		}
 
 		const columnInfo = getColumnInfo(field, schema);
-		const fieldName = columnInfo.column || `json_extract(data, '${buildJsonPath(field)}')`;
+		const fieldName = columnInfo.column || `json_extract(data, '${buildJsonPath(field, schema)}')`;
 		const actualFieldName = field;
 
 		if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
@@ -351,7 +351,7 @@ function processSelector<RxDocType>(
 					// Skip $options - it's handled together with $regex
 					continue;
 				} else if (!op.startsWith('$')) {
-					const jsonPath = `json_extract(${fieldName}, '${buildJsonPath(op)}')`;
+					const jsonPath = `json_extract(${fieldName}, '${buildJsonPath(op, schema)}')`;
 					const nestedFieldName = `${actualFieldName}.${op}`;
 					const leafFrag = translateLeafOperator('$eq', jsonPath, opValue, schema, nestedFieldName);
 					if (!leafFrag) return null;
