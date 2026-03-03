@@ -45,7 +45,7 @@ const mockDocs: RxDocumentData<TestDocType>[] = [
 ];
 
 function hasKnownMingoBug(query: any): boolean {
-	const checkValue = (val: any, isTopLevel = false): boolean => {
+	const checkValue = (val: any, isTopLevel = false, fieldName?: string): boolean => {
 		if (val instanceof RegExp) return true;
 		if (Array.isArray(val)) return val.some(v => checkValue(v, false));
 		if (val && typeof val === 'object' && !Array.isArray(val)) {
@@ -57,6 +57,15 @@ function hasKnownMingoBug(query: any): boolean {
 				for (const key of keys) {
 					if (!key.startsWith('$')) {
 						const fieldVal = val[key];
+						
+						if (key === 'matrix' && fieldVal && typeof fieldVal === 'object') {
+							if (fieldVal.$gt !== undefined || fieldVal.$gte !== undefined || 
+							    fieldVal.$lt !== undefined || fieldVal.$lte !== undefined || 
+							    fieldVal.$all !== undefined || fieldVal.$in !== undefined) {
+								return true;
+							}
+						}
+						
 						if (fieldVal && typeof fieldVal === 'object' && !Array.isArray(fieldVal) && !(fieldVal instanceof RegExp)) {
 							const fieldKeys = Object.keys(fieldVal);
 							if (fieldKeys.length > 0 && !fieldKeys[0].startsWith('$')) {
@@ -67,7 +76,7 @@ function hasKnownMingoBug(query: any): boolean {
 							return true;
 						}
 					}
-					if (checkValue(val[key], false)) return true;
+					if (checkValue(val[key], false, key)) return true;
 				}
 			} else {
 				return Object.values(val).some(v => checkValue(v, false));
@@ -711,6 +720,24 @@ const MangoQueryArbitrary = () => {
 		{ 'items.tags': [] }                // Should match empty array
 	);
 
+	// BUG FIX 1: 2D Array Flattening (Recursive CTE with depth-based flattening)
+	const twoDArrayFlatteningArb = fc.constantFrom(
+		{ matrix: 1 },                      // Should match [[1, 2], [3, 4]] by flattening
+		{ matrix: 2 },                      // Should match [[1, 2], [3, 4]]
+		{ matrix: 10 },                     // Should match [[1, 2], [3, 10]]
+		{ matrix: { $in: [1, 5, 10] } },    // Should match multiple 2D arrays
+		{ matrix: { $gt: 8 } },             // Should match elements > 8 in 2D arrays
+		{ matrix: { $all: [1, 2] } }        // Should match if 2D array contains both 1 and 2
+	);
+
+	// BUG FIX 2: Float Modulo (Bailout to JS for float divisors)
+	const floatModuloArb = fc.constantFrom(
+		{ score: { $mod: [4.5, 2] } },      // Float divisor - should bailout to JS
+		{ score: { $mod: [3, 1.5] } },      // Float remainder - should bailout to JS
+		{ score: { $mod: [2.5, 0] } },      // Float divisor with 0 remainder
+		{ age: { $mod: [7.2, 1.2] } }       // Float divisor on integer field
+	);
+
 	return fc.oneof(
 		singleOpArb.map(toMangoQuery),
 		andArb,
@@ -765,7 +792,9 @@ const MangoQueryArbitrary = () => {
 		notWithRegexArb,
 		inWithRegexArb,
 		typeArrayTraversalArb,
-		nestedArrayExactMatchArb
+		nestedArrayExactMatchArb,
+		twoDArrayFlatteningArb,
+		floatModuloArb
 	);
 };
 
@@ -774,7 +803,7 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 	let instance: RxStorageInstance<TestDocType, BunSQLiteInternals, BunSQLiteStorageSettings>;
 	
 	beforeEach(async () => {
-		storage = getRxStorageBunSQLite();
+		storage = getRxStorageBunSQLite({ strict: true });
 		instance = await storage.createStorageInstance<TestDocType>({
 			databaseInstanceToken: 'test-token-pbt',
 			databaseName: 'testdb-pbt',
