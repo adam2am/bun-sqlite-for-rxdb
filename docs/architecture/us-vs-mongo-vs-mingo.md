@@ -23,7 +23,7 @@ This document explains our decision-making framework, provides official MongoDB 
 
 We support features that MongoDB/Mingo REJECT when they improve user experience and are semantically correct.
 
-**Example: Top-level `$not` operator**
+**Example 1: Top-level `$not` operator**
 
 ```javascript
 // MongoDB/Mingo: REJECT
@@ -33,13 +33,26 @@ We support features that MongoDB/Mingo REJECT when they improve user experience 
 // Translates to: NOT (price > 20 AND price < 100)
 ```
 
+**Example 2: Field-level `$not` with nested operators (deep sequences)**
+
+```javascript
+// MongoDB/Mingo: REJECT
+{ status: { $not: { $or: [{ $eq: 'pending' }, { $eq: 'draft' }] } } }
+
+// Us: SUPPORT (RxDB passes raw queries, we handle edge cases)
+// Translates to: status NOT IN ('pending', 'draft')
+```
+
 **Rationale:**
 - Cleaner code (no mental gymnastics with De Morgan's law)
 - Trivial SQL translation: `NOT (...)`
 - Semantically correct transformation
 - Consistent with Tolerant Reader pattern
+- **RxDB passes raw queries to storage** - we handle edge cases MongoDB rejects
 
-**Real-world use case:**
+**Real-world use cases:**
+
+**Top-level $not:**
 ```javascript
 // ❌ WITHOUT top-level $not (De Morgan's law - brain hurts)
 collection.find({
@@ -59,6 +72,20 @@ collection.find({
   }
 })
 // "NOT (price > 20 AND price < 100)" = "price NOT between 20 and 100"
+```
+
+**Field-level $not (deep sequences):**
+```javascript
+// ❌ WITHOUT field-level $not (verbose, error-prone)
+collection.find({
+  status: { $nin: ['pending', 'draft', 'archived'] }
+})
+
+// ✅ WITH field-level $not (flexible, composable)
+collection.find({
+  status: { $not: { $or: [{ $eq: 'pending' }, { $eq: 'draft' }, { $eq: 'archived' }] } }
+})
+// Allows complex nested logic that $nin can't express
 ```
 
 **Source:** Pattern #30 in architectural-patterns.md
