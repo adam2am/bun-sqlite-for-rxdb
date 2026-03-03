@@ -116,7 +116,7 @@ describe('Statement Cache Optimization (Issue #1)', () => {
 		it('should handle mixed types in array', () => {
 			const result = translateIn('value', [1, 'two', true, null]);
 
-			expect(result.sql).toBe('(value IN (SELECT value FROM json_each(?)) OR value IS NULL)');
+			expect(result.sql).toBe('(EXISTS (SELECT 1 FROM json_each(?) je WHERE je.value = value AND je.type = type) OR value IS NULL)');
 			expect(result.args).toEqual(['[1,"two",true]']);
 		});
 

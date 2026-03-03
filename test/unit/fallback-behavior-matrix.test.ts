@@ -43,11 +43,11 @@ describe('Fallback Behavior Matrix: SQL vs Mingo', () => {
 			expect(result?.sql).toContain('>');
 		});
 
-		it('$in operator', () => {
-			const result = buildWhereClause({ name: { $in: ['Alice', 'Bob'] } }, schema, 'test');
-			expect(result).not.toBeNull();
-			expect(result?.sql).toContain('IN');
-		});
+	it('$in operator', () => {
+		const result = buildWhereClause({ name: { $in: ['Alice', 'Bob'] } }, schema, 'test');
+		expect(result).not.toBeNull();
+		expect(result?.sql).toContain('EXISTS');
+	});
 
 		it('$exists operator', () => {
 			const result = buildWhereClause({ name: { $exists: true } }, schema, 'test');

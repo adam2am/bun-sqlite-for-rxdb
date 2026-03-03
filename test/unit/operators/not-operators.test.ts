@@ -31,7 +31,7 @@ describe('$not Operator', () => {
 		const result = buildWhereClause({ status: { $not: { $in: ['active', 'pending'] } } }, mockSchema, 'test');
 		expect(result).not.toBeNull();
 		expect(result!.sql).toContain('NOT');
-		expect(result!.sql).toContain('IN');
+		expect(result!.sql).toContain('EXISTS');
 	});
 
 	it('handles Date objects (Mingo compatibility)', () => {

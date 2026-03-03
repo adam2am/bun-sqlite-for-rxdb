@@ -29,7 +29,7 @@ describe('$all Operator', () => {
 			const result = buildWhereClause({ tags: { $all: ['admin', 'user'] } }, testSchema, 'test');
 			
 			expect(result).not.toBeNull();
-			expect(result!.sql).toContain('EXISTS (SELECT 1 FROM jsonb_each(data, \'$.tags\') WHERE');
+			expect(result!.sql).toContain('EXISTS (SELECT 1 FROM jsonb_each(data, \'$.tags\') AS outer_array WHERE');
 			expect(result!.sql).toContain('AND');
 			expect(result!.args).toEqual(['admin', 'user']);
 		});

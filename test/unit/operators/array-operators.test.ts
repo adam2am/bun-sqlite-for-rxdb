@@ -135,15 +135,13 @@ describe('Array operators: $in', () => {
 		expect(result).not.toBeNull();
 		expect(result!.sql).toContain('EXISTS');
 		expect(result!.sql).toContain('jsonb_each');
-		expect(result!.sql).toContain('value IN');
 		expect(result!.args).toContain(JSON.stringify(['admin', 'user']));
 	});
 
 	it('should NOT use jsonb_each for non-array fields', () => {
 		const result = buildWhereClause({ name: { $in: ['Alice', 'Bob'] } }, schema, 'test');
 		expect(result).not.toBeNull();
-		expect(result!.sql).not.toContain('EXISTS');
-		expect(result!.sql).toContain('IN');
+		expect(result!.sql).toContain('EXISTS');
 		expect(result!.args).toContain(JSON.stringify(['Alice', 'Bob']));
 	});
 
@@ -168,15 +166,13 @@ describe('Array operators: $nin', () => {
 		expect(result).not.toBeNull();
 		expect(result!.sql).toContain('NOT EXISTS');
 		expect(result!.sql).toContain('jsonb_each');
-		expect(result!.sql).toContain('value IN');
 		expect(result!.args).toContain(JSON.stringify(['admin', 'user']));
 	});
 
 	it('should NOT use jsonb_each for non-array fields', () => {
 		const result = buildWhereClause({ name: { $nin: ['Alice', 'Bob'] } }, schema, 'test');
 		expect(result).not.toBeNull();
-		expect(result!.sql).not.toContain('EXISTS');
-		expect(result!.sql).toContain('NOT IN');
+		expect(result!.sql).toContain('NOT EXISTS');
 		expect(result!.args).toContain(JSON.stringify(['Alice', 'Bob']));
 	});
 

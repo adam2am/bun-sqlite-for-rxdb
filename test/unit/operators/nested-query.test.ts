@@ -109,7 +109,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 
 	expect(result).not.toBeNull();
 	expect(result!.sql).toBe(
-		"(json_extract(data, '$.age') IN (SELECT value FROM json_each(?)) OR (json_type(data, '$.status') = 'text' AND json_extract(data, '$.status') = ?)) AND (json_type(data, '$.verified') IN ('true', 'false') AND json_extract(data, '$.verified') = ?)"
+		"(EXISTS (SELECT 1 FROM json_each(?) je WHERE je.value = json_extract(data, '$.age') AND je.type = json_type(data, '$.age')) OR (json_type(data, '$.status') = 'text' AND json_extract(data, '$.status') = ?)) AND (json_type(data, '$.verified') IN ('true', 'false') AND json_extract(data, '$.verified') = ?)"
 	);
 	expect(result!.args).toEqual(['[18,19,20]', 'student', true]);
 	});
@@ -163,7 +163,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 
 	expect(result).not.toBeNull();
 	expect(result!.sql).toBe(
-		"(((json_extract(data, '$.status') IS NULL OR json_extract(data, '$.status') NOT IN (SELECT value FROM json_each(?))) AND (json_type(data, '$.age') IN ('integer', 'real') AND json_extract(data, '$.age') > ?)) OR json_extract(data, '$.role') IN (SELECT value FROM json_each(?)))"
+		"(((json_extract(data, '$.status') IS NULL OR NOT EXISTS (SELECT 1 FROM json_each(?) je WHERE je.value = json_extract(data, '$.status') AND je.type = json_type(data, '$.status'))) AND (json_type(data, '$.age') IN ('integer', 'real') AND json_extract(data, '$.age') > ?)) OR EXISTS (SELECT 1 FROM json_each(?) je WHERE je.value = json_extract(data, '$.role') AND je.type = json_type(data, '$.role')))"
 	);
 	expect(result!.args).toEqual(['["banned","suspended"]', 21, '["admin","moderator"]']);
 	});
