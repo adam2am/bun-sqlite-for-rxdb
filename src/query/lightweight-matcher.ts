@@ -126,12 +126,14 @@ const operators: Record<string, OperatorFn> = {
 	$type: (a, b) => {
 		const bsonTypeMap: Record<string, string> = {
 			'1': 'number', '2': 'string', '3': 'object', '4': 'array',
-			'8': 'boolean', '10': 'null', '16': 'number', '18': 'number', '19': 'number'
+			'8': 'boolean', '9': 'date', '10': 'null', '11': 'regex', '16': 'number', '18': 'number', '19': 'number'
 		};
 
 		const getType = (val: any): string => {
 			if (val === null) return 'null';
 			if (Array.isArray(val)) return 'array';
+			if (val instanceof Date) return 'date';
+			if (val instanceof RegExp) return 'regex';
 			return typeof val;
 		};
 
@@ -140,6 +142,8 @@ const operators: Record<string, OperatorFn> = {
 			const typeStr = bsonTypeMap[String(t)] || String(t);
 			if (typeStr === 'int' || typeStr === 'long' || typeStr === 'decimal' || typeStr === 'double') return valType === 'number';
 			if (typeStr === 'bool') return valType === 'boolean';
+			if (typeStr === 'date') return valType === 'date';
+			if (typeStr === 'regex') return valType === 'regex';
 			return valType === typeStr;
 		};
 
@@ -204,11 +208,14 @@ function matchesOperators(value: any, condition: Record<string, any>, matcher: M
 		if (op === '$options') continue;
 		
 		const fn = operators[op];
-		if (fn) {
-			let operatorArg = arg;
-			if (op === '$regex' && typeof arg === 'string' && condition.$options) {
-				operatorArg = { pattern: arg, options: condition.$options };
-			}
+		if (!fn) {
+			return false;
+		}
+		
+		let operatorArg = arg;
+		if (op === '$regex' && typeof arg === 'string' && condition.$options) {
+			operatorArg = { pattern: arg, options: condition.$options };
+		}
 
 		const isNegative = op === '$ne' || op === '$nin';
 		const isStructural = op === '$size' || op === '$type' || op === '$elemMatch' || op === '$all' || op === '$exists';
@@ -216,11 +223,10 @@ function matchesOperators(value: any, condition: Record<string, any>, matcher: M
 		const skipTraversal = argIsArrayOrObject && (op === '$eq' || op === '$ne');
 		
 		if (Array.isArray(value) && !isStructural && !skipTraversal) {
-				const predicate = (v: any) => fn(v, operatorArg, matcher);
-				if (isNegative ? !value.every(predicate) : !value.some(predicate)) return false;
-			} else {
-				if (!fn(value, operatorArg, matcher)) return false;
-			}
+			const predicate = (v: any) => fn(v, operatorArg, matcher);
+			if (isNegative ? !value.every(predicate) : !value.some(predicate)) return false;
+		} else {
+			if (!fn(value, operatorArg, matcher)) return false;
 		}
 	}
 	return true;
