@@ -19,6 +19,13 @@ export function buildJsonPath(fieldName: string, schema?: RxJsonSchema<any>): st
 	for (let i = 0; i < segments.length; i++) {
 		const segment = segments[i];
 		
+		// FIX GAP 43: Handle empty key names
+		if (segment === '') {
+			const escaped = segment.replace(/"/g, '""');
+			path += `."${escaped}"`;
+			continue;
+		}
+		
 		if (/^\d+$/.test(segment)) {
 			// Determine if this is an object key or array index
 			if (schema) {
@@ -90,6 +97,16 @@ function getTypeExpression(field: string): string {
 
 export function translateEq(field: string, value: unknown): SqlFragment | null {
 	if (value === null) {
+		// FIX GAP 51: Ensure NULL matches only actual JSON null or missing fields
+		// Extract field name from json_extract expression
+		const fieldMatch = field.match(/json_extract\([^,]+,\s*'\$\.([^']+)'\)/);
+		if (fieldMatch) {
+			const actualFieldName = fieldMatch[1];
+			return { 
+				sql: `(json_type(data, '$.${actualFieldName}') = 'null' OR json_type(data, '$.${actualFieldName}') IS NULL)`, 
+				args: [] 
+			};
+		}
 		return { sql: `${field} IS NULL`, args: [] };
 	}
 
@@ -284,6 +301,10 @@ export function translateRegex<RxDocType>(
 // Operator classification for O(1) lookups
 const LOGICAL_OPERATORS = new Set(['$and', '$or', '$nor', '$not']);
 const LEAF_OPERATORS = new Set(['$eq', '$ne', '$gt', '$gte', '$lt', '$lte', '$in', '$nin', '$exists', '$regex', '$type', '$size', '$mod', '$elemMatch', '$all']);
+
+// WHITELIST FIREWALL: Supported SQL operators
+// Unknown operators return null to trigger Mingo fallback (prevents GAP 2: unsupported operator trap)
+const SUPPORTED_SQL_OPS = new Set(['$eq', '$ne', '$gt', '$gte', '$lt', '$lte', '$in', '$nin', '$exists', '$regex', '$type', '$size', '$mod', '$elemMatch', '$all']);
 
 function isLogicalOperator(key: string): boolean {
 	return LOGICAL_OPERATORS.has(key);
@@ -495,6 +516,10 @@ export function translateLeafOperator<RxDocType>(
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	actualFieldName: string
 ): SqlFragment | null {
+	if (!SUPPORTED_SQL_OPS.has(op)) {
+		return null;
+	}
+
 	const columnInfo = getColumnInfo(actualFieldName, schema);
 	const isRawColumn = !!columnInfo.column;
 
@@ -712,15 +737,11 @@ export function translateLeafOperator<RxDocType>(
 			scalarFragment = translateNin(field, value as unknown[]);
 			elementFragment = translateIn('value', value as unknown[]);
 			break;
-		case '$mod':
-			scalarFragment = translateMod(field, value);
-			elementFragment = translateMod('value', value);
-			break;
-		default:
-			scalarFragment = translateEq(field, value);
-			elementFragment = translateEq('value', value);
-			break;
-	}
+	case '$mod':
+		scalarFragment = translateMod(field, value);
+		elementFragment = translateMod('value', value);
+		break;
+}
 
 	if (!scalarFragment) return null;
 
@@ -811,7 +832,7 @@ export function translateType(
 	let typeStr = String(type);
 	const bsonMap: Record<string, string> = {
 		'1': 'number', '2': 'string', '3': 'object', '4': 'array',
-		'8': 'boolean', '10': 'null', '16': 'number', '18': 'number', '19': 'number'
+		'8': 'boolean', '9': 'date', '10': 'null', '16': 'number', '18': 'number', '19': 'number'
 	};
 	if (bsonMap[typeStr]) typeStr = bsonMap[typeStr];
 
@@ -828,6 +849,9 @@ export function translateType(
 		case 'double':
 		case 'decimal': return { sql: `json_type(${safeColumn}, '${jsonPath}') IN ('integer', 'real')`, args: [] };
 		case 'string': return { sql: `COALESCE(json_type(${safeColumn}, '${jsonPath}') = 'text', 0)`, args: [] };
+	case 'date': 
+		// FIX GAP 8: BSON type 9 (date) - Match ISO 8601 date strings (both YYYY-MM-DD and YYYY-MM-DDTHH:MM:SS.sssZ)
+		return { sql: `(json_type(${safeColumn}, '${jsonPath}') = 'text' AND json_extract(${safeColumn}, '${jsonPath}') GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]*')`, args: [] };
 		case 'array': return { sql: `json_type(${safeColumn}, '${jsonPath}') = 'array'`, args: [] };
 		case 'object': return { sql: `json_type(${safeColumn}, '${jsonPath}') = 'object'`, args: [] };
 		default: return null;
