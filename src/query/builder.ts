@@ -149,10 +149,27 @@ function processSelector<RxDocType>(
 		if (field.includes('.') && !field.startsWith('$')) {
 			const parts = field.split('.');
 			let currentPath = '';
-			for (const part of parts) {
+			for (let i = 0; i < parts.length; i++) {
+				const part = parts[i];
+				const isCurrentNumeric = /^\d+$/.test(part);
+				
+				if (isCurrentNumeric && i > 0) {
+					const parentPath = parts.slice(0, i).join('.');
+					const parentInfo = getColumnInfo(parentPath, schema);
+					if (parentInfo.type === 'array') {
+						continue;
+					}
+				}
+				
 				currentPath = currentPath ? `${currentPath}.${part}` : part;
 				const columnInfo = getColumnInfo(currentPath, schema);
+				
 				if (columnInfo.type === 'array' || columnInfo.type === 'unknown') {
+					const nextPart = parts[i + 1];
+					const isNextNumeric = nextPart && /^\d+$/.test(nextPart);
+					if (isNextNumeric) {
+						continue;
+					}
 					return null;
 				}
 			}
