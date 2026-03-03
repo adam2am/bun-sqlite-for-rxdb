@@ -15,6 +15,14 @@ function isOperatorObject(obj: any): boolean {
 function isSameBsonType(a: any, b: any): boolean {
 	if (a === null || b === null) return a === b;
 	if (Array.isArray(a) !== Array.isArray(b)) return false;
+	
+	if (b instanceof Date && typeof a === 'string') {
+		return !isNaN(Date.parse(a));
+	}
+	if (a instanceof Date && typeof b === 'string') {
+		return !isNaN(Date.parse(b));
+	}
+	
 	return typeof a === typeof b;
 }
 

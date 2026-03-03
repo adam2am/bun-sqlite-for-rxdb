@@ -20,7 +20,7 @@ import type {
 	RxStorageDefaultCheckpoint
 } from 'rxdb';
 import type { BunSQLiteStorageSettings, BunSQLiteInternals } from './types';
-import { buildWhereClause, buildWhereClauseWithFallback } from './query/builder';
+import { buildWhereClause, buildWhereClauseWithFallback, setStrictMode } from './query/builder';
 import { getColumnInfo } from './query/schema-mapper';
 import { matchesSelector } from './query/lightweight-matcher';
 import { categorizeBulkWriteRows, ensureRxStorageInstanceParamsAreCorrect } from './rxdb-helpers';
@@ -307,6 +307,7 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	}
 
 	async query(preparedQuery: PreparedQuery<RxDocType>): Promise<RxStorageQueryResult<RxDocType>> {
+		setStrictMode(this.options.strict ?? false);
 		const { sqlWhere, jsSelector } = buildWhereClauseWithFallback(
 			preparedQuery.query.selector,
 			this.schema,

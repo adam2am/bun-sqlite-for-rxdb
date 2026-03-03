@@ -7,6 +7,8 @@
  * @param comparisonSql - SQL comparison expression (e.g., "field > ?")
  * @returns SQL with type guard prepended, or original SQL if guard not needed
  */
+import { getStrictMode } from './builder';
+
 export function addTypeGuard(field: string, value: unknown, comparisonSql: string): string {
 	let typeExpr = '';
 	
@@ -21,6 +23,11 @@ export function addTypeGuard(field: string, value: unknown, comparisonSql: strin
 	}
 	
 	if (!typeExpr) return comparisonSql;
+	
+	if (value instanceof Date) {
+		if (getStrictMode()) return '1=0';
+		return `(${typeExpr} = 'text' AND ${field} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*' AND ${comparisonSql})`;
+	}
 	
 	const valueType = typeof value;
 	if (valueType === 'number') {

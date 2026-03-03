@@ -8,6 +8,16 @@ import { getGlobalCache } from './cache';
 
 export { getCacheSize, clearCache } from './cache';
 
+let currentStrictMode = false;
+
+export function setStrictMode(strict: boolean): void {
+	currentStrictMode = strict;
+}
+
+export function getStrictMode(): boolean {
+	return currentStrictMode;
+}
+
 function isOperatorObject(value: any): boolean {
 	if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
 	if (value instanceof Date || value instanceof RegExp) return false;

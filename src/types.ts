@@ -25,6 +25,14 @@ export interface BunSQLiteStorageSettings {
 	 * @experimental Alpha feature - opt-in for testing
 	 */
 	useStoredColumns?: false | 'virtual' | 'stored';
+
+	/**
+	 * Enable strict MongoDB/Mingo type checking behavior.
+	 * - false (default): RxDB-friendly mode - Date queries match ISO string fields with GLOB validation
+	 * - true: Strict mode - Date queries only match Date fields (MongoDB/Mingo spec compliance)
+	 * @default false
+	 */
+	strict?: boolean;
 }
 
 export interface BunSQLiteInternals {
