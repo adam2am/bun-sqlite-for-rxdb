@@ -174,13 +174,25 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		
 		const docsInDbMap = new Map(docsInDb.map(d => [d[this.primaryPath as keyof RxDocumentData<RxDocType>] as string, d]));
 
-			const categorized = categorizeBulkWriteRows(
-				this,
-				this.primaryPath,
-				docsInDbMap,
-				documentWrites,
-				context
-		);
+		for (const writeRow of documentWrites) {
+			const doc = writeRow.document as RxDocumentData<RxDocType>;
+			const docId = doc[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
+			
+			if (writeRow.previous) {
+				const prevId = writeRow.previous[this.primaryPath as keyof RxDocumentData<RxDocType>] as string;
+				if (docId !== prevId) {
+					throw new Error(`Cannot change primary key from "${prevId}" to "${docId}"`);
+				}
+			}
+		}
+
+		const categorized = categorizeBulkWriteRows(
+			this,
+			this.primaryPath,
+			docsInDbMap,
+			documentWrites,
+			context
+	);
 
 		const CHUNK_SIZE = 50;
 		
