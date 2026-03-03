@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.6.6] - 2026-03-03
+
+### Changed
+- **Architectural refactoring: DRY array traversal logic**
+  - Extracted `wrapWithArrayTraversal()` helper function to eliminate ~460 lines of duplicate code
+  - Pure operators (`translateEq`, `translateGt`, `translateLt`, `translateLte`, `translateIn`, `translateNin`, `translateMod`) no longer accept schema parameters
+  - Array traversal logic centralized in `translateLeafOperator` router (single source of truth)
+  - Refactored `$all` operator to use helper function
+
+### Fixed
+- **$all operator duplicate args bug**
+  - Previously: `$all: ['admin', 'user']` generated args `['admin', 'admin', 'user', 'user']`
+  - Now: Correctly generates args `['admin', 'user']` (no duplicates)
+  - Root cause: Calling `translateLeafOperator` which added both scalar and element fragments
+
+### Added
+- **Enhanced test coverage**
+  - Added `modOnArrayArb` and `modOnUnknownArrayArb` to property-based tests
+  - Tests `$mod` operator on array fields and unknown-type fields with array runtime data
+  - Ensures array traversal works correctly for all operators
+
+### Technical Details
+- All 684 tests passing (1 flaky performance test unrelated to changes)
+- Zero regressions from refactoring
+- Proper architecture: Single helper function for array traversal
+
+---
+
 ## [1.6.5] - 2026-03-03
 
 ### Fixed 🔥
