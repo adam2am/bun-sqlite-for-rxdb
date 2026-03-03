@@ -46,7 +46,7 @@ describe('Fallback Behavior Matrix: SQL vs Mingo', () => {
 	it('$in operator', () => {
 		const result = buildWhereClause({ name: { $in: ['Alice', 'Bob'] } }, schema, 'test');
 		expect(result).not.toBeNull();
-		expect(result?.sql).toContain('EXISTS');
+		expect(result?.sql).toContain('IN (?, ?)');
 	});
 
 		it('$exists operator', () => {
@@ -81,10 +81,11 @@ describe('Fallback Behavior Matrix: SQL vs Mingo', () => {
 			expect(result).toBeNull();
 		});
 
-		it('Plain object equality (key-order independence)', () => {
-			const result = buildWhereClause({ config: { enabled: true, level: 5 } }, schema, 'test');
-			expect(result).toBeNull();
-		});
+	it('Plain object equality (key-order independence)', () => {
+		const result = buildWhereClause({ config: { enabled: true, level: 5 } }, schema, 'test');
+		expect(result).not.toBeNull();
+		expect(result?.sql).toContain('json(?)');
+	});
 
 		it('Nested object in unknown field', () => {
 			const result = buildWhereClause({ 'metadata.settings': { theme: 'dark' } }, schema, 'test');
@@ -114,9 +115,10 @@ describe('Fallback Behavior Matrix: SQL vs Mingo', () => {
 			expect(result?.sql).toBe('1=0');
 		});
 
-	it('Empty object selector (falls back to Mingo)', () => {
+	it('Empty object selector (uses json comparison)', () => {
 		const result = buildWhereClause({ name: {} }, schema, 'test');
-		expect(result).toBeNull();
+		expect(result).not.toBeNull();
+		expect(result?.sql).toContain('json(?)');
 	});
 	});
 });
@@ -127,8 +129,9 @@ describe('Documentation: Why Each Fallback Happens', () => {
 		expect(result).toBeNull();
 	});
 
-	it('Object equality fallback: SQLite preserves key order, MongoDB does not', () => {
+	it('Object equality uses json() comparison (Optimization 3)', () => {
 		const result = buildWhereClause({ config: { a: 1, b: 2 } }, schema, 'test');
-		expect(result).toBeNull();
+		expect(result).not.toBeNull();
+		expect(result?.sql).toContain('json(?)');
 	});
 });
