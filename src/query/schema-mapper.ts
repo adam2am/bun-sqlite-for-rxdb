@@ -39,17 +39,10 @@ export function getColumnInfo<RxDocType>(path: string, schema: RxJsonSchema<RxDo
 		const part = parts[i];
 		const field: SchemaField | undefined = current?.[part];
 		if (!field) {
-			if (process.env.DEBUG_SCHEMA_MAPPER) {
-				console.log(`[getColumnInfo] part="${part}" not found in current, returning unknown`);
-			}
 			return { jsonPath: `$.${path}`, type: 'unknown' };
 		}
 		schemaType = field.type;
 		lastField = field;
-		
-		if (process.env.DEBUG_SCHEMA_MAPPER) {
-			console.log(`[getColumnInfo] part="${part}" (${i+1}/${parts.length}), schemaType="${schemaType}", hasProperties:`, !!field.properties, 'hasItems:', !!field.items);
-		}
 		
 		if (i === parts.length - 1) {
 			break;
@@ -60,9 +53,6 @@ export function getColumnInfo<RxDocType>(path: string, schema: RxJsonSchema<RxDo
 		} else if (field.items?.properties) {
 			current = field.items.properties;
 		} else {
-			if (process.env.DEBUG_SCHEMA_MAPPER) {
-				console.log(`[getColumnInfo] cannot continue traversing, returning unknown`);
-			}
 			return { jsonPath: `$.${path}`, type: 'unknown' };
 		}
 	}
