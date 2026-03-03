@@ -158,13 +158,13 @@ export function translateLte(field: string, value: unknown): SqlFragment | null 
 	};
 }
 
-export function translateIn(field: string, values: unknown[]): SqlFragment {
+export function translateIn(field: string, values: unknown[]): SqlFragment | null {
 	if (!Array.isArray(values) || values.length === 0) {
 		return { sql: '1=0', args: [] };
 	}
 	
 	if (values.some(v => v instanceof RegExp || (typeof v === 'object' && v !== null && !Array.isArray(v) && !(v instanceof Date)))) {
-		return { sql: '1=0', args: [] };
+		return null;
 	}
 	
 	const hasNull = values.includes(null);
@@ -190,13 +190,13 @@ export function translateIn(field: string, values: unknown[]): SqlFragment {
 	}
 }
 
-export function translateNin(field: string, values: unknown[]): SqlFragment {
+export function translateNin(field: string, values: unknown[]): SqlFragment | null {
 	if (!Array.isArray(values) || values.length === 0) {
 		return { sql: '1=1', args: [] };
 	}
 	
 	if (values.some(v => v instanceof RegExp || (typeof v === 'object' && v !== null && !Array.isArray(v) && !(v instanceof Date)))) {
-		return { sql: '1=1', args: [] };
+		return null;
 	}
 	
 	const hasNull = values.includes(null);
