@@ -64,17 +64,17 @@ describe('BLACK HOLE #3: Exact array matching with JSON.stringify', () => {
 	});
 });
 
-describe('BLACK HOLE #2: Exact object matching delegates to Mingo', () => {
-	it('should return null for exact object comparison (Mingo fallback)', () => {
+describe('BLACK HOLE #2: Exact object matching uses json() comparison', () => {
+	it('should use json() for exact object comparison (Optimization 3)', () => {
 		const field = "json_extract(data, '$.config')";
 		const value = { enabled: true };
 		const result = translateEq(field, value);
 		
-		// Should return null to trigger Mingo fallback (SQLite json() preserves key order, MongoDB doesn't)
-		expect(result).toBeNull();
+		expect(result).not.toBeNull();
+		expect(result?.sql).toContain('json(?)');
 	});
 
-	it('should return null for all plain objects (Mingo handles key order)', () => {
+	it('should use json() for all plain objects', () => {
 		const field = "json_extract(data, '$.config')";
 		const value1 = { enabled: true };
 		const value2 = { enabled: true, level: 5 };
@@ -82,8 +82,9 @@ describe('BLACK HOLE #2: Exact object matching delegates to Mingo', () => {
 		const result1 = translateEq(field, value1);
 		const result2 = translateEq(field, value2);
 		
-		// Both should return null (Mingo fallback)
-		expect(result1).toBeNull();
-		expect(result2).toBeNull();
+		expect(result1).not.toBeNull();
+		expect(result2).not.toBeNull();
+		expect(result1?.sql).toContain('json(?)');
+		expect(result2?.sql).toContain('json(?)');
 	});
 });
