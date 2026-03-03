@@ -30,8 +30,7 @@ function getNestedValue(obj: any, path: string): any {
 			for (const item of value) {
 				const res = getNestedValue(item, remainingPath);
 				if (res !== undefined) {
-					if (Array.isArray(res)) results.push(...res);
-					else results.push(res);
+					results.push(res);
 				}
 			}
 			return results.length > 0 ? results : undefined;
@@ -46,24 +45,49 @@ function getNestedValue(obj: any, path: string): any {
 const operators: Record<string, OperatorFn> = {
 	$eq: (a, b) => {
 		if (typeof a === 'object' && typeof b === 'object' && a !== null && b !== null) {
-			return stableStringify(a) === stableStringify(b);
+			if (Array.isArray(a) && Array.isArray(b)) {
+				return stableStringify(a) === stableStringify(b);
+			}
+			return JSON.stringify(a) === JSON.stringify(b);
 		}
 		return a === b;
 	},
 	$ne: (a, b) => {
 		if (typeof a === 'object' && typeof b === 'object' && a !== null && b !== null) {
-			return stableStringify(a) !== stableStringify(b);
+			if (Array.isArray(a) && Array.isArray(b)) {
+				return stableStringify(a) !== stableStringify(b);
+			}
+			return JSON.stringify(a) !== JSON.stringify(b);
 		}
 		return a !== b;
 	},
-	$gt: (a, b) => isSameBsonType(a, b) && a > b,
-	$gte: (a, b) => isSameBsonType(a, b) && a >= b,
-	$lt: (a, b) => isSameBsonType(a, b) && a < b,
-	$lte: (a, b) => isSameBsonType(a, b) && a <= b,
+	$gt: (a, b) => {
+		if (Array.isArray(a) || Array.isArray(b)) return false;
+		if (typeof a === 'object' || typeof b === 'object') return false;
+		return isSameBsonType(a, b) && a > b;
+	},
+	$gte: (a, b) => {
+		if (Array.isArray(a) || Array.isArray(b)) return false;
+		if (typeof a === 'object' || typeof b === 'object') return false;
+		return isSameBsonType(a, b) && a >= b;
+	},
+	$lt: (a, b) => {
+		if (Array.isArray(a) || Array.isArray(b)) return false;
+		if (typeof a === 'object' || typeof b === 'object') return false;
+		return isSameBsonType(a, b) && a < b;
+	},
+	$lte: (a, b) => {
+		if (Array.isArray(a) || Array.isArray(b)) return false;
+		if (typeof a === 'object' || typeof b === 'object') return false;
+		return isSameBsonType(a, b) && a <= b;
+	},
 	$in: (a, b) => {
 		if (!Array.isArray(b)) return false;
 		const aStr = (typeof a === 'object' && a !== null) ? stableStringify(a) : undefined;
 		return b.some(v => {
+			if (v instanceof RegExp) {
+				return matchesRegex(a, v.source, v.flags);
+			}
 			if (aStr !== undefined && typeof v === 'object' && v !== null) {
 				return aStr === stableStringify(v);
 			}
@@ -74,6 +98,9 @@ const operators: Record<string, OperatorFn> = {
 		if (!Array.isArray(b)) return false;
 		const aStr = (typeof a === 'object' && a !== null) ? stableStringify(a) : undefined;
 		return !b.some(v => {
+			if (v instanceof RegExp) {
+				return matchesRegex(a, v.source, v.flags);
+			}
 			if (aStr !== undefined && typeof v === 'object' && v !== null) {
 				return aStr === stableStringify(v);
 			}
@@ -89,20 +116,41 @@ const operators: Record<string, OperatorFn> = {
 		return matchesRegex(a, pattern, flags);
 	},
 	$type: (a, b) => {
-		let type: string;
-		if (a === null) type = 'null';
-		else if (Array.isArray(a)) type = 'array';
-		else type = typeof a;
-
-		const matchType = (t: string) => {
-			if (t === 'int' || t === 'long' || t === 'decimal' || t === 'double') return type === 'number';
-			if (t === 'bool') return type === 'boolean';
-			return type === t;
+		const bsonTypeMap: Record<string, string> = {
+			'1': 'number', '2': 'string', '3': 'object', '4': 'array',
+			'8': 'boolean', '10': 'null', '16': 'number', '18': 'number', '19': 'number'
 		};
 
-		return Array.isArray(b) ? b.some(matchType) : matchType(b as string);
+		const getType = (val: any): string => {
+			if (val === null) return 'null';
+			if (Array.isArray(val)) return 'array';
+			return typeof val;
+		};
+
+		const matchType = (val: any, t: string | number): boolean => {
+			const valType = getType(val);
+			const typeStr = bsonTypeMap[String(t)] || String(t);
+			if (typeStr === 'int' || typeStr === 'long' || typeStr === 'decimal' || typeStr === 'double') return valType === 'number';
+			if (typeStr === 'bool') return valType === 'boolean';
+			return valType === typeStr;
+		};
+
+		const types = Array.isArray(b) ? b : [b];
+		const checkingForArray = types.some(t => {
+			const typeStr = bsonTypeMap[String(t)] || String(t);
+			return typeStr === 'array';
+		});
+
+		if (Array.isArray(a) && !checkingForArray) {
+			return a.some(item => types.some(t => matchType(item, t)));
+		}
+		
+		return types.some(t => matchType(a, t));
 	},
 	$not: (a, b, matcher) => {
+		if (b instanceof RegExp) {
+			return !matchesRegex(a, b.source, b.flags);
+		}
 		if (isOperatorObject(b)) {
 			return !matchesOperators(a, b, matcher);
 		}
@@ -111,7 +159,8 @@ const operators: Record<string, OperatorFn> = {
 	$elemMatch: (val, query, matcher) => {
 		if (!Array.isArray(val)) return false;
 		
-		const isOpObj = isOperatorObject(query) && !['$and', '$or', '$nor'].some(k => k in query);
+		const hasLogicalOps = ['$and', '$or', '$nor'].some(k => k in query);
+		const isOpObj = isOperatorObject(query) && !hasLogicalOps;
 
 		return val.some(item => {
 			if (isOpObj) return matchesOperators(item, query, matcher);
@@ -213,7 +262,17 @@ export function matchesSelector<RxDocType>(
 		} else {
 			const eq = operators.$eq;
 			if (Array.isArray(value)) {
-				if (!value.some(v => eq(v, condition, matchesSelector))) return false;
+				const flattenAndCheck = (arr: any[], cond: any): boolean => {
+					for (const item of arr) {
+						if (Array.isArray(item) && !Array.isArray(cond) && typeof cond !== 'object') {
+							if (flattenAndCheck(item, cond)) return true;
+						} else {
+							if (eq(item, cond, matchesSelector)) return true;
+						}
+					}
+					return false;
+				};
+				if (!flattenAndCheck(value, condition)) return false;
 			} else {
 				if (!eq(value, condition, matchesSelector)) return false;
 			}
