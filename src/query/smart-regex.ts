@@ -84,6 +84,10 @@ export function smartRegexToLike<RxDocType>(
 		throw new Error(`Invalid regex options: "${options}". Valid options are: i, m, s, x, u`);
 	}
 	
+	if (options?.includes('m')) {
+		return null;
+	}
+	
 	const caseInsensitive = options?.includes('i') ?? false;
 	const hasLowerIndex = hasExpressionIndex(fieldName, schema);
 	
