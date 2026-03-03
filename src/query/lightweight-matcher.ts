@@ -186,12 +186,19 @@ export function matchesSelector<RxDocType>(
 		
 		if (typeof condition === 'object' && condition !== null && !Array.isArray(condition)) {
 			const conditionUnknown = condition as unknown;
-			if (conditionUnknown instanceof Date || conditionUnknown instanceof RegExp) {
+			if (conditionUnknown instanceof Date) {
 				const eq = operators.$eq;
 				if (Array.isArray(value)) {
 					if (!value.some(v => eq(v, condition, matchesSelector))) return false;
 				} else {
 					if (!eq(value, condition, matchesSelector)) return false;
+				}
+			} else if (conditionUnknown instanceof RegExp) {
+				// Use regex matching for RegExp objects
+				if (Array.isArray(value)) {
+					if (!value.some(v => matchesRegex(v, conditionUnknown.source, conditionUnknown.flags))) return false;
+				} else {
+					if (!matchesRegex(value, conditionUnknown.source, conditionUnknown.flags)) return false;
 				}
 			} else if (isOperatorObject(condition)) {
 				if (!matchesOperators(value, condition, matchesSelector)) return false;

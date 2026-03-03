@@ -195,8 +195,15 @@ function processSelector<RxDocType>(
 
 		if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
 			const valueUnknown = value as unknown;
-		if (valueUnknown instanceof Date || valueUnknown instanceof RegExp) {
+		if (valueUnknown instanceof Date) {
 			const fragment = translateLeafOperator('$eq', fieldName, value, schema, actualFieldName);
+			if (!fragment) return null;
+			conditions.push(fragment.sql);
+			args.push(...fragment.args);
+			continue;
+		}
+		if (valueUnknown instanceof RegExp) {
+			const fragment = translateLeafOperator('$regex', fieldName, value, schema, actualFieldName);
 			if (!fragment) return null;
 			conditions.push(fragment.sql);
 			args.push(...fragment.args);
