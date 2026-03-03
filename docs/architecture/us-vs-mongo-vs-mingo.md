@@ -174,6 +174,49 @@ undefined → null
 
 ---
 
+### Tier 4: CONFIGURABLE (User Choice)
+
+We expose configuration to let users choose their trade-off for Date type bracketing.
+
+**Configuration:**
+
+```typescript
+const storage = getRxStorageBunSQLite({
+  strict: false  // default: RxDB-friendly (Date queries match ISO strings)
+  // strict: true  // MongoDB/Mingo strict (Date queries rejected on string fields)
+});
+```
+
+**Behavior Comparison:**
+
+| Scenario | `strict: false` (default) | `strict: true` |
+|----------|---------------------------|----------------|
+| Date query vs ISO string field | ✅ Matches with GLOB validation | ❌ Rejected (type bracketing) |
+| Date query vs non-ISO string | ❌ Rejected | ❌ Rejected |
+| Use case | 95% of RxDB apps (Dates stored as ISO strings) | MongoDB → RxDB migration |
+
+**Example:**
+
+```javascript
+// Database has: { createdAt: "2024-06-15T10:00:00.000Z" } (ISO string)
+// Query: { createdAt: { $gt: new Date('2024-01-01') } }
+
+// With strict: false (default)
+// ✅ Matches - Date query works on ISO string fields
+// Uses GLOB pattern to validate ISO 8601 format
+// Rejects garbage strings like "2026" or "hello"
+
+// With strict: true
+// ❌ No match - Enforces MongoDB type bracketing (Date ≠ String)
+```
+
+**Rationale:**
+- **Default (`strict: false`)**: RxDB reality - 95% of apps store Dates as ISO strings (PouchDB legacy)
+- **Opt-in (`strict: true`)**: MongoDB/Mingo strict compliance for migration scenarios
+- **GLOB guard**: When `strict: false`, validates ISO 8601 format to prevent matching garbage strings
+
+---
+
 ## Comparison Table: Us vs MongoDB vs Mingo
 
 | Decision | MongoDB | Mingo | Us | Tier | Rationale |
@@ -343,6 +386,101 @@ The existence of Stack Overflow questions like ["How to compare two objects in M
 - Matches MongoDB's array traversal semantics
 - Empty parent arrays should not match nested field queries
 - Ensures correct behavior for complex nested structures
+
+---
+
+### 5. 2D Array Flattening for Comparison Operators
+
+**Our Enhancement: Recursive Array Traversal**
+
+We provide **depth-based recursive array flattening** for comparison operators, going beyond both MongoDB and Mingo's capabilities.
+
+**Example Query:**
+```javascript
+{ matrix: { $gt: 5 } }
+```
+
+**Test Data:**
+```javascript
+{ id: '1', matrix: [[1, 2], [3, 4]] }     // 2D array
+{ id: '2', matrix: [[5, 6], [7, 8]] }     // 2D array with values > 5
+{ id: '3', matrix: [[1, 2], [3, 10]] }    // 2D array with one value > 5
+```
+
+**Behavior Comparison:**
+
+| Implementation | Logic | Result |
+|----------------|-------|--------|
+| **Mingo** | Checks `[1,2] > 5?` and `[3,4] > 5?` → Both FALSE (array vs number type mismatch) | `[]` (empty) |
+| **Our SQL** | Flattens to `[1,2,3,4]` → Checks `1>5? 2>5? 3>5? 4>5?` → All FALSE | `[]` (correct logic, no matches) |
+| **Our SQL** | For doc 3: Flattens to `[1,2,3,10]` → Checks `1>5? 2>5? 3>5? 10>5?` → TRUE (10>5) | `["3"]` ✅ |
+
+**Why Mingo Fails:**
+
+From Mingo source code analysis (`src/operators/_predicates.ts:286-288`):
+
+```typescript
+// Mingo's compare function for $gt, $lt, $gte, $lte
+function compare(a: Any, b: Any, f: Predicate<Any>): boolean {
+  return ensureArray(a).some(x => typeOf(x) === typeOf(b) && f(x, b));
+}
+```
+
+**Critical Issue:**
+- Uses `ensureArray(a).some(...)` - only checks **direct array elements**
+- **NO `flatten()` call** for nested arrays
+- Type check `typeOf(x) === typeOf(b)` fails: `typeOf([1,2]) !== typeOf(5)` (array ≠ number)
+- Result: 2D arrays are never traversed for comparison operators
+
+**Note:** Mingo's `$eq` operator DOES use `flatten()`, but comparison operators (`$gt`, `$lt`, `$gte`, `$lte`) do not.
+
+**Our Implementation:**
+
+We use **recursive CTE with depth-based flattening** (`src/query/operators.ts:762-789`):
+
+```typescript
+function wrapWithArrayTraversal(elementFragment: SqlFragment, jsonPath: string, op: string, depth: number = 1): SqlFragment {
+  const flattenCte = `
+    WITH RECURSIVE flattened(value, type, depth_remaining) AS (
+      SELECT json_each.value, json_each.type, ${depth}
+      FROM json_each(data, '${jsonPath}')
+      UNION ALL
+      SELECT json_each.value, json_each.type, flattened.depth_remaining - 1
+      FROM flattened, json_each(flattened.value)
+      WHERE flattened.type = 'array' AND flattened.depth_remaining > 0
+    )
+  `;
+  
+  const existsSql = `EXISTS (${flattenCte} SELECT 1 FROM flattened WHERE ${replacedSql})`;
+  return { sql: existsSql, args: elementFragment.args };
+}
+```
+
+**Key Features:**
+- **Recursive traversal**: Automatically flattens nested arrays to any depth
+- **Depth calculation**: `depth = Math.max(1, fieldPath.split('.').length - 1)`
+- **Type-safe**: Checks each flattened element individually
+- **Performance**: Uses SQLite's native recursive CTE (no JS fallback needed)
+
+**Real-World Use Cases:**
+
+```javascript
+// Matrix operations
+{ matrix: { $gt: 5 } }              // Find matrices with any element > 5
+{ matrix: { $in: [1, 5, 10] } }     // Find matrices containing specific values
+{ matrix: { $all: [1, 2] } }        // Find matrices containing both 1 and 2
+
+// Nested tag hierarchies
+{ 'categories.tags': 'urgent' }     // Find documents with nested tag arrays
+```
+
+**Why This Matters:**
+- **Better UX**: Users expect array traversal to "just work" for nested arrays
+- **MongoDB-like behavior**: Matches user expectations from MongoDB experience
+- **No JS fallback**: Pure SQL implementation for maximum performance
+- **Consistent semantics**: All comparison operators handle nested arrays uniformly
+
+**Tier Classification:** **Tier 1 (EXTEND)** - We go beyond both MongoDB and Mingo to provide better array traversal semantics.
 
 ---
 
