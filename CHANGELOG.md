@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.6.7] - 2026-03-03
+
+### Fixed 🔥
+- **Unicode case-insensitive regex fallback**
+  - SQLite LOWER() only handles ASCII characters
+  - Regex patterns with Unicode chars (é, ñ, etc.) + case-insensitive flag now fallback to in-memory matching
+  - Prevents incorrect results from SQL LIKE optimization
+- **BSON numeric type code mapping**
+  - Added support for BSON type codes: 1=number, 2=string, 4=array, 8=boolean, etc.
+  - $type operator now accepts both string names and numeric BSON codes
+- **Raw column type coercion prevention**
+  - Added type guards to prevent impossible type mismatches on raw columns
+  - Query `{ id: 123 }` (number) no longer matches `id: '123'` (string)
+  - Enforces strict BSON type boundaries matching MongoDB behavior
+- **Numeric object keys in JSON paths**
+  - buildJsonPath() now schema-aware to distinguish numeric object keys from array indices
+  - Query `{ 'config.0': 'value' }` correctly uses `."0"` syntax for object keys
+  - Query `{ 'items.0': 'value' }` correctly uses `[0]` syntax for array indices
+
+### Added
+- **Property-based tests for all bug fixes**
+  - BSON numeric type codes (2, 16, 18, 4, 8, 1)
+  - Unicode case-insensitive regex (café, naïve, résumé)
+  - Raw column type mismatches (id: 123, _deleted: 'true')
+  - Numeric object keys (metadata.0, metadata.1)
+- **Schema traversal benchmark**
+  - Proves O(n²) getColumnInfo() calls are not a real performance issue
+  - Query caching makes theoretical complexity irrelevant in practice
+  - No schema caching needed
+
+### Performance
+- **translateElemMatch optimization**
+  - Compute jsonPath once instead of 4 times (eliminates duplicate buildJsonPath calls)
+
+### Technical Details
+- All 685 tests passing (100%)
+- Zero regressions
+- Benchmark validation: schema-traversal-benchmark.ts
+- 4 atomic commits following Linus Torvalds principles
+
+---
+
 ## [1.6.6] - 2026-03-03
 
 ### Changed
