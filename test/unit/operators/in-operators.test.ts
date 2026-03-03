@@ -5,8 +5,8 @@ describe('$in operator', () => {
 	it('generates IN clause for array of values', () => {
 		const result = translateIn('age', [25, 30, 35]);
 		if (result) {
-			expect(result.sql).toBe('age IN (SELECT value FROM json_each(?))');
-			expect(result.args).toEqual(['[25,30,35]']);
+			expect(result.sql).toBe('age IN (?, ?, ?)');
+			expect(result.args).toEqual([25, 30, 35]);
 		} else {
 			expect(result).not.toBeNull();
 		}
@@ -15,8 +15,8 @@ describe('$in operator', () => {
 	it('handles NULL in array with OR IS NULL', () => {
 		const result = translateIn('status', ['active', null, 'pending']);
 		if (result) {
-			expect(result.sql).toBe('(status IN (SELECT value FROM json_each(?)) OR status IS NULL)');
-			expect(result.args).toEqual(['["active","pending"]']);
+			expect(result.sql).toBe('(status IN (?, ?) OR status IS NULL)');
+			expect(result.args).toEqual(['active', 'pending']);
 		} else {
 			expect(result).not.toBeNull();
 		}
