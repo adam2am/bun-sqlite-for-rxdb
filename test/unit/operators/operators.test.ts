@@ -42,32 +42,48 @@ describe('Query Operators', () => {
 	describe('translateGt', () => {
 		it('translates greater than', () => {
 			const result = translateGt('age', 18);
-			expect(result.sql).toBe('age > ?');
-			expect(result.args).toEqual([18]);
+			if (result) {
+				expect(result.sql).toBe('age > ?');
+				expect(result.args).toEqual([18]);
+			} else {
+				expect(result).not.toBeNull();
+			}
 		});
 	});
 
 	describe('translateGte', () => {
 		it('translates greater than or equal', () => {
 			const result = translateGte('age', 18);
-			expect(result.sql).toBe('age >= ?');
-			expect(result.args).toEqual([18]);
+			if (result) {
+				expect(result.sql).toBe('age >= ?');
+				expect(result.args).toEqual([18]);
+			} else {
+				expect(result).not.toBeNull();
+			}
 		});
 	});
 
 	describe('translateLt', () => {
 		it('translates less than', () => {
 			const result = translateLt('age', 18);
-			expect(result.sql).toBe('age < ?');
-			expect(result.args).toEqual([18]);
+			if (result) {
+				expect(result.sql).toBe('age < ?');
+				expect(result.args).toEqual([18]);
+			} else {
+				expect(result).not.toBeNull();
+			}
 		});
 	});
 
 	describe('translateLte', () => {
 		it('translates less than or equal', () => {
 			const result = translateLte('age', 18);
-			expect(result.sql).toBe('age <= ?');
-			expect(result.args).toEqual([18]);
+			if (result) {
+				expect(result.sql).toBe('age <= ?');
+				expect(result.args).toEqual([18]);
+			} else {
+				expect(result).not.toBeNull();
+			}
 		});
 	});
 });
