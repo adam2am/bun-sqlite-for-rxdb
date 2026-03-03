@@ -22,15 +22,17 @@ interface TestDocType {
 		price: number;
 		tags: string[];
 	}>;
+	'first name'?: string;
+	'user-name'?: string;
 }
 
 const mockDocs: RxDocumentData<TestDocType>[] = [
-	{ id: '1', name: 'Alice', age: 30, tags: ['admin', 'user'], active: true, score: 95.5, scores: [85, 90, 92], optional: 'present', items: [{ name: 'item1', category: 'A', price: 100, tags: ['new'] }, { name: 'item2', category: 'B', price: 200, tags: ['sale'] }], _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: 1000 } },
-	{ id: '2', name: 'Bob', age: 25, tags: ['user'], active: false, score: 80.0, scores: [80, 88], items: [{ name: 'item3', category: 'A', price: 150, tags: [] }], _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: 2000 } },
+	{ id: '1', name: 'Alice', age: 30, tags: ['admin', 'user'], active: true, score: 95.5, scores: [85, 90, 92], optional: 'present', 'first name': 'Alice', items: [{ name: 'item1', category: 'A', price: 100, tags: ['new'] }, { name: 'item2', category: 'B', price: 200, tags: ['sale'] }], _deleted: false, _attachments: {}, _rev: '1-a', _meta: { lwt: 1000 } },
+	{ id: '2', name: 'Bob', age: 25, tags: ['user'], active: false, score: 80.0, scores: [80, 88], 'user-name': 'bob123', items: [{ name: 'item3', category: 'A', price: 150, tags: [] }], _deleted: false, _attachments: {}, _rev: '1-b', _meta: { lwt: 2000 } },
 	{ id: '3', name: 'Charlie', age: 35, tags: ['admin', 'moderator'], active: true, score: 88.3, scores: [75, 81, 95], optional: 'value', items: [{ name: 'item4', category: 'C', price: 300, tags: ['premium', 'new'] }], _deleted: false, _attachments: {}, _rev: '1-c', _meta: { lwt: 3000 } },
-	{ id: '4', name: 'David', age: 28, tags: ['user', 'moderator'], active: true, score: 92.1, scores: [91, 93], items: [], _deleted: false, _attachments: {}, _rev: '1-d', _meta: { lwt: 4000 } },
+	{ id: '4', name: 'Café', age: 28, tags: ['user', 'moderator'], active: true, score: 92.1, scores: [91, 93], items: [], _deleted: false, _attachments: {}, _rev: '1-d', _meta: { lwt: 4000 } },
 	{ id: '5', name: 'Eve', age: 22, tags: [], active: false, score: 75.0, scores: [70, 75, 80], optional: undefined, items: [{ name: 'item5', category: 'B', price: 50, tags: ['clearance'] }], _deleted: false, _attachments: {}, _rev: '1-e', _meta: { lwt: 5000 } },
-	{ id: '6', name: 'Frank', age: 40, tags: ['test'], active: true, score: 50, scores: [50, 55], metadata: { a: 1, b: 2 }, unknownField: ['item1', 'item2'], items: [], _deleted: false, _attachments: {}, _rev: '1-f', _meta: { lwt: 6000 } },
+	{ id: '6', name: 'Frank', age: 40, tags: ['test'], active: true, score: 50, scores: [50, 55], metadata: { '0': 'value0', '1': 'value1' }, unknownField: ['item1', 'item2'], items: [], _deleted: false, _attachments: {}, _rev: '1-f', _meta: { lwt: 6000 } },
 	{ id: '7', name: 'Grace', age: 45, tags: ['test'], active: false, score: 60, scores: [60, 65], metadata: { b: 2, a: 1 }, unknownField: 'item1', items: [], _deleted: false, _attachments: {}, _rev: '1-g', _meta: { lwt: 7000 } },
 	{ id: '8', name: 'Hank', age: 50, tags: [], active: true, score: 10, scores: [10, 15], optional: null as any, items: [], _deleted: false, _attachments: {}, _rev: '1-h', _meta: { lwt: 8000 } },
 	{ id: '9', name: 'Ivy', age: 33, tags: [], active: true, score: 70, scores: [70, 72], metadata: {}, items: [], _deleted: false, _attachments: {}, _rev: '1-i', _meta: { lwt: 9000 } },
@@ -359,6 +361,44 @@ const MangoQueryArbitrary = () => {
 		)
 	});
 	
+	const bsonNumericTypeArb = fc.record({
+		field: fc.constantFrom('name', 'age', 'tags', 'active', 'score'),
+		op: fc.constant('$type'),
+		value: fc.constantFrom(
+			2,
+			16,
+			18,
+			4,
+			8,
+			1,
+			[2, 16],
+			[4, 2]
+		)
+	});
+	
+	const unicodeRegexArb = fc.record({
+		field: fc.constant('name'),
+		op: fc.constant('$regex'),
+		value: fc.constantFrom('café', 'naïve', 'résumé', 'Zürich', 'São Paulo'),
+		options: fc.constant('i')
+	});
+	
+	const rawColumnTypeMismatchArb = fc.constantFrom(
+		{ id: 123 },
+		{ id: { $eq: 456 } },
+		{ id: { $ne: 789 } },
+		{ id: { $gt: 100 } },
+		{ _rev: 123 },
+		{ _deleted: 'true' },
+		{ _deleted: 1 }
+	);
+	
+	const numericObjectKeyArb = fc.constantFrom(
+		{ 'metadata.0': 'value' },
+		{ 'metadata.1': { $eq: 'test' } },
+		{ 'metadata.2': { $ne: 'foo' } }
+	);
+	
 	const existsOnOptionalArb = fc.record({
 		field: fc.constant('optional'),
 		op: fc.constant('$exists'),
@@ -598,7 +638,11 @@ const MangoQueryArbitrary = () => {
 		sizeKnownArrayArb,
 		nestedObjectEqualityArb,
 		mixedObjectAndArrayArb,
-		modOnUnknownArrayArb
+		modOnUnknownArrayArb,
+		bsonNumericTypeArb.map(toMangoQuery),
+		unicodeRegexArb.map(op => ({ [op.field]: { $regex: op.value, $options: op.options } })),
+		rawColumnTypeMismatchArb,
+		numericObjectKeyArb
 	);
 };
 
@@ -625,8 +669,10 @@ describe('Property-Based Testing: SQL vs Mingo Correctness', () => {
 				score: { type: 'number' },
 				scores: { type: 'array', items: { type: 'number' } },
 			optional: { type: 'string' },
-			metadata: { type: 'object' },
+			metadata: { type: 'object', properties: { '0': { type: 'string' }, '1': { type: 'string' } } },
 			unknownField: {},
+			'first name': { type: 'string' },
+			'user-name': { type: 'string' },
 				items: {
 						type: 'array',
 						items: {
