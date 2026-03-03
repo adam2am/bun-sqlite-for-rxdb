@@ -53,6 +53,7 @@ export function buildWhereClauseWithFallback<RxDocType>(
 	}
 
 	const sqlResult = buildWhereClause(selector, schema, collectionName, cache);
+	
 	if (sqlResult) {
 		return { sqlWhere: sqlResult, jsSelector: null };
 	}
