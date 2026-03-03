@@ -1,5 +1,7 @@
 import type { RxJsonSchema, RxDocumentData } from 'rxdb';
 import { getColumnInfo } from './schema-mapper';
+import { smartRegexToLike } from './smart-regex';
+import { addTypeGuard } from './type-guards';
 
 export interface SqlFragment {
 	sql: string;
@@ -9,8 +11,6 @@ export interface SqlFragment {
 type QueryValue = string | number | boolean | null;
 type OperatorExpression = { [key: string]: unknown };
 export type ElemMatchCriteria = QueryValue | OperatorExpression;
-
-import { smartRegexToLike } from './smart-regex';
 
 export function buildJsonPath(fieldName: string, schema?: RxJsonSchema<any>): string {
 	const segments = fieldName.split('.');
@@ -48,22 +48,44 @@ export function buildJsonPath(fieldName: string, schema?: RxJsonSchema<any>): st
 }
 
 function normalizeValueForSQLite(value: unknown): string | number | boolean | null {
-	if (value instanceof Date) {
-		return value.toISOString();
+	if (value === null || value === undefined) return null;
+	if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+		return value;
 	}
 	if (value instanceof RegExp) {
 		return JSON.stringify({ source: value.source, flags: value.flags });
 	}
-	if (value === undefined) {
-		return null;
+	if (value instanceof Date) {
+		return value.toISOString();
 	}
-	if (Array.isArray(value)) {
+	if (typeof value === 'object') {
 		return JSON.stringify(value);
 	}
-	if (typeof value === 'object' && value !== null) {
-		return JSON.stringify(value);
+	return String(value);
+}
+
+function isArrayOrObject(value: unknown): boolean {
+	return Array.isArray(value) || (typeof value === 'object' && value !== null && !(value instanceof Date));
+}
+
+function getTypeExpression(field: string): string {
+	if (field === 'value') {
+		return 'type';
 	}
-	return value as string | number | boolean | null;
+	
+	if (field.includes('json_extract(json(value)') || field.includes('json_extract(value')) {
+		return '';
+	}
+	
+	const match = field.match(/json_extract\(([^,]+),\s*'([^']+)'\)/);
+	if (match) {
+		const [, jsonColumn, jsonPath] = match;
+		const needsJsonNormalization = jsonColumn === 'value' && jsonPath && jsonPath !== '$';
+		const safeColumn = needsJsonNormalization ? `json(${jsonColumn})` : jsonColumn;
+		return `json_type(${safeColumn}, '${jsonPath}')`;
+	}
+	
+	return '';
 }
 
 export function translateEq(field: string, value: unknown): SqlFragment | null {
@@ -93,8 +115,6 @@ export function translateEq(field: string, value: unknown): SqlFragment | null {
 	};
 }
 
-import { addTypeGuard } from './type-guards';
-
 export function translateNe(field: string, value: unknown): SqlFragment {
 	if (value === null) {
 		return { sql: `${field} IS NOT NULL`, args: [] };
@@ -102,7 +122,8 @@ export function translateNe(field: string, value: unknown): SqlFragment {
 	return { sql: `(${field} <> ? OR ${field} IS NULL)`, args: [normalizeValueForSQLite(value)] };
 }
 
-export function translateGt(field: string, value: unknown): SqlFragment {
+export function translateGt(field: string, value: unknown): SqlFragment | null {
+	if (isArrayOrObject(value)) return null;
 	const comparison = `${field} > ?`;
 	return { 
 		sql: addTypeGuard(field, value, comparison), 
@@ -110,7 +131,8 @@ export function translateGt(field: string, value: unknown): SqlFragment {
 	};
 }
 
-export function translateGte(field: string, value: unknown): SqlFragment {
+export function translateGte(field: string, value: unknown): SqlFragment | null {
+	if (isArrayOrObject(value)) return null;
 	const comparison = `${field} >= ?`;
 	return { 
 		sql: addTypeGuard(field, value, comparison), 
@@ -118,7 +140,8 @@ export function translateGte(field: string, value: unknown): SqlFragment {
 	};
 }
 
-export function translateLt(field: string, value: unknown): SqlFragment {
+export function translateLt(field: string, value: unknown): SqlFragment | null {
+	if (isArrayOrObject(value)) return null;
 	const comparison = `${field} < ?`;
 	return { 
 		sql: addTypeGuard(field, value, comparison), 
@@ -126,7 +149,8 @@ export function translateLt(field: string, value: unknown): SqlFragment {
 	};
 }
 
-export function translateLte(field: string, value: unknown): SqlFragment {
+export function translateLte(field: string, value: unknown): SqlFragment | null {
+	if (isArrayOrObject(value)) return null;
 	const comparison = `${field} <= ?`;
 	return { 
 		sql: addTypeGuard(field, value, comparison), 
@@ -138,6 +162,11 @@ export function translateIn(field: string, values: unknown[]): SqlFragment {
 	if (!Array.isArray(values) || values.length === 0) {
 		return { sql: '1=0', args: [] };
 	}
+	
+	if (values.some(v => v instanceof RegExp || (typeof v === 'object' && v !== null && !Array.isArray(v) && !(v instanceof Date)))) {
+		return { sql: '1=0', args: [] };
+	}
+	
 	const hasNull = values.includes(null);
 	const nonNullValues = values.filter(v => v !== null).map(v => normalizeValueForSQLite(v));
 
@@ -146,7 +175,14 @@ export function translateIn(field: string, values: unknown[]): SqlFragment {
 	}
 
 	try {
-		const inClause = `${field} IN (SELECT value FROM json_each(?))`;
+		const typeExpr = getTypeExpression(field);
+		
+		const useSimpleIn = !typeExpr || field.includes('json_extract(json(value)') || field.includes('json_extract(value');
+		
+		const inClause = useSimpleIn
+			? `${field} IN (SELECT value FROM json_each(?))`
+			: `EXISTS (SELECT 1 FROM json_each(?) je WHERE je.value = ${field} AND je.type = ${typeExpr})`;
+		
 		const args = [JSON.stringify(nonNullValues)];
 		return hasNull ? { sql: `(${inClause} OR ${field} IS NULL)`, args } : { sql: inClause, args };
 	} catch (e) {
@@ -158,6 +194,11 @@ export function translateNin(field: string, values: unknown[]): SqlFragment {
 	if (!Array.isArray(values) || values.length === 0) {
 		return { sql: '1=1', args: [] };
 	}
+	
+	if (values.some(v => v instanceof RegExp || (typeof v === 'object' && v !== null && !Array.isArray(v) && !(v instanceof Date)))) {
+		return { sql: '1=1', args: [] };
+	}
+	
 	const hasNull = values.includes(null);
 	const nonNullValues = values.filter(v => v !== null).map(v => normalizeValueForSQLite(v));
 
@@ -166,7 +207,14 @@ export function translateNin(field: string, values: unknown[]): SqlFragment {
 	}
 
 	try {
-		const ninClause = `${field} NOT IN (SELECT value FROM json_each(?))`;
+		const typeExpr = getTypeExpression(field);
+		
+		const useSimpleIn = !typeExpr || field.includes('json_extract(json(value)') || field.includes('json_extract(value');
+		
+		const ninClause = useSimpleIn
+			? `${field} NOT IN (SELECT value FROM json_each(?))`
+			: `NOT EXISTS (SELECT 1 FROM json_each(?) je WHERE je.value = ${field} AND je.type = ${typeExpr})`;
+		
 		const args = [JSON.stringify(nonNullValues)];
 		return hasNull ? { sql: `(${ninClause} AND ${field} IS NOT NULL)`, args } : { sql: `(${field} IS NULL OR ${ninClause})`, args };
 	} catch (e) {
@@ -175,17 +223,7 @@ export function translateNin(field: string, values: unknown[]): SqlFragment {
 }
 
 export function translateExists(field: string, exists: boolean): SqlFragment {
-	let typeExpr = '';
-	
-	if (field === 'value') {
-		typeExpr = 'type';
-	} else if (field.includes('json_extract')) {
-		const match = field.match(/json_extract\(([^,]+),\s*'([^']+)'\)/);
-		if (match) {
-			const [, jsonColumn, jsonPath] = match;
-			typeExpr = `json_type(${jsonColumn}, '${jsonPath}')`;
-		}
-	}
+	const typeExpr = getTypeExpression(field);
 	
 	if (!typeExpr) {
 		return {
@@ -301,7 +339,8 @@ function handleFieldCondition<RxDocType>(
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	baseFieldName: string
 ): SqlFragment | null {
-	const propertyField = `json_extract(value, '${buildJsonPath(fieldName, schema)}')`;
+	const jsonPath = buildJsonPath(fieldName, schema);
+	const propertyField = `json_extract(json(value), '${jsonPath}')`;
 	const nestedFieldName = `${baseFieldName}.${fieldName}`;
 
 	if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
@@ -400,6 +439,9 @@ export function translateElemMatch<RxDocType>(
 	}
 
 	const jsonPath = buildJsonPath(actualFieldName, schema);
+	
+	const target = field === 'value' ? 'value' : `data, '${jsonPath}'`;
+	const typeCheck = field === 'value' ? `type = 'array'` : `json_type(${target}) = 'array'`;
 
 	if (criteria.$and && Array.isArray(criteria.$and)) {
 		const fragments = criteria.$and.map((cond: Record<string, unknown>) => buildElemMatchConditions(cond, schema, actualFieldName));
@@ -407,7 +449,7 @@ export function translateElemMatch<RxDocType>(
 		const sql = fragments.map(f => `COALESCE((${f!.sql}), 0)`).join(' AND ');
 		const args = fragments.flatMap(f => f!.args);
 		return {
-			sql: `(json_type(data, '${jsonPath}') = 'array' AND EXISTS (SELECT 1 FROM jsonb_each(data, '${jsonPath}') WHERE ${sql}))`,
+			sql: `(${typeCheck} AND EXISTS (SELECT 1 FROM jsonb_each(${target}) WHERE json_type(value) = 'object' AND ${sql}))`,
 			args
 		};
 	}
@@ -418,7 +460,7 @@ export function translateElemMatch<RxDocType>(
 		const sql = fragments.map(f => `COALESCE((${f!.sql}), 0)`).join(' OR ');
 		const args = fragments.flatMap(f => f!.args);
 		return {
-			sql: `(json_type(data, '${jsonPath}') = 'array' AND EXISTS (SELECT 1 FROM jsonb_each(data, '${jsonPath}') WHERE ${sql}))`,
+			sql: `(${typeCheck} AND EXISTS (SELECT 1 FROM jsonb_each(${target}) WHERE json_type(value) = 'object' AND ${sql}))`,
 			args
 		};
 	}
@@ -429,15 +471,19 @@ export function translateElemMatch<RxDocType>(
 		const sql = fragments.map(f => `COALESCE((${f!.sql}), 0)`).join(' OR ');
 		const args = fragments.flatMap(f => f!.args);
 		return {
-			sql: `(json_type(data, '${jsonPath}') = 'array' AND EXISTS (SELECT 1 FROM jsonb_each(data, '${jsonPath}') WHERE NOT (${sql})))`,
+			sql: `(${typeCheck} AND EXISTS (SELECT 1 FROM jsonb_each(${target}) WHERE json_type(value) = 'object' AND NOT (${sql})))`,
 			args
 		};
 	}
 
 	const fragment = buildElemMatchConditions(criteria as Record<string, unknown>, schema, actualFieldName);
 	if (!fragment) return null;
+	
+	const hasNestedFields = Object.keys(criteria).some(k => !k.startsWith('$'));
+	const objectGuard = hasNestedFields ? `json_type(value) = 'object' AND ` : '';
+	
 	return {
-		sql: `(json_type(data, '${jsonPath}') = 'array' AND EXISTS (SELECT 1 FROM jsonb_each(data, '${jsonPath}') WHERE ${asBoolean(fragment.sql)}))`,
+		sql: `(${typeCheck} AND EXISTS (SELECT 1 FROM jsonb_each(${target}) WHERE ${objectGuard}${asBoolean(fragment.sql)}))`,
 		args: fragment.args
 	};
 }
@@ -508,6 +554,10 @@ export function translateLeafOperator<RxDocType>(
 	}
 
 	if (op === '$elemMatch') {
+		// Detect nested $elemMatch (depth > 1) and fallback to Mingo to avoid column shadowing
+		if (field === 'value') {
+			return null;
+		}
 		return translateElemMatch(field, value as ElemMatchCriteria, schema, actualFieldName);
 	}
 
@@ -599,6 +649,8 @@ export function translateLeafOperator<RxDocType>(
 		if (!Array.isArray(value) || value.length === 0) return { sql: '1=0', args: [] };
 		
 		const jsonPath = buildJsonPath(actualFieldName, schema);
+		const target = field === 'value' ? 'value' : `data, '${jsonPath}'`;
+		const arrayCheck = field === 'value' ? `type = 'array'` : `json_type(${target}) = 'array'`;
 		const fragments: SqlFragment[] = [];
 		
 		for (const val of value) {
@@ -607,7 +659,7 @@ export function translateLeafOperator<RxDocType>(
 				if (!frag) return null;
 				fragments.push(wrapWithArrayTraversal(frag, jsonPath, '$eq'));
 			} else if (typeof val === 'object' && val !== null && !Array.isArray(val) && '$elemMatch' in val) {
-				const frag = translateElemMatch(actualFieldName, (val as { $elemMatch: ElemMatchCriteria }).$elemMatch, schema, actualFieldName);
+				const frag = translateElemMatch(field, (val as { $elemMatch: ElemMatchCriteria }).$elemMatch, schema, actualFieldName);
 				if (!frag) return null;
 				fragments.push(frag);
 			} else {
@@ -617,7 +669,7 @@ export function translateLeafOperator<RxDocType>(
 			}
 		}
 		return {
-			sql: `(${fragments.map(f => f.sql).join(' AND ')})`,
+			sql: `(${arrayCheck} AND ${fragments.map(f => f.sql).join(' AND ')})`,
 			args: fragments.flatMap(f => f.args)
 		};
 	}
@@ -689,22 +741,24 @@ export function translateLeafOperator<RxDocType>(
 
 	const jsonPath = buildJsonPath(actualFieldName, schema);
 	const arrayTraversal = wrapWithArrayTraversal(elementFragment, jsonPath, op);
+	const arrayTypeCheck = `json_type(data, '${jsonPath}') = 'array'`;
+	const scalarNotArray = `(json_type(data, '${jsonPath}') IS NULL OR json_type(data, '${jsonPath}') != 'array')`;
 
 	if (op === '$ne' || op === '$nin') {
 		return {
-			sql: `(${scalarFragment.sql} AND ${arrayTraversal.sql})`,
+			sql: `((${scalarNotArray} AND ${scalarFragment.sql}) OR (${arrayTypeCheck} AND ${arrayTraversal.sql}))`,
 			args: [...scalarFragment.args, ...arrayTraversal.args]
 		};
 	} else {
 		return {
-			sql: `(${scalarFragment.sql} OR ${arrayTraversal.sql})`,
+			sql: `(${scalarFragment.sql} OR (${arrayTypeCheck} AND ${arrayTraversal.sql}))`,
 			args: [...scalarFragment.args, ...arrayTraversal.args]
 		};
 	}
 }
 
 function wrapWithArrayTraversal(elementFragment: SqlFragment, jsonPath: string, op: string): SqlFragment {
-	const existsSql = `EXISTS (SELECT 1 FROM jsonb_each(data, '${jsonPath}') WHERE ${elementFragment.sql})`;
+	const existsSql = `EXISTS (SELECT 1 FROM jsonb_each(data, '${jsonPath}') AS outer_array WHERE ${elementFragment.sql.replace(/= value\b/g, '= outer_array.value').replace(/= type\b/g, '= outer_array.type')})`;
 	
 	if (op === '$ne' || op === '$nin') {
 		return {
@@ -746,18 +800,21 @@ export function translateType(
 	};
 	if (bsonMap[typeStr]) typeStr = bsonMap[typeStr];
 
+	const needsJsonNormalization = jsonColumn === 'value' && jsonPath && jsonPath !== '';
+	const safeColumn = needsJsonNormalization ? `json(${jsonColumn})` : jsonColumn;
+
 	switch (typeStr) {
-		case 'null': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'null'`, args: [] };
+		case 'null': return { sql: `json_type(${safeColumn}, '${jsonPath}') = 'null'`, args: [] };
 		case 'boolean':
-		case 'bool': return { sql: `json_type(${jsonColumn}, '${jsonPath}') IN ('true', 'false')`, args: [] };
+		case 'bool': return { sql: `json_type(${safeColumn}, '${jsonPath}') IN ('true', 'false')`, args: [] };
 		case 'number':
 		case 'int':
 		case 'long':
 		case 'double':
-		case 'decimal': return { sql: `json_type(${jsonColumn}, '${jsonPath}') IN ('integer', 'real')`, args: [] };
-		case 'string': return { sql: `COALESCE(json_type(${jsonColumn}, '${jsonPath}') = 'text', 0)`, args: [] };
-		case 'array': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'array'`, args: [] };
-		case 'object': return { sql: `json_type(${jsonColumn}, '${jsonPath}') = 'object'`, args: [] };
+		case 'decimal': return { sql: `json_type(${safeColumn}, '${jsonPath}') IN ('integer', 'real')`, args: [] };
+		case 'string': return { sql: `COALESCE(json_type(${safeColumn}, '${jsonPath}') = 'text', 0)`, args: [] };
+		case 'array': return { sql: `json_type(${safeColumn}, '${jsonPath}') = 'array'`, args: [] };
+		case 'object': return { sql: `json_type(${safeColumn}, '${jsonPath}') = 'object'`, args: [] };
 		default: return null;
 	}
 }
