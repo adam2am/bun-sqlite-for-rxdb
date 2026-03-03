@@ -652,12 +652,13 @@ export function translateLeafOperator<RxDocType>(
 		const target = field === 'value' ? 'value' : `data, '${jsonPath}'`;
 		const arrayCheck = field === 'value' ? `type = 'array'` : `json_type(${target}) = 'array'`;
 		const fragments: SqlFragment[] = [];
+		const depth = Math.max(1, actualFieldName.split('.').length - 1);
 		
 		for (const val of value) {
 			if (val instanceof RegExp) {
 				const frag = translateRegex('value', val.source, val.flags, schema, actualFieldName);
 				if (!frag) return null;
-				fragments.push(wrapWithArrayTraversal(frag, jsonPath, '$eq'));
+				fragments.push(wrapWithArrayTraversal(frag, jsonPath, '$eq', depth));
 			} else if (typeof val === 'object' && val !== null && !Array.isArray(val) && '$elemMatch' in val) {
 				const frag = translateElemMatch(field, (val as { $elemMatch: ElemMatchCriteria }).$elemMatch, schema, actualFieldName);
 				if (!frag) return null;
@@ -665,7 +666,7 @@ export function translateLeafOperator<RxDocType>(
 			} else {
 				const frag = translateEq('value', val);
 				if (!frag) return null;
-				fragments.push(wrapWithArrayTraversal(frag, jsonPath, '$eq'));
+				fragments.push(wrapWithArrayTraversal(frag, jsonPath, '$eq', depth));
 			}
 		}
 		return {
@@ -740,7 +741,8 @@ export function translateLeafOperator<RxDocType>(
 	if (!elementFragment) return null;
 
 	const jsonPath = buildJsonPath(actualFieldName, schema);
-	const arrayTraversal = wrapWithArrayTraversal(elementFragment, jsonPath, op);
+	const depth = Math.max(1, actualFieldName.split('.').length - 1);
+	const arrayTraversal = wrapWithArrayTraversal(elementFragment, jsonPath, op, depth);
 	const arrayTypeCheck = `json_type(data, '${jsonPath}') = 'array'`;
 	const scalarNotArray = `(json_type(data, '${jsonPath}') IS NULL OR json_type(data, '${jsonPath}') != 'array')`;
 
@@ -757,8 +759,21 @@ export function translateLeafOperator<RxDocType>(
 	}
 }
 
-function wrapWithArrayTraversal(elementFragment: SqlFragment, jsonPath: string, op: string): SqlFragment {
-	const existsSql = `EXISTS (SELECT 1 FROM jsonb_each(data, '${jsonPath}') AS outer_array WHERE ${elementFragment.sql.replace(/= value\b/g, '= outer_array.value').replace(/= type\b/g, '= outer_array.type')})`;
+function wrapWithArrayTraversal(elementFragment: SqlFragment, jsonPath: string, op: string, depth: number = 1): SqlFragment {
+	const replacedSql = elementFragment.sql.replace(/= value\b/g, '= flattened.value').replace(/= type\b/g, '= flattened.type');
+	
+	const flattenCte = `
+		WITH RECURSIVE flattened(value, type, depth_remaining) AS (
+			SELECT json_each.value, json_each.type, ${depth}
+			FROM json_each(data, '${jsonPath}')
+			UNION ALL
+			SELECT json_each.value, json_each.type, flattened.depth_remaining - 1
+			FROM flattened, json_each(flattened.value)
+			WHERE flattened.type = 'array' AND flattened.depth_remaining > 0
+		)
+	`;
+	
+	const existsSql = `EXISTS (${flattenCte} SELECT 1 FROM flattened WHERE ${replacedSql})`;
 	
 	if (op === '$ne' || op === '$nin') {
 		return {
@@ -843,6 +858,12 @@ export function translateSize(
 export function translateMod(field: string, value: unknown): SqlFragment | null {
 	if (!Array.isArray(value) || value.length !== 2) return { sql: '1=0', args: [] };
 	const [divisor, remainder] = value;
+	
+	// Float modulo: SQLite's CAST AS INTEGER loses precision
+	// Bailout to JS for float divisors/remainders (rare edge case)
+	if (typeof divisor === 'number' && !Number.isInteger(divisor)) return null;
+	if (typeof remainder === 'number' && !Number.isInteger(remainder)) return null;
+	
 	const comparison = `(${field} - (CAST(${field} / ? AS INTEGER) * ?)) = ?`;
 	return { 
 		sql: addTypeGuard(field, 0, comparison), 
