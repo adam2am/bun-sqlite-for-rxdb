@@ -5,6 +5,7 @@ import type { SqlFragment, ElemMatchCriteria } from './operators';
 import { stableStringify } from '../utils/stable-stringify';
 import type { SieveCache } from './sieve-cache';
 import { getGlobalCache } from './cache';
+import { extractRegexPrefix } from './smart-regex';
 
 export { getCacheSize, clearCache } from './cache';
 
@@ -89,6 +90,31 @@ function splitSelector<RxDocType>(
 			sqlConditions.push(testSelector);
 		} else {
 			jsConditions.push(testSelector);
+			
+			if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+				const valObj = value as Record<string, any>;
+				let pattern: string | undefined;
+				let options: string | undefined;
+
+				if (valObj instanceof RegExp) {
+					pattern = valObj.source;
+					options = valObj.flags;
+				} else if (valObj.$regex) {
+					pattern = typeof valObj.$regex === 'string' ? valObj.$regex : undefined;
+					options = valObj.$options as string;
+				}
+
+				if (pattern) {
+					const prefix = extractRegexPrefix(pattern);
+					if (prefix) {
+						const shadowSelector = { [field]: { $regex: `^${prefix}`, $options: options } } as any;
+						const shadowFragment = processSelector(shadowSelector, schema, 0);
+						if (shadowFragment) {
+							sqlConditions.push(shadowSelector);
+						}
+					}
+				}
+			}
 		}
 	}
 

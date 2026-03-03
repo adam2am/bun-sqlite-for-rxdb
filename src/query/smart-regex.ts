@@ -45,6 +45,22 @@ function isValidRegexOptions(options: string): boolean {
 	return true;
 }
 
+export function extractRegexPrefix(pattern: string): string | null {
+	if (!pattern.startsWith('^')) return null;
+	
+	let prefix = '';
+	for (let i = 1; i < pattern.length; i++) {
+		const char = pattern[i];
+		
+		if (char === '\\') break;
+		if (['.', '*', '+', '?', '^', '$', '[', ']', '(', ')', '{', '}', '|'].includes(char)) break;
+		
+		prefix += char;
+	}
+	
+	return prefix.length >= 2 ? prefix : null;
+}
+
 function isComplexRegex(pattern: string): boolean {
 	return /[*+?()[\]{}|]|\\[a-zA-Z]/.test(pattern.replace(/\\\./g, ''));
 }

@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { smartRegexToLike } from '$app/query/smart-regex';
+import { smartRegexToLike, extractRegexPrefix } from '$app/query/smart-regex';
 import type { RxJsonSchema, RxDocumentData } from 'rxdb';
 
 // Helper to create test schema
@@ -115,5 +115,41 @@ describe('smartRegexToLike basic functionality', () => {
 		
 		expect(result?.sql).toBe('LOWER(name) LIKE LOWER(?) ESCAPE \'\\\'');
 		expect(result?.args).toEqual(['%test%']);
+	});
+});
+
+describe('extractRegexPrefix', () => {
+	test('Happy path: extracts prefix from complex regex', () => {
+		expect(extractRegexPrefix('^User\\d+')).toBe('User');
+		expect(extractRegexPrefix('^Admin[0-9]+')).toBe('Admin');
+		expect(extractRegexPrefix('^Error: .*')).toBe('Error: ');
+	});
+	
+	test('Returns null when no anchor', () => {
+		expect(extractRegexPrefix('User\\d+')).toBe(null);
+		expect(extractRegexPrefix('test')).toBe(null);
+	});
+	
+	test('Returns null when prefix too short', () => {
+		expect(extractRegexPrefix('^A\\d+')).toBe(null);
+		expect(extractRegexPrefix('^X')).toBe(null);
+	});
+	
+	test('Stops at special regex chars', () => {
+		expect(extractRegexPrefix('^User.*')).toBe('User');
+		expect(extractRegexPrefix('^Test+')).toBe('Test');
+		expect(extractRegexPrefix('^Foo?')).toBe('Foo');
+		expect(extractRegexPrefix('^Bar[abc]')).toBe('Bar');
+	});
+	
+	test('Stops at backslash escape', () => {
+		expect(extractRegexPrefix('^Test\\d')).toBe('Test');
+		expect(extractRegexPrefix('^Foo\\w+')).toBe('Foo');
+	});
+	
+	test('Handles empty or invalid patterns', () => {
+		expect(extractRegexPrefix('^')).toBe(null);
+		expect(extractRegexPrefix('^.')).toBe(null);
+		expect(extractRegexPrefix('')).toBe(null);
 	});
 });
