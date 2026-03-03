@@ -135,14 +135,15 @@ describe('Array operators: $in', () => {
 		expect(result).not.toBeNull();
 		expect(result!.sql).toContain('EXISTS');
 		expect(result!.sql).toContain('jsonb_each');
-		expect(result!.args).toContain(JSON.stringify(['admin', 'user']));
+		// Args are duplicated: once for direct comparison, once for array traversal
+		expect(result!.args).toEqual(['admin', 'user', 'admin', 'user']);
 	});
 
 	it('should NOT use jsonb_each for non-array fields', () => {
 		const result = buildWhereClause({ name: { $in: ['Alice', 'Bob'] } }, schema, 'test');
 		expect(result).not.toBeNull();
-		expect(result!.sql).toContain('EXISTS');
-		expect(result!.args).toContain(JSON.stringify(['Alice', 'Bob']));
+		expect(result!.sql).toContain('IN (?, ?)');
+		expect(result!.args).toEqual(['Alice', 'Bob']);
 	});
 
 	it('should handle mixed types in $in array', () => {
