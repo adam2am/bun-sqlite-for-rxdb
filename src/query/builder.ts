@@ -6,6 +6,7 @@ import { stableStringify } from '../utils/stable-stringify';
 import type { SieveCache } from './sieve-cache';
 import { getGlobalCache } from './cache';
 import { extractRegexPrefix } from './smart-regex';
+import { isTopLevelOperator } from './operator-registry';
 
 export { getCacheSize, clearCache } from './cache';
 
@@ -81,6 +82,15 @@ function splitSelector<RxDocType>(
 	const jsConditions: MangoQuerySelector<RxDocumentData<RxDocType>>[] = [];
 
 	const entries = Object.entries(selector);
+
+	for (const [field] of entries) {
+		if (field.startsWith('$') && !isTopLevelOperator(field)) {
+			return {
+				sqlWhere: { sql: '1=0', args: [] },
+				jsSelector: null
+			};
+		}
+	}
 
 	for (const [field, value] of entries) {
 		const testSelector = { [field]: value } as MangoQuerySelector<RxDocumentData<RxDocType>>;
@@ -169,7 +179,7 @@ function processSelector<RxDocType>(
 	if (!selector || typeof selector !== 'object') return null;
 
 	const conditions: string[] = [];
-	const args: (string | number | boolean | null)[] = [];
+	const args: (string | number | boolean | bigint | null)[] = [];
 
 	for (const [field, value] of Object.entries(selector)) {
 		if (field.includes('.') && !field.startsWith('$')) {
@@ -235,15 +245,19 @@ function processSelector<RxDocType>(
 			continue;
 		}
 
-		if (field === '$not' && typeof value === 'object' && value !== null && !Array.isArray(value)) {
-			const innerFragment = processSelector(value, schema, logicalDepth + 1);
-			if (!innerFragment) return null;
-			conditions.push(`NOT (${innerFragment.sql})`);
-			args.push(...innerFragment.args);
-			continue;
-		}
+	if (field === '$not' && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+		const innerFragment = processSelector(value, schema, logicalDepth + 1);
+		if (!innerFragment) return null;
+		conditions.push(`NOT (${innerFragment.sql})`);
+		args.push(...innerFragment.args);
+		continue;
+	}
 
-		const columnInfo = getColumnInfo(field, schema);
+	if (field.startsWith('$') && !isTopLevelOperator(field)) {
+		return null;
+	}
+
+	const columnInfo = getColumnInfo(field, schema);
 		const fieldName = columnInfo.column || `json_extract(data, '${buildJsonPath(field, schema)}')`;
 		const actualFieldName = field;
 

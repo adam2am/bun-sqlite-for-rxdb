@@ -5,7 +5,7 @@ import { addTypeGuard } from './type-guards';
 
 export interface SqlFragment {
 	sql: string;
-	args: (string | number | boolean | null)[];
+	args: (string | number | boolean | bigint | null)[];
 }
 
 type QueryValue = string | number | boolean | null;
@@ -54,8 +54,9 @@ export function buildJsonPath(fieldName: string, schema?: RxJsonSchema<any>): st
 	return path;
 }
 
-function normalizeValueForSQLite(value: unknown): string | number | boolean | null {
+function normalizeValueForSQLite(value: unknown): string | number | boolean | bigint | null {
 	if (value === null || value === undefined) return null;
+	if (typeof value === 'bigint') return value;
 	if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
 		return value;
 	}
@@ -319,13 +320,9 @@ export function translateRegex<RxDocType>(
 	return null;
 }
 
-// Operator classification for O(1) lookups
-const LOGICAL_OPERATORS = new Set(['$and', '$or', '$nor', '$not']);
-const LEAF_OPERATORS = new Set(['$eq', '$ne', '$gt', '$gte', '$lt', '$lte', '$in', '$nin', '$exists', '$regex', '$type', '$size', '$mod', '$elemMatch', '$all']);
+import { isFieldLevelOperator } from './operator-registry';
 
-// WHITELIST FIREWALL: Supported SQL operators
-// Unknown operators return null to trigger Mingo fallback (prevents GAP 2: unsupported operator trap)
-const SUPPORTED_SQL_OPS = new Set(['$eq', '$ne', '$gt', '$gte', '$lt', '$lte', '$in', '$nin', '$exists', '$regex', '$type', '$size', '$mod', '$elemMatch', '$all']);
+const LOGICAL_OPERATORS = new Set(['$and', '$or', '$nor', '$not']);
 
 function isLogicalOperator(key: string): boolean {
 	return LOGICAL_OPERATORS.has(key);
@@ -442,7 +439,7 @@ function buildElemMatchConditions<RxDocType>(
 	baseFieldName: string
 ): SqlFragment | null {
 	const conditions: string[] = [];
-	const args: (string | number | boolean | null)[] = [];
+	const args: (string | number | boolean | bigint | null)[] = [];
 
 	for (const [key, value] of Object.entries(criteria)) {
 		let fragment: SqlFragment | null;
@@ -537,7 +534,7 @@ export function translateLeafOperator<RxDocType>(
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	actualFieldName: string
 ): SqlFragment | null {
-	if (!SUPPORTED_SQL_OPS.has(op)) {
+	if (!isFieldLevelOperator(op)) {
 		return null;
 	}
 
