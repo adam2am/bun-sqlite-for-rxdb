@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.7.5] - 2026-03-04
+
+### Fixed 🔥
+- **Object $ne key order independence**
+  - SQLite json() does NOT normalize key order, causing false positives
+  - Fallback to JS matcher for objects/arrays in $ne queries
+  - JS matcher now uses stableStringify for all objects (not just arrays)
+  - Query `{ config: { $ne: { a: 1, b: 2 } } }` now correctly excludes `{ b: 2, a: 1 }`
+- **$elemMatch primitive arrays with $and/$or**
+  - Fixed hardcoded `json_type(value) = 'object'` guard in $and/$or branches
+  - Added conditional object guard detection based on nested field presence
+  - Query `{ scores: { $elemMatch: { $and: [{ $gt: 80 }, { $lt: 100 }] } } }` now matches `[85, 90]`
+
+### Technical Details
+- All 712 tests passing (100%)
+- Zero regressions
+- 2 atomic commits following Linus Torvalds principles
+
+---
+
 ## [1.7.4] - 2026-03-04
 
 ### Fixed 🔥
