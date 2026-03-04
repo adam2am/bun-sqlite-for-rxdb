@@ -38,25 +38,17 @@ export function buildJsonPath(fieldName: string, schema?: RxJsonSchema<any>): st
 		}
 		
 		if (/^\d+$/.test(segment)) {
-			// Determine if this is an object key or array index
-			if (schema) {
+			// Default: object key (DocumentDB approach)
+			// Exception: nested numeric in array (schema hint)
+			if (schema && i > 0) {
 				const parentPath = segments.slice(0, i).join('.');
-				const parentInfo = parentPath ? getColumnInfo(parentPath, schema) : { type: 'unknown' };
-				
-				if (parentInfo.type === 'object') {
-					// Numeric object key - use quoted syntax
-					path += `."${segment}"`;
-				} else if (parentInfo.type === 'array') {
-					// Array index - use bracket syntax
+				const parentInfo = getColumnInfo(parentPath, schema);
+				if (parentInfo.type === 'array') {
 					path += `[${segment}]`;
-				} else {
-					// Unknown - use bracket (default behavior)
-					path += `[${segment}]`;
+					continue;
 				}
-			} else {
-				// No schema - default to array index
-				path += `[${segment}]`;
 			}
+			path += `."${segment}"`;
 		} else {
 			const escaped = segment.replace(/'/g, "''");
 			path += `.${escaped}`;
