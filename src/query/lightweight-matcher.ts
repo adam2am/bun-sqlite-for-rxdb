@@ -2,17 +2,17 @@ import type { RxDocumentData, MangoQuerySelector, MangoQueryOperators, MangoQuer
 import { matchesRegex } from './regex-matcher';
 import { stableStringify } from '../utils/stable-stringify';
 
-type MatcherFn = (doc: any, selector: MangoQuerySelector<any>) => boolean;
-type OperatorFn = (value: any, arg: any, matcher: MatcherFn) => boolean;
+type MatcherFn<T = unknown> = (doc: T, selector: MangoQuerySelector<T>) => boolean;
+type OperatorFn = (value: unknown, arg: unknown, matcher: MatcherFn) => boolean;
 
-function isOperatorObject(obj: any): boolean {
+function isOperatorObject(obj: unknown): obj is Record<string, unknown> {
 	if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return false;
 	const keys = Object.keys(obj);
 	if (keys.length === 0) return false;
 	return keys.every(k => k.startsWith('$'));
 }
 
-function isSameBsonType(a: any, b: any): boolean {
+function isSameBsonType(a: unknown, b: unknown): boolean {
 	if (a === null || b === null) return a === b;
 	if (Array.isArray(a) !== Array.isArray(b)) return false;
 	
@@ -26,15 +26,15 @@ function isSameBsonType(a: any, b: any): boolean {
 	return typeof a === typeof b;
 }
 
-function getNestedValue(obj: any, path: string): any {
+function getNestedValue(obj: unknown, path: string): unknown {
 	const segments = path.split('.');
-	let value: any = obj;
+	let value: unknown = obj;
 	
 	for (let i = 0; i < segments.length; i++) {
 		const field = segments[i];
 		if (Array.isArray(value) && !/^\d+$/.test(field)) {
 			const remainingPath = segments.slice(i).join('.');
-			const results: any[] = [];
+			const results: unknown[] = [];
 			for (const item of value) {
 				const res = getNestedValue(item, remainingPath);
 				if (res !== undefined) {
@@ -44,7 +44,11 @@ function getNestedValue(obj: any, path: string): any {
 			return results.length > 0 ? results : undefined;
 		}
 		
-		value = value?.[field];
+		if (value && typeof value === 'object') {
+			value = (value as Record<string, unknown>)[field];
+		} else {
+			return undefined;
+		}
 		if (value === undefined) return undefined;
 	}
 	return value;
@@ -72,21 +76,25 @@ const operators: Record<string, OperatorFn> = {
 	$gt: (a, b) => {
 		if (Array.isArray(a) || Array.isArray(b)) return false;
 		if (typeof a === 'object' || typeof b === 'object') return false;
+		if (a === null || a === undefined || b === null || b === undefined) return false;
 		return isSameBsonType(a, b) && a > b;
 	},
 	$gte: (a, b) => {
 		if (Array.isArray(a) || Array.isArray(b)) return false;
 		if (typeof a === 'object' || typeof b === 'object') return false;
+		if (a === null || a === undefined || b === null || b === undefined) return false;
 		return isSameBsonType(a, b) && a >= b;
 	},
 	$lt: (a, b) => {
 		if (Array.isArray(a) || Array.isArray(b)) return false;
 		if (typeof a === 'object' || typeof b === 'object') return false;
+		if (a === null || a === undefined || b === null || b === undefined) return false;
 		return isSameBsonType(a, b) && a < b;
 	},
 	$lte: (a, b) => {
 		if (Array.isArray(a) || Array.isArray(b)) return false;
 		if (typeof a === 'object' || typeof b === 'object') return false;
+		if (a === null || a === undefined || b === null || b === undefined) return false;
 		return isSameBsonType(a, b) && a <= b;
 	},
 	$in: (a, b) => {
@@ -116,12 +124,23 @@ const operators: Record<string, OperatorFn> = {
 		});
 	},
 	$exists: (a, b) => (a !== undefined) === b,
-	$mod: (a, b) => Array.isArray(b) && b.length === 2 && typeof a === 'number' && a % b[0] === b[1],
+	$mod: (a, b) => {
+		if (!Array.isArray(b) || b.length !== 2) return false;
+		if (typeof a !== 'number') return false;
+		const [divisor, remainder] = b;
+		if (typeof divisor !== 'number' || typeof remainder !== 'number') return false;
+		return a % divisor === remainder;
+	},
 	$size: (a, b) => Array.isArray(a) && a.length === b,
-	$regex: (a, b: string | { pattern: string; options?: MangoQueryRegexOptions }) => {
-		const pattern = typeof b === 'string' ? b : b.pattern;
-		const flags = typeof b === 'string' ? undefined : b.options;
-		return matchesRegex(a, pattern, flags);
+	$regex: (a, b) => {
+		if (typeof b === 'string') {
+			return matchesRegex(a, b, undefined);
+		}
+		if (typeof b === 'object' && b !== null && 'pattern' in b) {
+			const regexObj = b as { pattern: string; options?: string };
+			return matchesRegex(a, regexObj.pattern, regexObj.options);
+		}
+		return false;
 	},
 	$type: (a, b) => {
 		const bsonTypeMap: Record<string, string> = {
@@ -129,7 +148,7 @@ const operators: Record<string, OperatorFn> = {
 			'8': 'boolean', '9': 'date', '10': 'null', '11': 'regex', '16': 'number', '18': 'number', '19': 'number'
 		};
 
-		const getType = (val: any): string => {
+		const getType = (val: unknown): string => {
 			if (val === null) return 'null';
 			if (Array.isArray(val)) return 'array';
 			if (val instanceof Date) return 'date';
@@ -137,7 +156,7 @@ const operators: Record<string, OperatorFn> = {
 			return typeof val;
 		};
 
-		const matchType = (val: any, t: string | number): boolean => {
+		const matchType = (val: unknown, t: string | number): boolean => {
 			const valType = getType(val);
 			const typeStr = bsonTypeMap[String(t)] || String(t);
 			if (typeStr === 'int' || typeStr === 'long' || typeStr === 'decimal' || typeStr === 'double') return valType === 'number';
@@ -170,13 +189,14 @@ const operators: Record<string, OperatorFn> = {
 	},
 	$elemMatch: (val, query, matcher) => {
 		if (!Array.isArray(val)) return false;
+		if (typeof query !== 'object' || query === null) return false;
 		
 		const hasLogicalOps = ['$and', '$or', '$nor'].some(k => k in query);
 		const isOpObj = isOperatorObject(query) && !hasLogicalOps;
 
 		return val.some(item => {
 			if (isOpObj) return matchesOperators(item, query, matcher);
-			return matcher(item, query);
+			return matcher(item, query as MangoQuerySelector<unknown>);
 		});
 	},
 	$all: (a, b, matcher) => {
@@ -184,8 +204,9 @@ const operators: Record<string, OperatorFn> = {
 		if (!Array.isArray(a)) return false;
 		return b.every(req => {
 			if (typeof req === 'object' && req !== null && !Array.isArray(req) && !(req instanceof Date) && !(req instanceof RegExp)) {
-				if (req.$elemMatch) {
-					return operators.$elemMatch(a, req.$elemMatch, matcher);
+				const reqObj = req as Record<string, unknown>;
+				if ('$elemMatch' in reqObj) {
+					return operators.$elemMatch(a, reqObj.$elemMatch, matcher);
 				}
 			}
 			if (req instanceof RegExp) {
@@ -203,7 +224,7 @@ const operators: Record<string, OperatorFn> = {
 	}
 };
 
-function matchesOperators(value: any, condition: Record<string, any>, matcher: MatcherFn): boolean {
+function matchesOperators(value: unknown, condition: Record<string, unknown>, matcher: MatcherFn): boolean {
 	for (const [op, arg] of Object.entries(condition)) {
 		if (op === '$options') continue;
 		
@@ -213,8 +234,8 @@ function matchesOperators(value: any, condition: Record<string, any>, matcher: M
 		}
 		
 		let operatorArg = arg;
-		if (op === '$regex' && typeof arg === 'string' && condition.$options) {
-			operatorArg = { pattern: arg, options: condition.$options };
+		if (op === '$regex' && typeof arg === 'string' && '$options' in condition) {
+			operatorArg = { pattern: arg, options: condition.$options as string };
 		}
 
 		const isNegative = op === '$ne' || op === '$nin';
@@ -223,7 +244,7 @@ function matchesOperators(value: any, condition: Record<string, any>, matcher: M
 		const skipTraversal = argIsArrayOrObject && (op === '$eq' || op === '$ne');
 		
 		if (Array.isArray(value) && !isStructural && !skipTraversal) {
-			const predicate = (v: any) => fn(v, operatorArg, matcher);
+			const predicate = (v: unknown) => fn(v, operatorArg, matcher);
 			if (isNegative ? !value.every(predicate) : !value.some(predicate)) return false;
 		} else {
 			if (!fn(value, operatorArg, matcher)) return false;
@@ -252,43 +273,42 @@ export function matchesSelector<RxDocType>(
 			if (conditionUnknown instanceof Date) {
 				const eq = operators.$eq;
 				if (Array.isArray(value)) {
-					if (!value.some(v => eq(v, condition, matchesSelector))) return false;
+					if (!value.some(v => eq(v, condition, matchesSelector as MatcherFn))) return false;
 				} else {
-					if (!eq(value, condition, matchesSelector)) return false;
+					if (!eq(value, condition, matchesSelector as MatcherFn)) return false;
 				}
 			} else if (conditionUnknown instanceof RegExp) {
-				// Use regex matching for RegExp objects
 				if (Array.isArray(value)) {
 					if (!value.some(v => matchesRegex(v, conditionUnknown.source, conditionUnknown.flags))) return false;
 				} else {
 					if (!matchesRegex(value, conditionUnknown.source, conditionUnknown.flags)) return false;
 				}
 			} else if (isOperatorObject(condition)) {
-				if (!matchesOperators(value, condition, matchesSelector)) return false;
+				if (!matchesOperators(value, condition, matchesSelector as MatcherFn)) return false;
 			} else {
 				const eq = operators.$eq;
 				if (Array.isArray(value)) {
-					if (!value.some(v => eq(v, condition, matchesSelector))) return false;
+					if (!value.some(v => eq(v, condition, matchesSelector as MatcherFn))) return false;
 				} else {
-					if (!eq(value, condition, matchesSelector)) return false;
+					if (!eq(value, condition, matchesSelector as MatcherFn)) return false;
 				}
 			}
 		} else {
 			const eq = operators.$eq;
 			if (Array.isArray(value)) {
-				const flattenAndCheck = (arr: any[], cond: any): boolean => {
+				const flattenAndCheck = (arr: unknown[], cond: unknown): boolean => {
 					for (const item of arr) {
 						if (Array.isArray(item) && !Array.isArray(cond) && typeof cond !== 'object') {
 							if (flattenAndCheck(item, cond)) return true;
 						} else {
-							if (eq(item, cond, matchesSelector)) return true;
+							if (eq(item, cond, matchesSelector as MatcherFn)) return true;
 						}
 					}
 					return false;
 				};
 				if (!flattenAndCheck(value, condition)) return false;
 			} else {
-				if (!eq(value, condition, matchesSelector)) return false;
+				if (!eq(value, condition, matchesSelector as MatcherFn)) return false;
 			}
 		}
 	}
