@@ -66,10 +66,7 @@ const operators: Record<string, OperatorFn> = {
 	},
 	$ne: (a, b) => {
 		if (typeof a === 'object' && typeof b === 'object' && a !== null && b !== null) {
-			if (Array.isArray(a) && Array.isArray(b)) {
-				return stableStringify(a) !== stableStringify(b);
-			}
-			return JSON.stringify(a) !== JSON.stringify(b);
+			return stableStringify(a) !== stableStringify(b);
 		}
 		return a !== b;
 	},
