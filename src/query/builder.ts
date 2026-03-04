@@ -20,7 +20,7 @@ export function getStrictMode(): boolean {
 	return currentStrictMode;
 }
 
-function isOperatorObject(value: any): boolean {
+function isOperatorObject(value: unknown): boolean {
 	if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
 	if (value instanceof Date || value instanceof RegExp) return false;
 	const keys = Object.keys(value);
@@ -102,7 +102,7 @@ function splitSelector<RxDocType>(
 			jsConditions.push(testSelector);
 			
 			if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-				const valObj = value as Record<string, any>;
+				const valObj = value as Record<string, unknown>;
 				let pattern: string | undefined;
 				let options: string | undefined;
 
@@ -117,7 +117,7 @@ function splitSelector<RxDocType>(
 				if (pattern) {
 					const prefix = extractRegexPrefix(pattern);
 					if (prefix) {
-						const shadowSelector = { [field]: { $regex: `^${prefix}`, $options: options } } as any;
+						const shadowSelector = { [field]: { $regex: `^${prefix}`, $options: options } } as MangoQuerySelector<RxDocumentData<RxDocType>>;
 						const shadowFragment = processSelector(shadowSelector, schema, 0);
 						if (shadowFragment) {
 							sqlConditions.push(shadowSelector);
@@ -349,15 +349,18 @@ function processSelector<RxDocType>(
 
 							// Recursively wrap leaf operators with field name
 							// { $or: [{ $and: [{ $gt: 20 }] }] } → { $or: [{ $and: [{ age: { $gt: 20 } }] }] }
-							function recursivelyWrapLeafOperators(items: any[], field: string): any[] {
+							function recursivelyWrapLeafOperators(items: MangoQuerySelector<RxDocumentData<RxDocType>>[], field: string): MangoQuerySelector<RxDocumentData<RxDocType>>[] {
 								return items.map(item => {
 									const keys = Object.keys(item);
 									if (keys.some(k => !k.startsWith('$'))) return item;
 									if (keys.length === 1 && LOGICAL_OPS.has(keys[0])) {
-										const logicalOp = keys[0];
-										return { [logicalOp]: recursivelyWrapLeafOperators(item[logicalOp], field) };
+										const logicalOp = keys[0] as '$and' | '$or' | '$nor';
+										const nestedItems = item[logicalOp];
+										if (Array.isArray(nestedItems)) {
+											return { [logicalOp]: recursivelyWrapLeafOperators(nestedItems, field) } as MangoQuerySelector<RxDocumentData<RxDocType>>;
+										}
 									}
-									return { [field]: item };
+									return { [field]: item } as MangoQuerySelector<RxDocumentData<RxDocType>>;
 								});
 							}
 
