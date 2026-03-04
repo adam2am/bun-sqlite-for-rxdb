@@ -86,6 +86,50 @@ const QUIRKS: MingoQuirk[] = [
 		detector: (val: unknown, fieldName?: string) => {
 			return Array.isArray(val) && val.length === 0 && (fieldName?.includes('.') ?? false);
 		}
+	},
+	{
+		name: 'MIXED_TYPE_IN_OPERATOR',
+		description: 'Mingo hashString fails when $in/$nin contains null or when comparing primitives against undefined document fields',
+		detector: (val) => {
+			if (val && typeof val === 'object') {
+				const obj = val as Record<string, unknown>;
+				const hasPrimitiveOrNull = (arr: unknown[]) => 
+					arr.some((v: unknown) => v === null || typeof v === 'number' || typeof v === 'boolean');
+				
+				if (obj.$in && Array.isArray(obj.$in) && hasPrimitiveOrNull(obj.$in)) return true;
+				if (obj.$nin && Array.isArray(obj.$nin) && hasPrimitiveOrNull(obj.$nin)) return true;
+			}
+			return false;
+		}
+	},
+	{
+		name: 'INVALID_REGEX_PATTERN',
+		description: 'Mingo does not validate regex patterns before compiling',
+		detector: (val) => {
+			if (val && typeof val === 'object') {
+				const obj = val as Record<string, unknown>;
+				if (obj.$regex && typeof obj.$regex === 'string') {
+					try {
+						new RegExp(obj.$regex);
+						return false;
+					} catch {
+						return true;
+					}
+				}
+			}
+			return false;
+		}
+	},
+	{
+		name: 'ALL_NESTED_ARRAY_PATH',
+		description: 'Mingo $all does not flatten nested array paths (items.tags) like MongoDB does',
+		detector: (val: unknown, fieldName?: string) => {
+			if (fieldName?.includes('.') && val && typeof val === 'object') {
+				const obj = val as Record<string, unknown>;
+				return obj.$all !== undefined && Array.isArray(obj.$all);
+			}
+			return false;
+		}
 	}
 ];
 
