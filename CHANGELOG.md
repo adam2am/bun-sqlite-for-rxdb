@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.7.3] - 2026-03-04
+
+### Fixed 🔥
+- **Regex dot wildcard detection**
+  - Unescaped dot (.) in regex patterns now correctly detected as complex
+  - Pattern `^test.$` now matches "test_", "testa", etc. (wildcard behavior)
+  - Added `.` to `isComplexRegex()` character class to force JS evaluation
+  - Prevents incorrect SQL LIKE translation for dot wildcards
+
+### Added
+- **BSON-aware sorting with SQL fallback detection**
+  - Implemented `getBsonType()` method for MongoDB BSON type ordering
+  - Detects when sort fields are unknown/object/array types
+  - Falls back to JS sorting for dynamic fields, maintains SQL performance for typed fields
+  - Prevents incorrect sort order on runtime-typed fields
+
+### Changed
+- **Type safety improvements across query pipeline**
+  - Replaced `any` with `unknown` in query builder and matcher
+  - Added proper type assertions with `MangoQuerySelector<RxDocumentData<RxDocType>>`
+  - Added null/undefined checks in comparison operators ($gt, $gte, $lt, $lte)
+  - Added type validation in $mod, $regex, $elemMatch, $all operators
+  - Runtime array checks prevent accessing undefined properties
+- **Property-based test coverage expanded**
+  - Moved `hasKnownMingoBug()` check before Mingo Query creation (prevents crashes)
+  - Added BigInt detection (JSON.stringify limitation)
+  - Added top-level $not detection (Tier 1 EXTEND feature)
+  - Added test cases for regex wildcards (50%, test_, user_name)
+  - Fixed mock data type mismatch (data field)
+  - Expanded from 13 to 16 mock documents
+
+### Technical Details
+- All tests passing (7 pass, 0 fail, 13244 assertions in property-based tests)
+- Zero regressions
+- Performance verified: no regression in SQL WHERE + JS sort fallback
+- 5 atomic commits following Linus Torvalds principles
+
+---
+
 ## [1.7.2] - 2026-03-03
 
 ### Fixed 🔥
