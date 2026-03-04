@@ -320,13 +320,14 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 	async query(preparedQuery: PreparedQuery<RxDocType>): Promise<RxStorageQueryResult<RxDocType>> {
 		setStrictMode(this.options.strict ?? false);
-		const { sqlWhere, jsSelector } = buildWhereClauseWithFallback(
+		const { sqlWhere, jsSelector: originalJsSelector } = buildWhereClauseWithFallback(
 			preparedQuery.query.selector,
 			this.schema,
 			this.collectionName,
 			this.queryCache
 		);
 
+		let jsSelector = originalJsSelector;
 		let sql = `SELECT json(data) as data FROM "${this.tableName}"`;
 		const queryArgs: SQLQueryBindings[] = [];
 
@@ -335,15 +336,29 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 			queryArgs.push(...sqlWhere.args);
 		}
 
+	let safeToSqlSort = true;
 	if (preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
-		const orderBy = preparedQuery.query.sort.map(sortField => {
-			const [field, direction] = Object.entries(sortField)[0];
-			const dir = direction === 'asc' ? 'ASC' : 'DESC';
+		for (const sortField of preparedQuery.query.sort) {
+			const [field] = Object.entries(sortField)[0];
 			const colInfo = getColumnInfo(field, this.schema);
-			const colName = colInfo.column || `json_extract(data, '${colInfo.jsonPath}')`;
-			return `${colName} ${dir}`;
-		}).join(', ');
-		sql += ` ORDER BY ${orderBy}`;
+			if (colInfo.type === 'unknown' || colInfo.type === 'object' || colInfo.type === 'array') {
+				safeToSqlSort = false;
+				break;
+			}
+		}
+
+		if (safeToSqlSort) {
+			const orderBy = preparedQuery.query.sort.map(sortField => {
+				const [field, direction] = Object.entries(sortField)[0];
+				const dir = direction === 'asc' ? 'ASC' : 'DESC';
+				const colInfo = getColumnInfo(field, this.schema);
+				const colName = colInfo.column || `json_extract(data, '${colInfo.jsonPath}')`;
+				return `${colName} ${dir}`;
+			}).join(', ');
+			sql += ` ORDER BY ${orderBy}`;
+		} else {
+			if (!jsSelector) jsSelector = {} as MangoQuerySelector<RxDocumentData<RxDocType>>;
+		}
 	}
 
 	const skip = preparedQuery.query.skip || 0;
@@ -374,26 +389,38 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 	if (jsSelector) {
 		const stmt = this.db.prepare(sql);
 		const documents: RxDocumentData<RxDocType>[] = [];
-		let skipped = 0;
 		
-		for (const row of stmt.iterate(...queryArgs) as IterableIterator<{ data: string }>) {
-			const doc = JSON.parse(row.data) as RxDocumentData<RxDocType>;
-			
-			if (matchesSelector(doc, jsSelector)) {
-				if (skip > 0 && skipped < skip) {
-					skipped++;
-					continue;
-				}
-				
-				documents.push(doc);
-				
-				if (limit !== undefined && documents.length >= limit) {
-					break;
+		if (!safeToSqlSort && preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
+			for (const row of stmt.iterate(...queryArgs) as IterableIterator<{ data: string }>) {
+				const doc = JSON.parse(row.data) as RxDocumentData<RxDocType>;
+				if (matchesSelector(doc, jsSelector)) {
+					documents.push(doc);
 				}
 			}
+			
+			const sorted = this.sortDocuments(documents, preparedQuery.query.sort);
+			const sliced = sorted.slice(skip, limit !== undefined ? skip + limit : undefined);
+			return { documents: sliced };
+		} else {
+			let skipped = 0;
+			for (const row of stmt.iterate(...queryArgs) as IterableIterator<{ data: string }>) {
+				const doc = JSON.parse(row.data) as RxDocumentData<RxDocType>;
+				
+				if (matchesSelector(doc, jsSelector)) {
+					if (skip > 0 && skipped < skip) {
+						skipped++;
+						continue;
+					}
+					
+					documents.push(doc);
+					
+					if (limit !== undefined && documents.length >= limit) {
+						break;
+					}
+				}
+			}
+			return { documents };
 		}
-		
-		return { documents };
 	} else {
 		const rows = this.stmtManager.all({ query: sql, params: queryArgs }) as Array<{ data: string }>;
 		const documents = rows.map(row => JSON.parse(row.data) as RxDocumentData<RxDocType>);
@@ -403,15 +430,46 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 
 
 
+	private getBsonType(val: any): number {
+		if (val === null || val === undefined) return 0;
+		if (typeof val === 'number') return 1;
+		if (typeof val === 'string') return 2;
+		if (typeof val === 'object' && !Array.isArray(val) && !(val instanceof Date)) return 3;
+		if (Array.isArray(val)) return 4;
+		if (typeof val === 'boolean') return 5;
+		if (val instanceof Date) return 6;
+		return 7;
+	}
+
 	private sortDocuments(docs: RxDocumentData<RxDocType>[], sort: MangoQuerySortPart<RxDocType>[]): RxDocumentData<RxDocType>[] {
 		return docs.sort((a, b) => {
 			for (const sortField of sort) {
 				const [key, direction] = Object.entries(sortField)[0];
-				const aVal = this.getNestedValue(a, key) as number | string;
-				const bVal = this.getNestedValue(b, key) as number | string;
+				const aVal = this.getNestedValue(a, key);
+				const bVal = this.getNestedValue(b, key);
 
-				if (aVal < bVal) return direction === 'asc' ? -1 : 1;
-				if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+				const aType = this.getBsonType(aVal);
+				const bType = this.getBsonType(bVal);
+
+				if (aType !== bType) {
+					return direction === 'asc' ? aType - bType : bType - aType;
+				}
+
+				if (aType === 0) continue;
+				if (aType === 1 && typeof aVal === 'number' && typeof bVal === 'number') {
+					if (aVal < bVal) return direction === 'asc' ? -1 : 1;
+					if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+				}
+				if (aType === 2 && typeof aVal === 'string' && typeof bVal === 'string') {
+					if (aVal < bVal) return direction === 'asc' ? -1 : 1;
+					if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+				}
+				if (aType === 6 && aVal instanceof Date && bVal instanceof Date) {
+					const aTime = aVal.getTime();
+					const bTime = bVal.getTime();
+					if (aTime < bTime) return direction === 'asc' ? -1 : 1;
+					if (aTime > bTime) return direction === 'asc' ? 1 : -1;
+				}
 			}
 			return 0;
 		});
