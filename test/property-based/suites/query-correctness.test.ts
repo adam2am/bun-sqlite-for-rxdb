@@ -1,24 +1,24 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import fc from 'fast-check';
 import { getRxStorageBunSQLite } from '$app/storage';
-import type { RxStorage, RxStorageInstance, MangoQuerySelector, RxDocumentData } from 'rxdb';
+import type { RxStorage, RxStorageInstance } from 'rxdb';
 import type { BunSQLiteStorageSettings, BunSQLiteInternals } from '$app/types';
-import { MangoQueryArbitrary } from './arbitraries';
-import { TestDocType, mockDocs } from './fixtures/documents';
-import { hasKnownMingoQuirk } from './engine/mingo-quirks';
-import { runSQLQuery, runMingoQuery, compareResults } from './engine/runner';
-import { fingerprintQuery } from './utils/query-fingerprint';
+import { MangoASTGenerator } from '$tests/property-based/generators/ast.gen';
+import { TestDocumentArbitrary } from '$tests/property-based/generators/document.gen';
+import { hasKnownMingoQuirk, getQuirkDetails } from '$tests/property-based/engine/mingo-quirks';
+import { runSQLQuery, runMingoQuery, compareResults } from '$tests/property-based/engine/runner';
+import { fingerprintQuery } from '$tests/property-based/utils/query-fingerprint';
 
-describe('Property-Based Testing: Collect All Failures', () => {
+describe('Property-Based: Query Correctness (fc.letrec)', () => {
 	let storage: RxStorage<BunSQLiteInternals, BunSQLiteStorageSettings>;
-	let instance: RxStorageInstance<TestDocType, BunSQLiteInternals, BunSQLiteStorageSettings>;
+	let instance: RxStorageInstance<any, BunSQLiteInternals, BunSQLiteStorageSettings>;
 
 	beforeEach(async () => {
 		storage = getRxStorageBunSQLite({ strict: true });
-		instance = await storage.createStorageInstance<TestDocType>({
-			databaseInstanceToken: 'test-token-pbt-collect',
-			databaseName: 'testdb-pbt-collect',
-			collectionName: 'users-pbt-collect',
+		instance = await storage.createStorageInstance({
+			databaseInstanceToken: 'test-token-pbt',
+			databaseName: 'testdb-pbt',
+			collectionName: 'users-pbt',
 			schema: {
 				version: 0,
 				primaryKey: 'id',
@@ -69,26 +69,23 @@ describe('Property-Based Testing: Collect All Failures', () => {
 			multiInstance: false,
 			devMode: false
 		});
-
-		await instance.bulkWrite(
-			mockDocs.map(doc => ({ document: doc })),
-			'property-based-test-collect'
-		);
 	});
 
 	afterEach(async () => {
 		await instance.remove();
 	});
 
-	it('Collect all failures grouped by pattern', async () => {
+	it('SQL vs Mingo with pattern grouping', async () => {
+		const SKIP_QUIRKS = true; // Linus-style toggle: set false to test quirk handling
 		interface FailurePattern {
-			examples: Array<{ query: unknown; sqlIds: string[]; mingoIds: string[] }>;
+			examples: Array<{ query: unknown; sqlIds: string[]; mingoIds: string[]; documents: unknown[] }>;
 			failureCount: number;
 			totalRuns: number;
 			failureRate: number;
 		}
 		
 		const failures = new Map<string, FailurePattern>();
+		const detailedFailures: Array<{ query: unknown; documents: unknown[]; sqlIds: string[]; mingoIds: string[]; pattern: string }> = [];
 		const quirkStats = new Map<string, number>();
 		const unexpectedErrors = new Map<string, number>();
 		let totalQueries = 0;
@@ -97,22 +94,30 @@ describe('Property-Based Testing: Collect All Failures', () => {
 		console.log(`\n🚀 Starting test with numRuns: 1000, seed: 42\n`);
 
 		const result = await fc.check(
-			fc.asyncProperty(MangoQueryArbitrary(), async (mangoQuery) => {
-				totalQueries++;
-				
-				if (totalQueries % 100 === 0) {
-					console.log(`📊 Progress: ${totalQueries} queries processed...`);
-				}
+			fc.asyncProperty(
+				MangoASTGenerator.query,
+				fc.array(TestDocumentArbitrary, { minLength: 10, maxLength: 20 }),
+				async (mangoQuery, documents) => {
+					totalQueries++;
+					
+					if (totalQueries % 100 === 0) {
+						console.log(`📊 Progress: ${totalQueries} queries processed...`);
+					}
 
-				if (hasKnownMingoQuirk(mangoQuery)) {
-					quirksDetected++;
-					const pattern = fingerprintQuery(mangoQuery);
-					quirkStats.set(pattern, (quirkStats.get(pattern) || 0) + 1);
-					return true;
-				}
+					if (SKIP_QUIRKS && hasKnownMingoQuirk(mangoQuery)) {
+						quirksDetected++;
+						const pattern = fingerprintQuery(mangoQuery);
+						quirkStats.set(pattern, (quirkStats.get(pattern) || 0) + 1);
+						return true;
+					}
 
 				try {
-					const mingoResult = runMingoQuery(mockDocs, mangoQuery);
+					await instance.bulkWrite(
+						documents.map(doc => ({ document: doc })),
+						'pbt-test'
+					);
+
+					const mingoResult = runMingoQuery(documents, mangoQuery);
 					const sqlResult = await runSQLQuery(instance, mangoQuery);
 					const comparison = compareResults(sqlResult, mingoResult);
 
@@ -136,7 +141,18 @@ describe('Property-Based Testing: Collect All Failures', () => {
 							patternData.examples.push({
 								query: mangoQuery,
 								sqlIds: comparison.diff!.sql,
-								mingoIds: comparison.diff!.mingo
+								mingoIds: comparison.diff!.mingo,
+								documents
+							});
+						}
+						
+						if (detailedFailures.length < 50) {
+							detailedFailures.push({
+								query: mangoQuery,
+								documents,
+								sqlIds: comparison.diff!.sql,
+								mingoIds: comparison.diff!.mingo,
+								pattern
 							});
 						}
 					}
@@ -149,8 +165,12 @@ describe('Property-Based Testing: Collect All Failures', () => {
 					unexpectedErrors.set(errorMsg, (unexpectedErrors.get(errorMsg) || 0) + 1);
 					console.error(`❌ Unexpected error on query ${totalQueries}:`, errorMsg);
 					return true;
+				} finally {
+					const tableName = `${instance.collectionName}_v${instance.schema.version}`;
+					await instance.internals.db.run(`DELETE FROM "${tableName}"`);
 				}
-			}),
+				}
+			),
 			{
 				numRuns: 1000,
 				verbose: false,
@@ -184,8 +204,8 @@ describe('Property-Based Testing: Collect All Failures', () => {
 				console.log(`Category: ${category}`);
 				console.log(`Failure Rate: ${(data.failureRate * 100).toFixed(1)}% (${data.failureCount}/${data.totalRuns})`);
 				console.log(`Example: ${JSON.stringify(data.examples[0].query)}`);
-				console.log(`  SQL:   [${data.examples[0].sqlIds.join(', ')}]`);
-				console.log(`  Mingo: [${data.examples[0].mingoIds.join(', ')}]\n`);
+				console.log(`  SQL:   [${data.examples[0].sqlIds.length}]`);
+				console.log(`  Mingo: [${data.examples[0].mingoIds.length}]\n`);
 			});
 		}
 
@@ -198,6 +218,38 @@ describe('Property-Based Testing: Collect All Failures', () => {
 		}
 
 		console.log(`✅ Test complete. Review patterns above.`);
+		
+		if (failures.size > 0) {
+			const fs = await import('fs');
+			const path = await import('path');
+			const outputDir = 'test/property-based/suites/isolated/failures';
+			
+			if (!fs.existsSync(outputDir)) {
+				fs.mkdirSync(outputDir, { recursive: true });
+			}
+			
+			let fileCount = 0;
+			failures.forEach((data, pattern) => {
+				if (data.failureCount > 0) {
+					fileCount++;
+					const sanitized = pattern.replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-').substring(0, 50);
+					const filename = path.join(outputDir, `${fileCount.toString().padStart(2, '0')}-${sanitized}.json`);
+					
+					const output = {
+						pattern,
+						failureRate: data.failureRate,
+						failureCount: data.failureCount,
+						totalRuns: data.totalRuns,
+						examples: data.examples.slice(0, 3)
+					};
+					
+					fs.writeFileSync(filename, JSON.stringify(output, null, 2));
+				}
+			});
+			
+			console.log(`\n📝 Wrote ${fileCount} pattern files to: ${outputDir}/`);
+		}
+		
 		expect(unexpectedErrors.size).toBe(0);
-	}, 60000);
+	}, 120000);
 });

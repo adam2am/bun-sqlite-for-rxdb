@@ -73,7 +73,7 @@ const QUIRKS: MingoQuirk[] = [
 		detector: (val: unknown) => {
 			if (val && typeof val === 'object' && !Array.isArray(val) && !(val instanceof RegExp)) {
 				const keys = Object.keys(val);
-				if (keys.length > 0 && !keys[0].startsWith('$')) {
+				if (keys.length > 0 && !keys.some(k => k.startsWith('$'))) {
 					return true;
 				}
 			}
@@ -94,6 +94,7 @@ export function hasKnownMingoQuirk(query: unknown): boolean {
 		if (val instanceof RegExp) return true;
 
 		for (const quirk of QUIRKS) {
+			if (quirk.name === 'IMPLICIT_OBJECT_QUERY' && isTopLevel) continue;
 			if (quirk.detector(val, fieldName)) return true;
 		}
 

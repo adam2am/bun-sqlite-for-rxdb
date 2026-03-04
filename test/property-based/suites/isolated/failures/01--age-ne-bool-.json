@@ -1,0 +1,1670 @@
+{
+  "pattern": "{\"age\":{\"$ne\":\"<bool>\"}}",
+  "failureRate": 0.6666666666666666,
+  "failureCount": 2,
+  "totalRuns": 3,
+  "examples": [
+    {
+      "query": {
+        "age": {
+          "$ne": false
+        }
+      },
+      "sqlIds": [
+        "064cc286-931e-1584-ae87-888aae3d79d5",
+        "165cef15-3ddb-2820-a583-0dbc06a0e8cd",
+        "1e61c372-984e-289a-bd66-2e619b91b32a",
+        "762419f5-4518-46d7-85dc-28efc7563517",
+        "8bc5862e-37fc-8d14-90bf-5af73f23a56b",
+        "8c6558c0-770f-3250-8877-45aa0a0a2de8",
+        "b3d72618-7284-4e4d-9dab-bf2e9e514729",
+        "b5df26b7-e144-6a28-ab2a-ab226c0f1061",
+        "f03f65a3-ffdd-72de-b909-8ab58887a363"
+      ],
+      "mingoIds": [
+        "064cc286-931e-1584-ae87-888aae3d79d5",
+        "165cef15-3ddb-2820-a583-0dbc06a0e8cd",
+        "1e61c372-984e-289a-bd66-2e619b91b32a",
+        "2c825dfc-3a26-8c9b-841d-7479001168ff",
+        "3d5195e5-8575-3832-9cf5-094eff15603f",
+        "762419f5-4518-46d7-85dc-28efc7563517",
+        "8bc5862e-37fc-8d14-90bf-5af73f23a56b",
+        "8c6558c0-770f-3250-8877-45aa0a0a2de8",
+        "94ffa9d3-1064-2fcc-a5d8-d5ec470c03c4",
+        "b3d72618-7284-4e4d-9dab-bf2e9e514729",
+        "b5df26b7-e144-6a28-ab2a-ab226c0f1061",
+        "f03f65a3-ffdd-72de-b909-8ab58887a363"
+      ],
+      "documents": [
+        {
+          "id": "762419f5-4518-46d7-85dc-28efc7563517",
+          "name": "Bob",
+          "age": null,
+          "active": false,
+          "count": 434,
+          "score": 1.2207248025911411e-209,
+          "scores": null,
+          "optional": "present",
+          "tags": [],
+          "items": [],
+          "first name": "Bob",
+          "user-name": "alice456",
+          "role": "moderator",
+          "matrix": [
+            [
+              1,
+              6
+            ],
+            [
+              10,
+              9
+            ]
+          ],
+          "data": null,
+          "unknownField": [
+            "item2",
+            "item1"
+          ],
+          "strVal": "Line1\nLine2",
+          "metadata": {
+            "0": "value0",
+            "1": "value1"
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "/1SUyC< ",
+          "_meta": {
+            "lwt": 591890891473
+          }
+        },
+        {
+          "id": "8c6558c0-770f-3250-8877-45aa0a0a2de8",
+          "name": "w[%?$>0 ",
+          "age": 40,
+          "active": false,
+          "count": 596,
+          "score": -9223372036854776000,
+          "scores": [
+            82,
+            98
+          ],
+          "optional": "value",
+          "tags": [],
+          "items": [
+            {
+              "name": "{dugN\"y<\\",
+              "category": "A",
+              "price": 541,
+              "tags": [
+                "premium",
+                "premium"
+              ]
+            }
+          ],
+          "first name": "Alice",
+          "user-name": "alice456",
+          "role": "admin",
+          "matrix": [
+            [
+              10,
+              5
+            ],
+            [
+              1,
+              9
+            ]
+          ],
+          "data": 19,
+          "unknownField": [
+            "item1",
+            "item2"
+          ],
+          "strVal": "Line1\nLine2",
+          "metadata": {},
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "Py]fl",
+          "_meta": {
+            "lwt": 327354647246
+          }
+        },
+        {
+          "id": "1e61c372-984e-289a-bd66-2e619b91b32a",
+          "name": "user_name",
+          "age": null,
+          "active": true,
+          "count": 631,
+          "score": 51,
+          "scores": [
+            6,
+            40
+          ],
+          "optional": null,
+          "tags": [],
+          "items": [
+            {
+              "name": "gmd",
+              "category": "B",
+              "price": 919,
+              "tags": [
+                "clearance",
+                "new"
+              ]
+            }
+          ],
+          "first name": "Bob",
+          "user-name": "bob123",
+          "role": "moderator",
+          "matrix": [
+            [
+              8,
+              9
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "data": 82,
+          "unknownField": [
+            "item1"
+          ],
+          "strVal": "Line1\nLine2",
+          "metadata": {
+            "a": 1,
+            "b": 2
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "cSN",
+          "_meta": {
+            "lwt": 431290308900
+          }
+        },
+        {
+          "id": "165cef15-3ddb-2820-a583-0dbc06a0e8cd",
+          "name": "Charlie",
+          "age": null,
+          "active": false,
+          "count": "1",
+          "score": 60,
+          "scores": [
+            57,
+            1,
+            31
+          ],
+          "optional": "present",
+          "tags": [],
+          "items": [
+            {
+              "name": "c3'+zRc",
+              "category": "B",
+              "price": 120,
+              "tags": []
+            }
+          ],
+          "first name": "Alice",
+          "user-name": null,
+          "role": "user",
+          "matrix": [
+            [
+              4,
+              0
+            ],
+            [
+              9,
+              3
+            ]
+          ],
+          "data": "user",
+          "unknownField": [
+            "item1"
+          ],
+          "strVal": "Line1\nLine2",
+          "metadata": {},
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "t,HkG7A",
+          "_meta": {
+            "lwt": 1026027615131
+          }
+        },
+        {
+          "id": "b3d72618-7284-4e4d-9dab-bf2e9e514729",
+          "name": "Charlie",
+          "age": -9223372036854776000,
+          "active": true,
+          "count": "1",
+          "score": 79,
+          "scores": [
+            63,
+            10,
+            54
+          ],
+          "optional": "value",
+          "tags": [
+            "admin",
+            "user"
+          ],
+          "items": [
+            {
+              "name": "kA'hR}",
+              "category": "C",
+              "price": 478,
+              "tags": [
+                "new",
+                "clearance"
+              ]
+            }
+          ],
+          "first name": null,
+          "user-name": "alice456",
+          "role": "moderator",
+          "matrix": null,
+          "data": 67,
+          "unknownField": "item2",
+          "strVal": "test_",
+          "metadata": {
+            "a": 1,
+            "b": 2
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "bkqX6qk9O%",
+          "_meta": {
+            "lwt": 1004302482465
+          }
+        },
+        {
+          "id": "8bc5862e-37fc-8d14-90bf-5af73f23a56b",
+          "name": "Café",
+          "age": -9223372036854776000,
+          "active": false,
+          "count": 541,
+          "score": 1.8801541698511897e-202,
+          "scores": [
+            66,
+            52,
+            79
+          ],
+          "optional": "value",
+          "tags": [],
+          "items": [
+            {
+              "name": "'&Bx",
+              "category": "C",
+              "price": 624,
+              "tags": [
+                "clearance",
+                "premium"
+              ]
+            },
+            {
+              "name": "",
+              "category": "C",
+              "price": 129,
+              "tags": [
+                "premium"
+              ]
+            }
+          ],
+          "first name": null,
+          "user-name": "alice456",
+          "role": "moderator",
+          "matrix": null,
+          "data": "admin",
+          "unknownField": [
+            "item1"
+          ],
+          "strVal": "50%",
+          "metadata": {},
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "KEJcoS",
+          "_meta": {
+            "lwt": 744903251234
+          }
+        },
+        {
+          "id": "f03f65a3-ffdd-72de-b909-8ab58887a363",
+          "name": "Y",
+          "age": 22,
+          "active": false,
+          "count": 554,
+          "score": 15,
+          "scores": null,
+          "optional": "present",
+          "tags": [],
+          "items": [
+            {
+              "name": "UL",
+              "category": "A",
+              "price": 305,
+              "tags": [
+                "new",
+                "premium"
+              ]
+            }
+          ],
+          "first name": "Alice",
+          "user-name": null,
+          "role": "user",
+          "matrix": null,
+          "data": "admin",
+          "unknownField": [
+            "item1",
+            "item2"
+          ],
+          "strVal": null,
+          "metadata": {
+            "a": 1,
+            "b": 2
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": ",)",
+          "_meta": {
+            "lwt": 1148232686206
+          }
+        },
+        {
+          "id": "3d5195e5-8575-3832-9cf5-094eff15603f",
+          "name": "Café",
+          "age": 0,
+          "active": false,
+          "count": "1",
+          "score": -9223372036854776000,
+          "scores": [
+            63,
+            57
+          ],
+          "optional": null,
+          "tags": [
+            "admin",
+            "user"
+          ],
+          "items": [],
+          "first name": null,
+          "user-name": "alice456",
+          "role": "user",
+          "matrix": [
+            [
+              2,
+              7
+            ],
+            [
+              3,
+              9
+            ]
+          ],
+          "data": 46,
+          "unknownField": "item1",
+          "strVal": "test_",
+          "metadata": {},
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": ")(BwKwhKTs",
+          "_meta": {
+            "lwt": 1240709465882
+          }
+        },
+        {
+          "id": "b5df26b7-e144-6a28-ab2a-ab226c0f1061",
+          "name": "x-O:|m",
+          "age": null,
+          "active": false,
+          "count": 866,
+          "score": -9223372036854776000,
+          "scores": [
+            70,
+            59
+          ],
+          "optional": "present",
+          "tags": [
+            "moderator",
+            "user"
+          ],
+          "items": [
+            {
+              "name": "",
+              "category": "B",
+              "price": 86,
+              "tags": [
+                "premium"
+              ]
+            },
+            {
+              "name": "wX`o`",
+              "category": "B",
+              "price": 526,
+              "tags": []
+            }
+          ],
+          "first name": "Alice",
+          "user-name": "alice456",
+          "role": "moderator",
+          "matrix": [
+            [
+              1,
+              5
+            ],
+            [
+              4,
+              3
+            ]
+          ],
+          "data": null,
+          "unknownField": "item1",
+          "strVal": "Line1\nLine2",
+          "metadata": {
+            "0": "value0",
+            "1": "value1"
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "hf<!KQG!V",
+          "_meta": {
+            "lwt": 960035274571
+          }
+        },
+        {
+          "id": "94ffa9d3-1064-2fcc-a5d8-d5ec470c03c4",
+          "name": "Café",
+          "age": 0,
+          "active": false,
+          "count": "1",
+          "score": 59,
+          "scores": [
+            34,
+            45,
+            14
+          ],
+          "optional": "value",
+          "tags": [
+            "admin",
+            "moderator"
+          ],
+          "items": [
+            {
+              "name": "n~D;Ev~n",
+              "category": "B",
+              "price": 896,
+              "tags": [
+                "new",
+                "sale"
+              ]
+            },
+            {
+              "name": "toc0\"xL,}[",
+              "category": "A",
+              "price": 63,
+              "tags": []
+            }
+          ],
+          "first name": "Bob",
+          "user-name": "alice456",
+          "role": "admin",
+          "matrix": [
+            [
+              8,
+              6
+            ],
+            [
+              6,
+              7
+            ]
+          ],
+          "data": "admin",
+          "unknownField": [
+            "item2",
+            "item1"
+          ],
+          "strVal": "50%",
+          "metadata": {
+            "0": "value0",
+            "1": "value1"
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "Z{W93Xt?+",
+          "_meta": {
+            "lwt": 334400254855
+          }
+        },
+        {
+          "id": "064cc286-931e-1584-ae87-888aae3d79d5",
+          "name": "Alice",
+          "age": 98,
+          "active": true,
+          "count": 731,
+          "score": 8.541786521206118e-113,
+          "scores": [
+            48,
+            64
+          ],
+          "optional": "present",
+          "tags": [],
+          "items": [
+            {
+              "name": "'",
+              "category": "C",
+              "price": 630,
+              "tags": [
+                "sale",
+                "sale"
+              ]
+            },
+            {
+              "name": "BB)3)'/hy",
+              "category": "C",
+              "price": 0,
+              "tags": []
+            },
+            {
+              "name": "",
+              "category": "B",
+              "price": 456,
+              "tags": [
+                "sale",
+                "premium"
+              ]
+            }
+          ],
+          "first name": "Alice",
+          "user-name": "bob123",
+          "role": "moderator",
+          "matrix": [
+            [
+              4,
+              3
+            ],
+            [
+              9,
+              6
+            ]
+          ],
+          "data": null,
+          "unknownField": null,
+          "strVal": null,
+          "metadata": {},
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": ",4xK",
+          "_meta": {
+            "lwt": 9818946277
+          }
+        },
+        {
+          "id": "2c825dfc-3a26-8c9b-841d-7479001168ff",
+          "name": "Bob",
+          "age": 0,
+          "active": false,
+          "count": "1",
+          "score": -9223372036854776000,
+          "scores": [
+            87,
+            30,
+            39
+          ],
+          "optional": "value",
+          "tags": [
+            "moderator",
+            "moderator",
+            "moderator"
+          ],
+          "items": [
+            {
+              "name": "(*!Lh/Kx",
+              "category": "A",
+              "price": 357,
+              "tags": []
+            },
+            {
+              "name": "M\"rGKhBqo\\",
+              "category": "B",
+              "price": 480,
+              "tags": []
+            }
+          ],
+          "first name": "Alice",
+          "user-name": "bob123",
+          "role": "admin",
+          "matrix": [
+            [
+              9,
+              4
+            ],
+            [
+              1,
+              5
+            ]
+          ],
+          "data": null,
+          "unknownField": "item1",
+          "strVal": null,
+          "metadata": null,
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "2P#$$\\\\",
+          "_meta": {
+            "lwt": 865122742370
+          }
+        }
+      ]
+    },
+    {
+      "query": {
+        "age": {
+          "$ne": false
+        }
+      },
+      "sqlIds": [
+        "0000000c-9c30-3745-8000-000a9a9a6a18",
+        "0000000c-c6a1-1c84-8347-0a27ffffffff",
+        "2b0e2123-e267-7703-a0ae-8677baf7e0ba",
+        "3254b697-faf4-306b-b131-1f8d00000008",
+        "7cee4c89-f4da-7fb1-867d-d183e283ba72",
+        "87a72c1a-b5f9-83fe-94f6-c0041ff44ae3",
+        "9e6a1cd4-000a-1000-97b8-336400000007",
+        "a247f4c0-d3fe-4455-bb5a-747b96bee8ab",
+        "aa66c4da-f804-5f74-bb7f-7d657f600af4",
+        "b04faa5e-fc42-68c1-bfff-fff34e03a45d",
+        "ea1dfa5e-5d50-14f7-8000-000bbeec8ef4",
+        "efd7a323-ae37-2ab7-9867-a036658b5bd4",
+        "f210dfad-9b92-4d9f-9398-61ea401a74cb"
+      ],
+      "mingoIds": [
+        "0000000c-9c30-3745-8000-000a9a9a6a18",
+        "0000000c-c6a1-1c84-8347-0a27ffffffff",
+        "2b0e2123-e267-7703-a0ae-8677baf7e0ba",
+        "3254b697-faf4-306b-b131-1f8d00000008",
+        "67a24663-b657-4b1e-8000-00060000001b",
+        "6ad6c4f3-403a-8949-97f6-9967c745d330",
+        "7cee4c89-f4da-7fb1-867d-d183e283ba72",
+        "87a72c1a-b5f9-83fe-94f6-c0041ff44ae3",
+        "8f2adfab-0018-1000-8000-000eb46d3c66",
+        "9e6a1cd4-000a-1000-97b8-336400000007",
+        "a247f4c0-d3fe-4455-bb5a-747b96bee8ab",
+        "aa66c4da-f804-5f74-bb7f-7d657f600af4",
+        "b04faa5e-fc42-68c1-bfff-fff34e03a45d",
+        "e36a7eae-8c84-47cb-88b0-2144dbfc6c96",
+        "ea1dfa5e-5d50-14f7-8000-000bbeec8ef4",
+        "efd7a323-ae37-2ab7-9867-a036658b5bd4",
+        "f210dfad-9b92-4d9f-9398-61ea401a74cb",
+        "fffffff6-90b8-49f4-9400-961af2223a36",
+        "fffffff8-f99c-45f9-be35-fba3bbe070f1"
+      ],
+      "documents": [
+        {
+          "id": "0000000c-c6a1-1c84-8347-0a27ffffffff",
+          "name": "Alice",
+          "age": 40,
+          "active": false,
+          "count": 6,
+          "score": 3,
+          "scores": [
+            10,
+            69,
+            4
+          ],
+          "optional": "value",
+          "tags": [
+            "user",
+            "admin",
+            "user"
+          ],
+          "items": [
+            {
+              "name": "",
+              "category": "B",
+              "price": 614,
+              "tags": [
+                "clearance"
+              ]
+            }
+          ],
+          "first name": "Alice",
+          "user-name": "bob123",
+          "role": "user",
+          "matrix": [
+            [
+              0,
+              7
+            ],
+            [
+              8,
+              2
+            ]
+          ],
+          "data": "user",
+          "unknownField": "item1",
+          "strVal": "50%",
+          "metadata": {
+            "0": "value0",
+            "1": "value1"
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "a5Yrg",
+          "_meta": {
+            "lwt": 1103416871279
+          }
+        },
+        {
+          "id": "b04faa5e-fc42-68c1-bfff-fff34e03a45d",
+          "name": "Alice",
+          "age": -9223372036854776000,
+          "active": true,
+          "count": 993,
+          "score": 1.553902012353217e-266,
+          "scores": [
+            43,
+            18
+          ],
+          "optional": "present",
+          "tags": [],
+          "items": [
+            {
+              "name": "6eEDh/9Ia",
+              "category": "A",
+              "price": 670,
+              "tags": []
+            }
+          ],
+          "first name": "Alice",
+          "user-name": "bob123",
+          "role": "admin",
+          "matrix": [
+            [
+              2,
+              6
+            ],
+            [
+              0,
+              5
+            ]
+          ],
+          "data": 96,
+          "unknownField": null,
+          "strVal": "test_",
+          "metadata": null,
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "8t;l8\"b\"Nq",
+          "_meta": {
+            "lwt": 30
+          }
+        },
+        {
+          "id": "efd7a323-ae37-2ab7-9867-a036658b5bd4",
+          "name": "f!",
+          "age": -9223372036854776000,
+          "active": false,
+          "count": 863,
+          "score": -9223372036854776000,
+          "scores": [
+            70,
+            28,
+            42
+          ],
+          "optional": "value",
+          "tags": [
+            "admin",
+            "user"
+          ],
+          "items": [
+            {
+              "name": ":p4F9ZeQ",
+              "category": "A",
+              "price": 616,
+              "tags": []
+            },
+            {
+              "name": "",
+              "category": "B",
+              "price": 72,
+              "tags": [
+                "new",
+                "sale"
+              ]
+            },
+            {
+              "name": "Sn",
+              "category": "A",
+              "price": 356,
+              "tags": [
+                "clearance"
+              ]
+            }
+          ],
+          "first name": null,
+          "user-name": null,
+          "role": "admin",
+          "matrix": [
+            [
+              4,
+              1
+            ],
+            [
+              10,
+              7
+            ]
+          ],
+          "data": null,
+          "unknownField": "item2",
+          "strVal": "test_",
+          "metadata": {
+            "a": 1,
+            "b": 2
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "M",
+          "_meta": {
+            "lwt": 1656397883687
+          }
+        },
+        {
+          "id": "a247f4c0-d3fe-4455-bb5a-747b96bee8ab",
+          "name": "50%",
+          "age": -9223372036854776000,
+          "active": false,
+          "count": "1",
+          "score": 1,
+          "scores": [
+            94,
+            15
+          ],
+          "optional": "present",
+          "tags": [
+            "admin"
+          ],
+          "items": [],
+          "first name": "Bob",
+          "user-name": "bob123",
+          "role": "user",
+          "matrix": null,
+          "data": 1,
+          "unknownField": null,
+          "strVal": "Line1\nLine2",
+          "metadata": {
+            "a": 1,
+            "b": 2
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": ".x+;",
+          "_meta": {
+            "lwt": 1513132686167
+          }
+        },
+        {
+          "id": "fffffff8-f99c-45f9-be35-fba3bbe070f1",
+          "name": "p~M.6!",
+          "age": 0,
+          "active": true,
+          "count": "1",
+          "score": 45,
+          "scores": [
+            77,
+            57
+          ],
+          "optional": "value",
+          "tags": [
+            "admin",
+            "user"
+          ],
+          "items": [],
+          "first name": "Alice",
+          "user-name": "alice456",
+          "role": "moderator",
+          "matrix": [
+            [
+              2,
+              3
+            ],
+            [
+              4,
+              7
+            ]
+          ],
+          "data": null,
+          "unknownField": "item1",
+          "strVal": "50%",
+          "metadata": {
+            "0": "value0",
+            "1": "value1"
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "0PtF#",
+          "_meta": {
+            "lwt": 1633609017590
+          }
+        },
+        {
+          "id": "ea1dfa5e-5d50-14f7-8000-000bbeec8ef4",
+          "name": "Charlie",
+          "age": 91,
+          "active": true,
+          "count": 373,
+          "score": 1.1490074626574243e-156,
+          "scores": [
+            24,
+            61
+          ],
+          "optional": "value",
+          "tags": [
+            "admin",
+            "user",
+            "admin"
+          ],
+          "items": [
+            {
+              "name": "ZHk)*e:d",
+              "category": "B",
+              "price": 677,
+              "tags": []
+            }
+          ],
+          "first name": "Bob",
+          "user-name": null,
+          "role": "user",
+          "matrix": [
+            [
+              3,
+              10
+            ],
+            [
+              9,
+              6
+            ]
+          ],
+          "data": "user",
+          "unknownField": [
+            "item2",
+            "item2"
+          ],
+          "strVal": "50%",
+          "metadata": {},
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "l\"um6S",
+          "_meta": {
+            "lwt": 1568099997598
+          }
+        },
+        {
+          "id": "0000000c-9c30-3745-8000-000a9a9a6a18",
+          "name": "Café",
+          "age": 73,
+          "active": false,
+          "count": 8,
+          "score": 6,
+          "scores": [
+            30,
+            8
+          ],
+          "optional": "value",
+          "tags": [
+            "user"
+          ],
+          "items": [
+            {
+              "name": "oD0VZMh",
+              "category": "B",
+              "price": 142,
+              "tags": [
+                "sale"
+              ]
+            }
+          ],
+          "first name": "Bob",
+          "user-name": "bob123",
+          "role": "user",
+          "matrix": [
+            [
+              2,
+              2
+            ],
+            [
+              10,
+              4
+            ]
+          ],
+          "data": 77,
+          "unknownField": "item2",
+          "strVal": "test_",
+          "metadata": {},
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "<(^pc",
+          "_meta": {
+            "lwt": 1313408700067
+          }
+        },
+        {
+          "id": "f210dfad-9b92-4d9f-9398-61ea401a74cb",
+          "name": "Bob",
+          "age": 2,
+          "active": false,
+          "count": 8,
+          "score": 6,
+          "scores": [
+            98,
+            66,
+            57
+          ],
+          "optional": "present",
+          "tags": [
+            "moderator",
+            "user",
+            "test"
+          ],
+          "items": [],
+          "first name": "Alice",
+          "user-name": "alice456",
+          "role": "user",
+          "matrix": [
+            [
+              1,
+              6
+            ],
+            [
+              2,
+              6
+            ]
+          ],
+          "data": 99,
+          "unknownField": null,
+          "strVal": "50%",
+          "metadata": {
+            "a": 1,
+            "b": 2
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "N$",
+          "_meta": {
+            "lwt": 103397353840
+          }
+        },
+        {
+          "id": "67a24663-b657-4b1e-8000-00060000001b",
+          "name": "Charlie",
+          "age": 0,
+          "active": false,
+          "count": 588,
+          "score": 1.843071335934799e-182,
+          "scores": [
+            30,
+            80,
+            38
+          ],
+          "optional": null,
+          "tags": [
+            "admin",
+            "admin",
+            "admin"
+          ],
+          "items": [
+            {
+              "name": "L",
+              "category": "A",
+              "price": 526,
+              "tags": [
+                "new",
+                "new"
+              ]
+            },
+            {
+              "name": "N1SS=",
+              "category": "C",
+              "price": 595,
+              "tags": [
+                "clearance",
+                "new"
+              ]
+            }
+          ],
+          "first name": null,
+          "user-name": "alice456",
+          "role": "user",
+          "matrix": [
+            [
+              4,
+              2
+            ],
+            [
+              8,
+              0
+            ]
+          ],
+          "data": "admin",
+          "unknownField": "item2",
+          "strVal": "test_",
+          "metadata": {
+            "a": 1,
+            "b": 2
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "2'Y",
+          "_meta": {
+            "lwt": 842213588130
+          }
+        },
+        {
+          "id": "fffffff6-90b8-49f4-9400-961af2223a36",
+          "name": "50%",
+          "age": 0,
+          "active": false,
+          "count": "1",
+          "score": 98,
+          "scores": [
+            94,
+            98
+          ],
+          "optional": "value",
+          "tags": [],
+          "items": [
+            {
+              "name": "L>",
+              "category": "A",
+              "price": 25,
+              "tags": []
+            },
+            {
+              "name": "[IDv/;",
+              "category": "C",
+              "price": 606,
+              "tags": []
+            }
+          ],
+          "first name": "Bob",
+          "user-name": "bob123",
+          "role": "user",
+          "matrix": null,
+          "data": 68,
+          "unknownField": null,
+          "strVal": "50%",
+          "metadata": {
+            "0": "value0",
+            "1": "value1"
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "O(6",
+          "_meta": {
+            "lwt": 768283996787
+          }
+        },
+        {
+          "id": "87a72c1a-b5f9-83fe-94f6-c0041ff44ae3",
+          "name": "Bob",
+          "age": -9223372036854776000,
+          "active": false,
+          "count": 660,
+          "score": 2e-323,
+          "scores": [
+            0,
+            94,
+            52
+          ],
+          "optional": "value",
+          "tags": [
+            "admin",
+            "user"
+          ],
+          "items": [
+            {
+              "name": "HD|.-)p",
+              "category": "B",
+              "price": 523,
+              "tags": [
+                "clearance",
+                "clearance"
+              ]
+            }
+          ],
+          "first name": "Alice",
+          "user-name": "alice456",
+          "role": null,
+          "matrix": [
+            [
+              2,
+              3
+            ],
+            [
+              5,
+              2
+            ]
+          ],
+          "data": 65,
+          "unknownField": null,
+          "strVal": null,
+          "metadata": null,
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": " @??lp25V:",
+          "_meta": {
+            "lwt": 767810302180
+          }
+        },
+        {
+          "id": "6ad6c4f3-403a-8949-97f6-9967c745d330",
+          "name": "50%",
+          "age": 0,
+          "active": true,
+          "count": 31,
+          "score": 18,
+          "scores": [
+            56,
+            5
+          ],
+          "optional": "value",
+          "tags": [
+            "admin",
+            "user"
+          ],
+          "items": [],
+          "first name": "Alice",
+          "user-name": "alice456",
+          "role": "moderator",
+          "matrix": [
+            [
+              8,
+              0
+            ],
+            [
+              3,
+              2
+            ]
+          ],
+          "data": null,
+          "unknownField": "item1",
+          "strVal": "test_",
+          "metadata": {},
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "#!r",
+          "_meta": {
+            "lwt": 551280389135
+          }
+        },
+        {
+          "id": "2b0e2123-e267-7703-a0ae-8677baf7e0ba",
+          "name": "Alice",
+          "age": -9223372036854776000,
+          "active": false,
+          "count": "1",
+          "score": 96,
+          "scores": [
+            27,
+            30
+          ],
+          "optional": "value",
+          "tags": [
+            "admin",
+            "user"
+          ],
+          "items": [
+            {
+              "name": "_41>ZD",
+              "category": "C",
+              "price": 595,
+              "tags": []
+            },
+            {
+              "name": "|k~__defi",
+              "category": "A",
+              "price": 638,
+              "tags": [
+                "sale",
+                "premium"
+              ]
+            }
+          ],
+          "first name": "Alice",
+          "user-name": "bob123",
+          "role": "user",
+          "matrix": [
+            [
+              7,
+              2
+            ],
+            [
+              3,
+              6
+            ]
+          ],
+          "data": 100,
+          "unknownField": [
+            "item2"
+          ],
+          "strVal": "test_",
+          "metadata": {
+            "a": 1,
+            "b": 2
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "x%",
+          "_meta": {
+            "lwt": 284266679495
+          }
+        },
+        {
+          "id": "9e6a1cd4-000a-1000-97b8-336400000007",
+          "name": "D",
+          "age": -9223372036854776000,
+          "active": true,
+          "count": "1",
+          "score": 1.0697759143039697e-153,
+          "scores": [
+            76,
+            91
+          ],
+          "optional": "present",
+          "tags": [
+            "admin",
+            "user"
+          ],
+          "items": [
+            {
+              "name": "IMGQ5",
+              "category": "A",
+              "price": 3,
+              "tags": [
+                "premium"
+              ]
+            },
+            {
+              "name": " z` b",
+              "category": "B",
+              "price": 557,
+              "tags": []
+            },
+            {
+              "name": "",
+              "category": "B",
+              "price": 894,
+              "tags": []
+            }
+          ],
+          "first name": null,
+          "user-name": "bob123",
+          "role": "moderator",
+          "matrix": [
+            [
+              7,
+              2
+            ],
+            [
+              1,
+              3
+            ]
+          ],
+          "data": "admin",
+          "unknownField": "item1",
+          "strVal": "test_",
+          "metadata": {
+            "0": "value0",
+            "1": "value1"
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "keyc+$*%G?",
+          "_meta": {
+            "lwt": 185662514182
+          }
+        },
+        {
+          "id": "aa66c4da-f804-5f74-bb7f-7d657f600af4",
+          "name": "50%",
+          "age": 100,
+          "active": false,
+          "count": "1",
+          "score": 2.349133125873886e-9,
+          "scores": [
+            47,
+            59,
+            9
+          ],
+          "optional": "value",
+          "tags": [
+            "user",
+            "test"
+          ],
+          "items": [],
+          "first name": null,
+          "user-name": "bob123",
+          "role": "moderator",
+          "matrix": [
+            [
+              3,
+              5
+            ],
+            [
+              6,
+              2
+            ]
+          ],
+          "data": 53,
+          "unknownField": "item1",
+          "strVal": null,
+          "metadata": {},
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": ")Z!(|aW",
+          "_meta": {
+            "lwt": 1662535252047
+          }
+        },
+        {
+          "id": "7cee4c89-f4da-7fb1-867d-d183e283ba72",
+          "name": "50%",
+          "age": -9223372036854776000,
+          "active": true,
+          "count": 459,
+          "score": -9223372036854776000,
+          "scores": [
+            68,
+            91
+          ],
+          "optional": "present",
+          "tags": [
+            "moderator",
+            "moderator",
+            "moderator"
+          ],
+          "items": [],
+          "first name": "Alice",
+          "user-name": "alice456",
+          "role": "admin",
+          "matrix": [
+            [
+              0,
+              7
+            ],
+            [
+              3,
+              7
+            ]
+          ],
+          "data": 32,
+          "unknownField": null,
+          "strVal": "50%",
+          "metadata": {
+            "0": "value0",
+            "1": "value1"
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "\\U{-",
+          "_meta": {
+            "lwt": 142110205624
+          }
+        },
+        {
+          "id": "3254b697-faf4-306b-b131-1f8d00000008",
+          "name": "user_name",
+          "age": 4,
+          "active": true,
+          "count": 220,
+          "score": 2.5e-323,
+          "scores": [
+            25,
+            7
+          ],
+          "optional": "present",
+          "tags": [],
+          "items": [
+            {
+              "name": "h",
+              "category": "A",
+              "price": 312,
+              "tags": []
+            },
+            {
+              "name": "FV[[b0f_J ",
+              "category": "A",
+              "price": 223,
+              "tags": []
+            }
+          ],
+          "first name": "Alice",
+          "user-name": null,
+          "role": "admin",
+          "matrix": [
+            [
+              2,
+              2
+            ],
+            [
+              7,
+              1
+            ]
+          ],
+          "data": 10,
+          "unknownField": [
+            "item2"
+          ],
+          "strVal": "test_",
+          "metadata": {
+            "a": 1,
+            "b": 2
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "G",
+          "_meta": {
+            "lwt": 19
+          }
+        },
+        {
+          "id": "e36a7eae-8c84-47cb-88b0-2144dbfc6c96",
+          "name": "Alice",
+          "age": 0,
+          "active": false,
+          "count": 360,
+          "score": 2e-323,
+          "scores": [
+            59,
+            6,
+            32
+          ],
+          "optional": "value",
+          "tags": [],
+          "items": [],
+          "first name": "Bob",
+          "user-name": null,
+          "role": "user",
+          "matrix": null,
+          "data": null,
+          "unknownField": null,
+          "strVal": "test_",
+          "metadata": {
+            "a": 1,
+            "b": 2
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "AAO",
+          "_meta": {
+            "lwt": 26
+          }
+        },
+        {
+          "id": "8f2adfab-0018-1000-8000-000eb46d3c66",
+          "name": "t;hd",
+          "age": 0,
+          "active": false,
+          "count": "1",
+          "score": 1.1365953198269826e-275,
+          "scores": [
+            87,
+            63
+          ],
+          "optional": "present",
+          "tags": [],
+          "items": [
+            {
+              "name": "($QF'",
+              "category": "A",
+              "price": 786,
+              "tags": [
+                "clearance",
+                "new"
+              ]
+            },
+            {
+              "name": "Y'BPC8%",
+              "category": "C",
+              "price": 333,
+              "tags": [
+                "sale",
+                "premium"
+              ]
+            },
+            {
+              "name": "G",
+              "category": "A",
+              "price": 278,
+              "tags": [
+                "sale",
+                "clearance"
+              ]
+            }
+          ],
+          "first name": "Alice",
+          "user-name": "bob123",
+          "role": "moderator",
+          "matrix": [
+            [
+              5,
+              2
+            ],
+            [
+              1,
+              8
+            ]
+          ],
+          "data": "user",
+          "unknownField": "item1",
+          "strVal": "Line1\nLine2",
+          "metadata": {
+            "a": 1,
+            "b": 2
+          },
+          "_deleted": false,
+          "_attachments": {},
+          "_rev": "i",
+          "_meta": {
+            "lwt": 357905517611
+          }
+        }
+      ]
+    }
+  ]
+}
