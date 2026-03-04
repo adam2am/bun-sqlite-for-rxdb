@@ -26,7 +26,18 @@ function compileRegex(pattern: string, options?: string): RegExp {
 }
 
 export function matchesRegex(value: unknown, pattern: string, options?: string): boolean {
-	const regex = compileRegex(pattern, options);
+	if (typeof pattern !== 'string' || pattern === '') {
+		console.error('[matchesRegex] Invalid pattern:', { pattern, type: typeof pattern, options });
+		return false;
+	}
+
+	let regex: RegExp;
+	try {
+		regex = compileRegex(pattern, options);
+	} catch (e) {
+		console.error('[matchesRegex] Regex compilation failed:', { pattern, options, error: e });
+		return false;
+	}
 
 	if (typeof value === 'string') {
 		return regex.test(value);

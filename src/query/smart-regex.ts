@@ -46,7 +46,7 @@ function isValidRegexOptions(options: string): boolean {
 }
 
 export function extractRegexPrefix(pattern: string): string | null {
-	if (!pattern.startsWith('^')) return null;
+	if (typeof pattern !== 'string' || !pattern.startsWith('^')) return null;
 	
 	let prefix = '';
 	for (let i = 1; i < pattern.length; i++) {
@@ -62,6 +62,7 @@ export function extractRegexPrefix(pattern: string): string | null {
 }
 
 function isComplexRegex(pattern: string): boolean {
+	if (typeof pattern !== 'string') return true;
 	return /[.*+?()[\]{}|]|\\[a-zA-Z]/.test(pattern.replace(/\\\./g, ''));
 }
 
@@ -101,7 +102,10 @@ export function smartRegexToLike<RxDocType>(
 	schema: RxJsonSchema<RxDocumentData<RxDocType>>,
 	fieldName: string
 ): SqlFragment | null {
-	if (typeof pattern !== 'string') return null;
+	if (typeof pattern !== 'string') {
+		console.error('[smartRegexToLike] Invalid pattern:', { pattern, type: typeof pattern, options, field });
+		return null;
+	}
 	
 	if (options && !isValidRegexOptions(options)) {
 		throw new Error(`Invalid regex options: "${options}". Valid options are: i, m, s, x, u`);
