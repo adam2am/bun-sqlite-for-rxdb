@@ -1,51 +1,49 @@
 import fc from 'fast-check';
+import { HostileStringArb, HostileNumberArb, HostilePrimitiveArb } from '../hostile-primitives.gen';
 
-const fieldArb = fc.constantFrom('name', 'age', 'tags', 'active', 'score');
-const stringValueArb = fc.constantFrom('Alice', 'Bob', 'Charlie', 'David', 'Eve', 'admin', 'user', 'moderator');
-const numberValueArb = fc.integer({ min: 20, max: 40 });
-const booleanValueArb = fc.boolean();
+const fieldArb = fc.constantFrom('name', 'age', 'tags', 'active', 'score', '', '0', 'first name');
 
 export const eqArb = fc.record({
 	field: fieldArb,
 	op: fc.constant('$eq'),
-	value: fc.oneof(stringValueArb, numberValueArb, booleanValueArb)
+	value: HostilePrimitiveArb
 });
 
 export const neArb = fc.record({
 	field: fieldArb,
 	op: fc.constant('$ne'),
-	value: fc.oneof(stringValueArb, numberValueArb, booleanValueArb)
+	value: HostilePrimitiveArb
 });
 
 export const gtArb = fc.record({
 	field: fc.constantFrom('age', 'score'),
 	op: fc.constant('$gt'),
-	value: numberValueArb
+	value: HostileNumberArb
 });
 
 export const gteArb = fc.record({
 	field: fc.constantFrom('age', 'score'),
 	op: fc.constant('$gte'),
-	value: numberValueArb
+	value: HostileNumberArb
 });
 
 export const ltArb = fc.record({
 	field: fc.constantFrom('age', 'score'),
 	op: fc.constant('$lt'),
-	value: numberValueArb
+	value: HostileNumberArb
 });
 
 export const lteArb = fc.record({
 	field: fc.constantFrom('age', 'score'),
 	op: fc.constant('$lte'),
-	value: numberValueArb
+	value: HostileNumberArb
 });
 
 export const comparisonArb = fc.oneof(eqArb, neArb, gtArb, gteArb, ltArb, lteArb);
 
-export const multiOpArb = fc.tuple(numberValueArb, numberValueArb).map(([min, max]) => ({
+export const multiOpArb = fc.tuple(HostileNumberArb, HostileNumberArb).map(([min, max]) => ({
 	age: {
-		$gte: Math.min(min, max),
-		$lte: Math.max(min, max)
+		$gte: typeof min === 'number' && typeof max === 'number' ? Math.min(min, max) : min,
+		$lte: typeof min === 'number' && typeof max === 'number' ? Math.max(min, max) : max
 	}
 }));
