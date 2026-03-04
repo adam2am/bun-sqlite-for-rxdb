@@ -151,10 +151,17 @@ export function translateEq(field: string, value: unknown): SqlFragment | null {
 	};
 }
 
-export function translateNe(field: string, value: unknown): SqlFragment {
+export function translateNe(field: string, value: unknown): SqlFragment | null {
 	if (value === null) {
 		return { sql: `${field} IS NOT NULL`, args: [] };
 	}
+	
+	// SQLite json() does NOT normalize key order, so object/array $ne comparisons
+	// would produce false positives. Fallback to JS (Mingo) which handles this correctly.
+	if (typeof value === 'object' && value !== null && !(value instanceof Date) && !(value instanceof RegExp)) {
+		return null;
+	}
+	
 	return { sql: `(${field} <> ? OR ${field} IS NULL)`, args: [normalizeValueForSQLite(value)] };
 }
 
@@ -498,8 +505,14 @@ export function translateElemMatch<RxDocType>(
 		if (fragments.some(f => f === null)) return null;
 		const sql = fragments.map(f => `COALESCE((${f!.sql}), 0)`).join(' AND ');
 		const args = fragments.flatMap(f => f!.args);
+		
+		const hasNestedFields = criteria.$and.some((cond: Record<string, unknown>) => 
+			Object.keys(cond).some(k => !k.startsWith('$'))
+		);
+		const objectGuard = hasNestedFields ? `json_type(value) = 'object' AND ` : '';
+		
 		return {
-			sql: `(${typeCheck} AND EXISTS (SELECT 1 FROM jsonb_each(${target}) WHERE json_type(value) = 'object' AND ${sql}))`,
+			sql: `(${typeCheck} AND EXISTS (SELECT 1 FROM jsonb_each(${target}) WHERE ${objectGuard}${sql}))`,
 			args
 		};
 	}
@@ -509,8 +522,14 @@ export function translateElemMatch<RxDocType>(
 		if (fragments.some(f => f === null)) return null;
 		const sql = fragments.map(f => `COALESCE((${f!.sql}), 0)`).join(' OR ');
 		const args = fragments.flatMap(f => f!.args);
+		
+		const hasNestedFields = criteria.$or.some((cond: Record<string, unknown>) => 
+			Object.keys(cond).some(k => !k.startsWith('$'))
+		);
+		const objectGuard = hasNestedFields ? `json_type(value) = 'object' AND ` : '';
+		
 		return {
-			sql: `(${typeCheck} AND EXISTS (SELECT 1 FROM jsonb_each(${target}) WHERE json_type(value) = 'object' AND ${sql}))`,
+			sql: `(${typeCheck} AND EXISTS (SELECT 1 FROM jsonb_each(${target}) WHERE ${objectGuard}${sql}))`,
 			args
 		};
 	}
