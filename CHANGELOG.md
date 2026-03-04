@@ -1,5 +1,56 @@
 # Changelog
 
+## [1.8.1] - 2026-03-04
+
+### Fixed 🔥
+- **Numeric key handling (ID20)**
+  - Default to object key syntax ($."0") following DocumentDB approach
+  - Only use array index ($[0]) when parent is explicitly array in schema
+  - Fixes 100% failure rate on queries like {"0": {"$lt": 8}}
+- **Nested array flattening in JS fallback matcher**
+  - Flatten nested arrays when traversing paths like items.tags
+  - Matches MongoDB behavior: items.tags → ["100%", "apple"] not [["100%"], ["apple"]]
+  - Fixes false negatives in JS fallback path
+- **Defensive null checks for regex pattern handling**
+  - Prevent crashes when regex pattern is null/undefined or invalid
+  - Adds try-catch for regex compilation and null guards
+  - Fixes unexpected errors in property-based tests
+- **NaN/Infinity false positives in property-based tests**
+  - Exclude NaN/Infinity from test data (JSON.stringify limitation)
+  - Prevents false test failures
+
+### Added
+- **Mingo bug quirks for property-based tests**
+  - MIXED_TYPE_IN_OPERATOR: Mingo crashes on $in with null/primitives
+  - INVALID_REGEX_PATTERN: Mingo doesn't validate regex
+  - ALL_NESTED_ARRAY_PATH: Mingo's $all doesn't flatten nested arrays
+- **Hostile value generators**
+  - Edge case generators: empty key, numeric "0", nested "items.tags"
+  - Hostile primitives: NaN, Infinity, null, empty strings
+  - Improves property-based test coverage
+- **Unit tests for regression prevention**
+  - 14 new tests: nested array flattening (8) + numeric key handling (6)
+  - Covers happy paths and edge cases
+
+### Changed
+- **Property-based test infrastructure**
+  - Enhanced error reporting with stack traces
+  - Clear old failure artifacts before writing new ones
+  - Better progress reporting during test runs
+
+### Documentation
+- **Mingo $all nested array bug**
+  - Document that Mingo's $all doesn't flatten nested arrays
+  - Our SQL implementation is correct, Mingo has the bug
+  - Added to us-vs-mongo-vs-mingo.md
+
+### Technical Details
+- All tests passing (14 new unit tests + property-based tests)
+- Zero regressions
+- 8 atomic commits following Linus Torvalds principles
+
+---
+
 ## [1.8.0] - 2026-03-04
 
 ### Fixed 🔥
