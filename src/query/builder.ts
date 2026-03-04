@@ -1,6 +1,6 @@
 import type { RxJsonSchema, MangoQuerySelector, RxDocumentData } from 'rxdb';
 import { getColumnInfo } from './schema-mapper';
-import { translateLeafOperator, wrapWithNot, translateElemMatch, buildJsonPath } from './operators';
+import { translateLeafOperator, wrapWithNot, translateElemMatch, buildJsonPath, resetQueryBudget } from './operators';
 import type { SqlFragment, ElemMatchCriteria } from './operators';
 import { stableStringify } from '../utils/stable-stringify';
 import type { SieveCache } from './sieve-cache';
@@ -40,6 +40,8 @@ export function buildWhereClause<RxDocType>(
 	cache?: Map<string, SqlFragment | null> | SieveCache<string, SqlFragment | null>
 ): SqlFragment | null {
 	if (!selector || typeof selector !== 'object') return null;
+
+	resetQueryBudget();
 
 	const actualCache = cache ?? getGlobalCache();
 	const cacheKey = `v4_${schema.version}_${stableStringify(selector)}`;
@@ -148,6 +150,42 @@ function coerceToBoolean(sql: string): string {
 }
 
 
+function optimizeOrToIn<RxDocType>(
+	conditions: MangoQuerySelector<RxDocumentData<RxDocType>>[]
+): MangoQuerySelector<RxDocumentData<RxDocType>>[] {
+	const fieldValues = new Map<string, unknown[]>();
+	const remaining: MangoQuerySelector<RxDocumentData<RxDocType>>[] = [];
+
+	for (const cond of conditions) {
+		if (!cond || typeof cond !== 'object') {
+			continue;
+		}
+		
+		const keys = Object.keys(cond);
+		if (keys.length === 1 && !keys[0].startsWith('$')) {
+			const field = keys[0];
+			const val = cond[field as keyof typeof cond];
+			
+			if (typeof val !== 'object' || val === null || val instanceof Date || val instanceof RegExp) {
+				if (!fieldValues.has(field)) fieldValues.set(field, []);
+				fieldValues.get(field)!.push(val);
+				continue;
+			}
+		}
+		remaining.push(cond);
+	}
+
+	for (const [field, values] of fieldValues.entries()) {
+		if (values.length > 1) {
+			remaining.push({ [field]: { $in: values } } as MangoQuerySelector<RxDocumentData<RxDocType>>);
+		} else {
+			remaining.push({ [field]: values[0] } as MangoQuerySelector<RxDocumentData<RxDocType>>);
+		}
+	}
+
+	return remaining;
+}
+
 export function buildLogicalOperator<RxDocType>(
 	operator: 'or' | 'nor' | 'and',
 	conditions: MangoQuerySelector<RxDocumentData<RxDocType>>[],
@@ -158,7 +196,9 @@ export function buildLogicalOperator<RxDocType>(
 		return { sql: operator === 'or' ? '1=0' : '1=1', args: [] };
 	}
 
-	const fragments = conditions.map(subSelector => processSelector(subSelector, schema, logicalDepth + 1));
+	const optimizedConditions = operator === 'or' ? optimizeOrToIn(conditions) : conditions;
+
+	const fragments = optimizedConditions.map(subSelector => processSelector(subSelector, schema, logicalDepth + 1));
 	if (fragments.some(f => f === null)) return null;
 
 	const sql = fragments.map(f => f!.sql).join(operator === 'and' ? ' AND ' : ' OR ');

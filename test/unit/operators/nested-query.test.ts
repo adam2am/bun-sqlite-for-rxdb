@@ -60,7 +60,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 
 	expect(result).not.toBeNull();
 	expect(result!.sql).toBe(
-		"(((json_type(data, '$.age') IN ('integer', 'real') AND json_extract(data, '$.age') >= ?) AND ((json_type(data, '$.status') = 'text' AND json_extract(data, '$.status') = ?) OR (json_type(data, '$.status') = 'text' AND json_extract(data, '$.status') = ?))) OR (json_type(data, '$.age') IN ('integer', 'real') AND json_extract(data, '$.age') < ?))"
+		"(((json_type(data, '$.age') IN ('integer', 'real') AND json_extract(data, '$.age') >= ?) AND ((json_type(data, '$.status') = 'text' AND json_extract(data, '$.status') IN (?, ?)))) OR (json_type(data, '$.age') IN ('integer', 'real') AND json_extract(data, '$.age') < ?))"
 	);
 	expect(result!.args).toEqual([30, 'active', 'premium', 18]);
 	});
@@ -199,7 +199,7 @@ describe('Nested Query Builder - Depth Tracking', () => {
 	const result = buildWhereClause(selector, mockSchema, 'test');
 
 	expect(result).not.toBeNull();
-	expect(result!.sql).toBe("(json_type(data, '$.verified') IN ('true', 'false') AND json_extract(data, '$.verified') = ?) AND ((json_type(data, '$.status') = 'text' AND json_extract(data, '$.status') = ?) OR (json_type(data, '$.status') = 'text' AND json_extract(data, '$.status') = ?))");
+	expect(result!.sql).toBe("(json_type(data, '$.verified') IN ('true', 'false') AND json_extract(data, '$.verified') = ?) AND ((json_type(data, '$.status') = 'text' AND json_extract(data, '$.status') IN (?, ?)))");
 	expect(result!.args).toEqual([true, 'active', 'trial']);
 	});
 });

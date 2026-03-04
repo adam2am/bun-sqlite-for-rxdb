@@ -24,7 +24,7 @@ describe('$or operator', () => {
 		}, testSchema, 'test');
 		
 		expect(result).not.toBeNull();
-		expect(result!.sql).toBe('((json_type(data, \'$.age\') IN (\'integer\', \'real\') AND json_extract(data, \'$.age\') = ?) OR (json_type(data, \'$.age\') IN (\'integer\', \'real\') AND json_extract(data, \'$.age\') = ?))');
+		expect(result!.sql).toBe('((json_type(data, \'$.age\') IN (\'integer\', \'real\') AND json_extract(data, \'$.age\') IN (?, ?)))');
 		expect(result!.args).toEqual([25, 30]);
 	});
 
