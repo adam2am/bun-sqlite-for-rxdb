@@ -156,13 +156,17 @@ export function translateNe(field: string, value: unknown): SqlFragment | null {
 		return { sql: `${field} IS NOT NULL`, args: [] };
 	}
 	
-	// SQLite json() does NOT normalize key order, so object/array $ne comparisons
-	// would produce false positives. Fallback to JS (Mingo) which handles this correctly.
 	if (typeof value === 'object' && value !== null && !(value instanceof Date) && !(value instanceof RegExp)) {
 		return null;
 	}
 	
-	return { sql: `(${field} <> ? OR ${field} IS NULL)`, args: [normalizeValueForSQLite(value)] };
+	const eqComparison = `${field} = ?`;
+	const guardedEq = addTypeGuard(field, value, eqComparison);
+	
+	return { 
+		sql: `COALESCE(NOT (${guardedEq}), 1)`, 
+		args: [normalizeValueForSQLite(value)] 
+	};
 }
 
 export function translateGt(field: string, value: unknown): SqlFragment | null {
@@ -219,7 +223,7 @@ export function translateIn(field: string, values: unknown[]): SqlFragment | nul
 
 	const allPrimitives = values.every(v => v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean');
 	
-	if (allPrimitives && nonNullValues.length > 0) {
+	if (allPrimitives && nonNullValues.length > 0 && nonNullValues.length <= 10000) {
 		const firstType = typeof values.find(v => v !== null);
 		const allSameType = nonNullValues.every(v => typeof v === firstType);
 		
@@ -572,10 +576,22 @@ export function translateLeafOperator<RxDocType>(
 	const isRawColumn = !!columnInfo.column;
 
 	if (isRawColumn && value !== null && value !== undefined) {
-		const valueType = Array.isArray(value) ? 'array' : typeof value;
+		let valueType: string;
+		
+		if (op === '$in' || op === '$nin') {
+			if (!Array.isArray(value) || value.length === 0) {
+				valueType = 'unknown';
+			} else {
+				const firstElement = value[0];
+				valueType = Array.isArray(firstElement) ? 'array' : typeof firstElement;
+			}
+		} else {
+			valueType = Array.isArray(value) ? 'array' : typeof value;
+		}
+		
 		const schemaType = String(columnInfo.type);
 		
-		if (schemaType !== valueType && schemaType !== 'unknown') {
+		if (schemaType !== valueType && schemaType !== 'unknown' && valueType !== 'unknown') {
 			if (['$eq', '$gt', '$gte', '$lt', '$lte', '$in', '$mod', '$regex'].includes(op)) {
 				return { sql: '1=0', args: [] };
 			}

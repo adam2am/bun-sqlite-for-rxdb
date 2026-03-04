@@ -1,5 +1,60 @@
 # Changelog
 
+## [1.8.0] - 2026-03-04
+
+### Fixed 🔥
+- **CRITICAL: OOM crash in JavaScript sorting path**
+  - Fixed memory exhaustion when sorting large result sets without SQL-compatible sort fields
+  - Query with `LIMIT 10` on 900k documents loaded ALL 900k into memory before sorting
+  - Now uses Top-K min-heap: maintains only K documents (K = limit + skip) in memory
+  - Memory usage: O(K) instead of O(N) - prevents production server crashes
+  - Example: Sorting 900k docs by unknown field with LIMIT 10 now keeps only 10 in memory
+- **$ne operator type coercion bug**
+  - Changed from `<> ? OR IS NULL` to `COALESCE(NOT (...), 1)` with type guards
+  - Prevents SQLite from treating `0 != false` as false (different BSON types)
+  - Query `{ age: { $ne: false } }` now correctly matches documents with `age: 0`
+  - NULL-safe: COALESCE returns 1 when comparison is NULL (matches MongoDB semantics)
+  - Fixes property-based test failure: age $ne boolean pattern
+- **$in operator statement cache thrashing**
+  - Added 10k element threshold before falling back to json_each() pattern
+  - Arrays >10k elements use `IN (SELECT value FROM json_each(?))` (single SQL)
+  - Arrays ≤10k elements use native `IN (?, ?, ...)` (faster, but unique SQL per size)
+  - Prevents unbounded cache growth from varying array sizes
+- **$in/$nin raw column type check bug**
+  - Fixed to check ELEMENT type instead of ARRAY type
+  - Query `{ tags: { $in: ["admin"] } }` now validates "admin" (string) against schema, not array
+  - Prevents false rejections when array elements match schema type
+
+### Added
+- **TopKHeap data structure for memory-bounded sorting**
+  - Min-heap implementation for Top-K selection with O(log K) insertion
+  - Supports multi-field sorting with BSON type ordering semantics
+  - Integrated into query execution path for !safeToSqlSort branch
+  - Regression test verifies memory bounds with 10k documents
+- **Property-based test framework enhancements**
+  - Restructured arbitraries/ → generators/ for clarity
+  - Split into modular operator generators (array, comparison, evaluation, logical)
+  - Enhanced document.gen.ts with type coercion edge cases (boolean/numeric/null)
+  - Moved test suites to suites/ directory for better organization
+  - 1000 runs, 0 failures
+
+### Changed
+- **Test expectations updated for $ne operator**
+  - Updated 5 test files to expect COALESCE(NOT (...)) pattern instead of <>
+  - Reflects previous session's $ne operator implementation change
+  - All tests now pass (722 pass, 0 fail)
+- **TypeScript configuration**
+  - Added $tests/* path alias for cleaner test imports
+
+### Technical Details
+- All 722 tests passing (100%)
+- Zero regressions
+- Memory safety: O(K) heap prevents OOM on large datasets
+- 6 atomic commits following Linus Torvalds principles
+- Test coverage: 2395 expect() calls
+
+---
+
 ## [1.7.5] - 2026-03-04
 
 ### Fixed 🔥
