@@ -71,7 +71,6 @@ function hasKnownMingoBug(query: any): boolean {
 				for (const key of keys) {
 					if (!key.startsWith('$')) {
 						const fieldVal = val[key];
-
 						if (key === 'matrix' && fieldVal && typeof fieldVal === 'object') {
 							if (fieldVal.$gt !== undefined || fieldVal.$gte !== undefined ||
 								fieldVal.$lt !== undefined || fieldVal.$lte !== undefined ||
@@ -794,6 +793,26 @@ const MangoQueryArbitrary = () => {
 		{ matrix: { $all: [1, 2] } }        // Should match if 2D array contains both 1 and 2
 	);
 
+	// LINUS CLAIMS: OR-to-IN optimization edge cases
+	const orToInOptimizationArb = fc.constantFrom(
+		{ $or: Array.from({ length: 100 }, (_, i) => ({ age: 20 + i })) },  // 100 same-field $or → should collapse to $in
+		{ $or: Array.from({ length: 50 }, (_, i) => ({ name: `user${i}` })) }, // 50 string $or → should collapse
+		{ $or: [{ age: 25 }, { age: 30 }, { name: 'Alice' }] }  // Mixed fields → should NOT collapse
+	);
+
+	// LINUS CLAIMS: $all with primitives (COUNT(DISTINCT) optimization)
+	const allPrimitivesOptimizationArb = fc.constantFrom(
+		{ tags: { $all: ['admin', 'user', 'moderator'] } },  // 3 primitives → COUNT(DISTINCT)
+		{ scores: { $all: [85, 90, 95] } },                   // Numbers → COUNT(DISTINCT)
+		{ tags: { $all: ['admin', 'admin', 'user'] } },       // Duplicates → COUNT(DISTINCT) with dedup
+		{ tags: { $all: [] } }                                 // Empty → should match nothing
+	);
+
+	// LINUS CLAIMS: Query budget exceeded (should bail to JS)
+	const queryBudgetExceededArb = fc.constantFrom(
+		{ tags: { $all: [{ $elemMatch: { $gt: 0 } }, { $elemMatch: { $lt: 10 } }, { $elemMatch: { $ne: 5 } }, { $elemMatch: { $gte: 1 } }, { $elemMatch: { $lte: 6 } }] } }
+	);
+
 	// BUG FIX 2: Float Modulo (Bailout to JS for float divisors)
 	const floatModuloArb = fc.constantFrom(
 		{ score: { $mod: [4.5, 2] } },      // Float divisor - should bailout to JS
@@ -951,7 +970,10 @@ const MangoQueryArbitrary = () => {
 		bigIntSafeRangeHappyArb,
 		bigIntTypeMismatchUnhappyArb,
 		unsupportedTopLevelOpsUnhappyArb,
-		supportedTopLevelOpsHappyArb
+		supportedTopLevelOpsHappyArb,
+		orToInOptimizationArb,
+		allPrimitivesOptimizationArb,
+		queryBudgetExceededArb
 	);
 };
 
