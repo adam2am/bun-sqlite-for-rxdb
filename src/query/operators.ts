@@ -8,6 +8,17 @@ export interface SqlFragment {
 	args: (string | number | boolean | bigint | null)[];
 }
 
+let virtualTableCount = 0;
+const MAX_VIRTUAL_TABLES = 4;
+
+export function resetQueryBudget(): void {
+	virtualTableCount = 0;
+}
+
+function checkQueryBudget(): boolean {
+	return virtualTableCount < MAX_VIRTUAL_TABLES;
+}
+
 type QueryValue = string | number | boolean | null;
 type OperatorExpression = { [key: string]: unknown };
 export type ElemMatchCriteria = QueryValue | OperatorExpression;
@@ -694,13 +705,34 @@ export function translateLeafOperator<RxDocType>(
 		const jsonPath = buildJsonPath(actualFieldName, schema);
 		const target = field === 'value' ? 'value' : `data, '${jsonPath}'`;
 		const arrayCheck = field === 'value' ? `type = 'array'` : `json_type(${target}) = 'array'`;
+		
+		const allPrimitives = value.every(v => 
+			v === null || 
+			typeof v === 'string' || 
+			typeof v === 'number' || 
+			typeof v === 'boolean' ||
+			v instanceof Date
+		);
+		
+		if (allPrimitives) {
+			const uniqueCount = new Set(value.map(v => v instanceof Date ? v.toISOString() : v)).size;
+			const normalizedValues = value.map(v => v instanceof Date ? v.toISOString() : normalizeValueForSQLite(v));
+			
+			return {
+				sql: `(${arrayCheck} AND (SELECT COUNT(DISTINCT je.value) FROM jsonb_each(${target}) je WHERE je.value IN (SELECT value FROM json_each(?))) = ?)`,
+				args: [JSON.stringify(normalizedValues), uniqueCount]
+			};
+		}
+		
 		const fragments: SqlFragment[] = [];
 		
 		for (const val of value) {
 			if (val instanceof RegExp) {
 				const frag = translateRegex('value', val.source, val.flags, schema, actualFieldName);
 				if (!frag) return null;
-				fragments.push(wrapWithArrayTraversal(frag, jsonPath, '$eq', 0));
+				const wrapped = wrapWithArrayTraversal(frag, jsonPath, '$eq', 0);
+				if (!wrapped) return null;
+				fragments.push(wrapped);
 			} else if (typeof val === 'object' && val !== null && !Array.isArray(val) && '$elemMatch' in val) {
 				const frag = translateElemMatch(field, (val as { $elemMatch: ElemMatchCriteria }).$elemMatch, schema, actualFieldName);
 				if (!frag) return null;
@@ -708,7 +740,9 @@ export function translateLeafOperator<RxDocType>(
 			} else {
 				const frag = translateEq('value', val);
 				if (!frag) return null;
-				fragments.push(wrapWithArrayTraversal(frag, jsonPath, '$eq', 0));
+				const wrapped = wrapWithArrayTraversal(frag, jsonPath, '$eq', 0);
+				if (!wrapped) return null;
+				fragments.push(wrapped);
 			}
 		}
 		return {
@@ -781,6 +815,9 @@ export function translateLeafOperator<RxDocType>(
 	const jsonPath = buildJsonPath(actualFieldName, schema);
 	const depth = Math.max(1, actualFieldName.split('.').length - 1);
 	const arrayTraversal = wrapWithArrayTraversal(elementFragment, jsonPath, op, depth);
+	
+	if (!arrayTraversal) return null;
+	
 	const arrayTypeCheck = `json_type(data, '${jsonPath}') = 'array'`;
 	const scalarNotArray = `(json_type(data, '${jsonPath}') IS NULL OR json_type(data, '${jsonPath}') != 'array')`;
 
@@ -797,7 +834,13 @@ export function translateLeafOperator<RxDocType>(
 	}
 }
 
-function wrapWithArrayTraversal(elementFragment: SqlFragment, jsonPath: string, op: string, depth: number = 1): SqlFragment {
+function wrapWithArrayTraversal(elementFragment: SqlFragment, jsonPath: string, op: string, depth: number = 1): SqlFragment | null {
+	virtualTableCount++;
+	
+	if (!checkQueryBudget()) {
+		return null;
+	}
+	
 	const replacedSql = elementFragment.sql.replace(/= value\b/g, '= flattened.value').replace(/= type\b/g, '= flattened.type');
 	
 	const flattenCte = `

@@ -25,14 +25,13 @@ const testSchema: RxJsonSchema<any> = {
 
 describe('$all Operator', () => {
 	describe('SQL Builder', () => {
-		it('translates $all to multiple $eq checks linked by AND', () => {
+		it('translates $all with primitives to COUNT(DISTINCT) optimization', () => {
 			const result = buildWhereClause({ tags: { $all: ['admin', 'user'] } }, testSchema, 'test');
 			
 			expect(result).not.toBeNull();
-			expect(result!.sql).toContain('WITH RECURSIVE flattened');
+			expect(result!.sql).toContain('COUNT(DISTINCT');
 			expect(result!.sql).toContain('jsonb_each');
-			expect(result!.sql).toContain('AND');
-			expect(result!.args).toEqual(['admin', 'user']);
+			expect(result!.args.length).toBe(2);
 		});
 
 		it('returns 1=0 for empty arrays', () => {
