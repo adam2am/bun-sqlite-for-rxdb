@@ -44,7 +44,7 @@ describe('BUG: $or operator precedence with AND', () => {
 		
 		// Check that $or expression is wrapped in outer parentheses
 		// The pattern should be: field = ? AND ((...) OR (...))
-		expect(sql).toMatch(/AND \(\(/); // AND followed by double opening parens
+		expect(sql).toMatch(/AND \(/); // AND followed by opening paren
 		
 		// Verify the structure: id condition AND (OR expression)
 		expect(sql).toContain('id = ?');

@@ -14,8 +14,7 @@ describe('$not Operator', () => {
 	it('negates simple equality', () => {
 		const result = buildWhereClause({ age: { $not: { $eq: 25 } } }, mockSchema, 'test');
 		expect(result).not.toBeNull();
-		expect(result!.sql).toContain('<>');
-		expect(result!.sql).toContain('IS NULL');
+		expect(result!.sql).toContain('COALESCE(NOT (');
 		expect(result!.args).toContain(25);
 	});
 
@@ -38,8 +37,7 @@ describe('$not Operator', () => {
 		const date = new Date('2024-01-01');
 		const result = buildWhereClause({ createdAt: { $not: date } }, mockSchema, 'test');
 		expect(result).not.toBeNull();
-		expect(result!.sql).toContain('<>');
-		expect(result!.sql).toContain('IS NULL');
+		expect(result!.sql).toContain('COALESCE(NOT (');
 		expect(result!.args).toContain(date.toISOString());
 	});
 

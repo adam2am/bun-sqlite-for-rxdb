@@ -42,7 +42,7 @@ describe('Array operators: $ne', () => {
 		const result = buildWhereClause({ name: { $ne: 'Alice' } }, schema, 'test');
 		expect(result).not.toBeNull();
 		expect(result!.sql).not.toContain('jsonb_each');
-		expect(result!.sql).toContain('<> ?');
+		expect(result!.sql).toContain('COALESCE(NOT (');
 		expect(result!.args).toContain('Alice');
 	});
 

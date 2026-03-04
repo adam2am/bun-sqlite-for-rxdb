@@ -28,7 +28,7 @@ describe('Query Operators', () => {
 	describe('translateNe', () => {
 		it('translates not equal with value (includes NULL to match MongoDB semantics)', () => {
 			const result = translateNe('age', 18);
-			expect(result.sql).toBe('(age <> ? OR age IS NULL)');
+			expect(result.sql).toBe('COALESCE(NOT (age = ?), 1)');
 			expect(result.args).toEqual([18]);
 		});
 
