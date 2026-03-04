@@ -225,17 +225,21 @@ const storage = getRxStorageBunSQLite({
 | **Field $not + $or** | ❌ Reject | ❌ Reject | ✅ Support | 1 (EXTEND) | RxDB passes raw queries |
 | **RegExp in $in/$nin** | ✅ Support | ❌ Ignore | ✅ Support | 2 (FOLLOW) | Follow spec, security-critical |
 | **Object key-order** | ✅ Strict | ❌ Loose | ✅ Strict | 2 (FOLLOW) | BSON semantics |
+| **Implicit object query** | ✅ Exact | ❌ Partial | ✅ Exact | 2 (FOLLOW) | Strict equality |
 | **Cross-type compare** | ❌ Reject | ✅ Allow | ❌ Reject | 2 (FOLLOW) | Type safety |
 | **Empty array nested** | ✅ Strict | ❌ Loose | ✅ Strict | 2 (FOLLOW) | Array traversal semantics |
+| **$mod operator** | ✅ Support | ⚠️ Quirks | ✅ Support | 2 (FOLLOW) | Modulo operations |
+| **Unsupported ops** | ❌ N/A | ❌ N/A | ❌ Return [] | - | Fail-fast |
+| **BigInt values** | ✅ BSON Long | ❌ Crash | ❌ Crash | - | JSON limitation |
 | **Date/RegExp format** | ✅ Objects | ✅ Objects | ✅ Both | 3 (TOLERANT) | Accept more, normalize |
 
 **Pattern:** We EXTEND for UX (Tier 1), FOLLOW spec when Mingo deviates (Tier 2), ACCEPT both formats (Tier 3).
 
 ---
 
-## The Four Critical Differences (Tier 2: FOLLOW Spec)
+## Critical Differences (Tier 2: FOLLOW Spec)
 
-**Note:** While we document four areas where Mingo deviates from MongoDB, the `$all` operator with RegExp works correctly in both implementations (test 1c confirms this).
+**Note:** We document areas where Mingo deviates from MongoDB or has implementation quirks. The `$all` operator with RegExp works correctly in both implementations (test 1c confirms this).
 
 ### 1. RegExp Objects in `$in` and `$nin` Arrays
 
@@ -481,6 +485,165 @@ function wrapWithArrayTraversal(elementFragment: SqlFragment, jsonPath: string, 
 - **Consistent semantics**: All comparison operators handle nested arrays uniformly
 
 **Tier Classification:** **Tier 1 (EXTEND)** - We go beyond both MongoDB and Mingo to provide better array traversal semantics.
+
+---
+
+### 6. Implicit Object Queries (Exact Match Semantics)
+
+**MongoDB Specification:**
+> "If `<value>` is a document, the order of the fields in the document matters."
+>
+> — [MongoDB $eq Operator](https://www.mongodb.com/docs/manual/reference/operator/query/eq/)
+
+**Example Query:**
+```javascript
+{ metadata: { a: 1, b: 2 } }
+```
+
+**Test Data:**
+```javascript
+{ id: '1', metadata: { a: 1, b: 2 } }           // Exact match
+{ id: '2', metadata: { a: 1, b: 2, c: 3 } }     // Extra field
+{ id: '3', metadata: { b: 2, a: 1 } }           // Different key order
+{ id: '4', metadata: { a: 1 } }                 // Missing field
+```
+
+**Expected Behavior (MongoDB):**
+- Only match document with EXACT object (same keys, same values, same order, NO extra fields)
+- Result: `["1"]`
+
+**Actual Results:**
+- **Our Implementation**: `["1"]` ✅ CORRECT
+- **Mingo**: `["1", "2", "3"]` ❌ WRONG (allows partial matches)
+
+**Proof from MongoDB Test Suite:**
+```javascript
+// From mongodb/mongo/jstests/core/query/objectfind.js
+{a: {d: "c", e: "b"}}           // Exact match
+{a: {d: "c", e: "b", g: "h"}}   // Has extra field "g"
+
+// Query: t.find({a: {$eq: {d: "c", e: "b"}}})
+// Returns ONLY: [{a: {d: "c", e: "b"}}]  // Does NOT return the one with extra field!
+```
+
+**Why This Matters:**
+- Prevents false positives when querying nested objects
+- Enforces strict equality semantics (MongoDB behavior)
+- Different from dot notation: `{ "metadata.a": 1 }` would match docs with extra fields
+
+**Key Distinction:**
+```javascript
+// Implicit object query (exact match)
+{ metadata: { a: 1, b: 2 } }  // Must match EXACTLY
+
+// Dot notation (field-level match)
+{ "metadata.a": 1, "metadata.b": 2 }  // Allows extra fields
+```
+
+---
+
+### 7. Unsupported Top-Level Operators
+
+**MongoDB/Mingo Behavior:**
+Both MongoDB and Mingo do not support certain advanced operators in our SQLite-based implementation.
+
+**Unsupported Operators:**
+- `$text` - Full-text search (requires text indexes)
+- `$where` - JavaScript expression evaluation (security risk)
+- `$expr` - Aggregation expressions (complex evaluation)
+- `$jsonSchema` - JSON Schema validation (requires configuration)
+- `$comment` - Query comments (metadata only)
+
+**Example Query:**
+```javascript
+{ $text: { $search: 'Alice' } }
+```
+
+**Our Behavior:**
+- Return `[]` (empty results) for unsupported operators
+- Prevents treating operator names as field names
+- Consistent with "fail-fast" philosophy
+
+**Why This Matters:**
+- Clear error behavior (empty results vs incorrect matches)
+- Prevents security issues ($where with arbitrary JavaScript)
+- Maintains compatibility with MongoDB's operator set
+
+**Rationale:**
+- These operators require features not available in SQLite
+- Returning empty results is safer than incorrect matches
+- Users can implement custom logic in application layer if needed
+
+---
+
+### 8. $mod Operator Quirks
+
+**MongoDB Specification:**
+> "The `$mod` operator selects documents where the value of a field divided by a divisor has the specified remainder."
+>
+> — [MongoDB $mod Operator](https://www.mongodb.com/docs/manual/reference/operator/query/mod/)
+
+**Example Query:**
+```javascript
+{ age: { $mod: [2, 0] } }  // Find even ages
+```
+
+**Known Issues:**
+- Mingo has quirks with `$mod` operator implementation
+- Edge cases with float values: `{ $mod: [1.5, 0] }`
+- Invalid formats may cause unexpected behavior
+
+**Our Behavior:**
+- Implement SQL translation: `CAST(json_extract(...) AS INTEGER) % divisor = remainder`
+- Fallback to JavaScript matcher for complex cases
+- Validate `$mod` format: must be `[divisor, remainder]` array
+
+**Why This Matters:**
+- Modulo operations are common for pagination, even/odd checks
+- Consistent behavior across SQL and JS execution paths
+- Prevents silent failures on invalid input
+
+---
+
+### 9. BigInt Not Supported
+
+**JavaScript/JSON Limitation:**
+```javascript
+JSON.stringify({ value: 1152921504606846976n })
+// TypeError: JSON.stringify cannot serialize BigInt
+```
+
+**Status:** Architectural limitation (not a bug)
+
+**Root Cause:**
+- JavaScript's `JSON.stringify()` doesn't support BigInt (language spec)
+- RxDB has zero BigInt support (no 'bigint' type in JSON Schema)
+- SQLite stores JSON as text - no way to preserve BigInt after serialization
+
+**Workaround:**
+```javascript
+// Store BigInt as string
+{ value: "1152921504606846976", type: "bigint" }
+
+// Or convert manually
+BigInt(value).toString()
+```
+
+**Industry Patterns:**
+1. **String Conversion** (most common) - Subsquid, Discord, Electric SQL
+2. **Global Polyfill** - Discord, Interledger
+3. **Custom Replacer with Type Tag** - Bitpay, Reown, Celo
+4. **MongoDB BSON Long** - MongoDB Driver (useBigInt64 option)
+
+**Why This Matters:**
+- Users need to know BigInt is not supported
+- Clear guidance on workarounds (string conversion)
+- Prevents crashes when inserting BigInt values
+
+**Recommendation:**
+- Use `type: 'string'` in schema for large integers
+- Convert BigInt to string before insertion
+- Consider custom serializer if BigInt support is critical
 
 ---
 
