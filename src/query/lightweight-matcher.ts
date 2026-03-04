@@ -38,7 +38,11 @@ function getNestedValue(obj: unknown, path: string): unknown {
 			for (const item of value) {
 				const res = getNestedValue(item, remainingPath);
 				if (res !== undefined) {
-					results.push(res);
+					if (Array.isArray(res)) {
+						results.push(...res);
+					} else {
+						results.push(res);
+					}
 				}
 			}
 			return results.length > 0 ? results : undefined;
