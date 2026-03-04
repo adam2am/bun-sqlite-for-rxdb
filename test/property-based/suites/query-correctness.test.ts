@@ -164,6 +164,10 @@ describe('Property-Based: Query Correctness (fc.letrec)', () => {
 					const errorMsg = error instanceof Error ? error.message : String(error);
 					unexpectedErrors.set(errorMsg, (unexpectedErrors.get(errorMsg) || 0) + 1);
 					console.error(`❌ Unexpected error on query ${totalQueries}:`, errorMsg);
+					if (error instanceof Error && error.stack) {
+						console.error(`Stack trace:\n${error.stack}`);
+					}
+					console.error(`Query that caused error:`, JSON.stringify(mangoQuery, null, 2));
 					return true;
 				} finally {
 					const tableName = `${instance.collectionName}_v${instance.schema.version}`;
@@ -224,9 +228,11 @@ describe('Property-Based: Query Correctness (fc.letrec)', () => {
 			const path = await import('path');
 			const outputDir = 'test/property-based/suites/isolated/failures';
 			
-			if (!fs.existsSync(outputDir)) {
-				fs.mkdirSync(outputDir, { recursive: true });
+			// Clear old failures before writing new ones
+			if (fs.existsSync(outputDir)) {
+				fs.rmSync(outputDir, { recursive: true });
 			}
+			fs.mkdirSync(outputDir, { recursive: true });
 			
 			let fileCount = 0;
 			failures.forEach((data, pattern) => {
