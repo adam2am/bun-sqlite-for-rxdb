@@ -228,6 +228,7 @@ const storage = getRxStorageBunSQLite({
 | **Implicit object query** | ✅ Exact | ❌ Partial | ✅ Exact | 2 (FOLLOW) | Strict equality |
 | **Cross-type compare** | ❌ Reject | ✅ Allow | ❌ Reject | 2 (FOLLOW) | Type safety |
 | **Empty array nested** | ✅ Strict | ❌ Loose | ✅ Strict | 2 (FOLLOW) | Array traversal semantics |
+| **$all nested arrays** | ✅ Flatten | ❌ No flatten | ✅ Flatten | 2 (FOLLOW) | Nested array flattening |
 | **$mod operator** | ✅ Support | ⚠️ Quirks | ✅ Support | 2 (FOLLOW) | Modulo operations |
 | **Unsupported ops** | ❌ N/A | ❌ N/A | ❌ Return [] | - | Fail-fast |
 | **BigInt values** | ✅ BSON Long | ❌ Crash | ❌ Crash | - | JSON limitation |
@@ -576,7 +577,56 @@ Both MongoDB and Mingo do not support certain advanced operators in our SQLite-b
 
 ---
 
-### 8. $mod Operator Quirks
+### 8. $all Operator with Nested Array Paths
+
+**MongoDB Specification:**
+> "When using dot notation to traverse arrays, MongoDB flattens nested arrays for query matching."
+>
+> — MongoDB Dot Notation Array Traversal
+
+**Example Query:**
+```javascript
+{ 'items.tags': { $all: ['100%'] } }
+```
+
+**Test Data:**
+```javascript
+{ id: 'doc1', items: [{ tags: ['100%', 'o92&/6T'] }] }
+{ id: 'doc4', items: [{ tags: ['100%'] }, { tags: ['apple'] }] }
+```
+
+**Expected Behavior (MongoDB):**
+- Flatten `items.tags` to collect ALL tag values: `['100%', 'o92&/6T', 'apple']`
+- Check if '100%' exists in flattened array
+- Result: Both doc1 and doc4 should match
+
+**Actual Results:**
+- **Our Implementation**: `['doc1', 'doc4']` ✅ CORRECT (flattens nested arrays)
+- **Mingo**: `['doc1']` ❌ WRONG (misses doc4 - doesn't flatten across separate objects)
+
+**Root Cause Analysis:**
+
+From Mingo source code (`src/util/_internal.ts` resolve function):
+- Mingo's `resolve()` preserves nested array structure: `[["100%"], ["apple"]]`
+- MongoDB flattens to: `["100%", "apple"]`
+- Mingo's `$all` operator receives nested arrays and fails to match individual values
+
+**Why This Matters:**
+- Common pattern: array of objects with array fields (e.g., items with tags)
+- MongoDB flattens for query matching, Mingo does not
+- Causes false negatives in production queries
+- Our SQL implementation correctly flattens using recursive CTE
+
+**Verification:**
+- Debug script: `debug-step-by-step.ts` confirms the behavior
+- Property-based tests: Added quirk `ALL_NESTED_ARRAY_PATH` to skip this pattern
+- Test results: 357 quirks detected, 0 failures after quirk addition
+
+**Note:** Mingo's `$eq` operator DOES flatten correctly, but `$all` does not. This inconsistency suggests a bug in Mingo's `$all` implementation.
+
+---
+
+### 9. $mod Operator Quirks
 
 **MongoDB Specification:**
 > "The `$mod` operator selects documents where the value of a field divided by a divisor has the specified remainder."
