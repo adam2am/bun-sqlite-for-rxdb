@@ -65,6 +65,13 @@ function isComplexRegex(pattern: string): boolean {
 	return /[*+?()[\]{}|]|\\[a-zA-Z]/.test(pattern.replace(/\\\./g, ''));
 }
 
+function unescapeRegexLiterals(pattern: string): string {
+	return pattern
+		.replace(/\\\./g, '.')
+		.replace(/\\%/g, '%')
+		.replace(/\\_/g, '_');
+}
+
 function escapeForLike(str: string): string {
 	return str.replace(/[\\%_]/g, '\\$&');
 }
@@ -119,7 +126,7 @@ export function smartRegexToLike<RxDocType>(
 		return null;
 	}
 	
-	const unescaped = cleanPattern.replace(/\\\./g, '.');
+	const unescaped = unescapeRegexLiterals(cleanPattern);
 	const escaped = escapeForLike(unescaped);
 	
 	if (startsWithAnchor && endsWithAnchor) {
