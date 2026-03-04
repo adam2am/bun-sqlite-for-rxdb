@@ -28,6 +28,7 @@ import { StatementManager } from './statement-manager';
 import { getDatabase, releaseDatabase } from './connection-pool';
 import { sqliteTransaction } from './transaction-queue';
 import { getQueryCache } from './query/cache';
+import { TopKHeap } from './top-k-heap';
 
 export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<RxDocType, BunSQLiteInternals, BunSQLiteStorageSettings> {
 	private db: Database;
@@ -391,14 +392,22 @@ export class BunSQLiteStorageInstance<RxDocType> implements RxStorageInstance<Rx
 		const documents: RxDocumentData<RxDocType>[] = [];
 		
 		if (!safeToSqlSort && preparedQuery.query.sort && preparedQuery.query.sort.length > 0) {
+			const effectiveLimit = (limit ?? Infinity) + skip;
+			const heap = new TopKHeap(
+				effectiveLimit === Infinity ? 1000000 : effectiveLimit,
+				preparedQuery.query.sort,
+				this.getBsonType.bind(this),
+				this.getNestedValue.bind(this)
+			);
+			
 			for (const row of stmt.iterate(...queryArgs) as IterableIterator<{ data: string }>) {
 				const doc = JSON.parse(row.data) as RxDocumentData<RxDocType>;
 				if (matchesSelector(doc, jsSelector)) {
-					documents.push(doc);
+					heap.insert(doc);
 				}
 			}
 			
-			const sorted = this.sortDocuments(documents, preparedQuery.query.sort);
+			const sorted = heap.getSorted();
 			const sliced = sorted.slice(skip, limit !== undefined ? skip + limit : undefined);
 			return { documents: sliced };
 		} else {
