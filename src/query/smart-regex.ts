@@ -62,7 +62,7 @@ export function extractRegexPrefix(pattern: string): string | null {
 }
 
 function isComplexRegex(pattern: string): boolean {
-	return /[*+?()[\]{}|]|\\[a-zA-Z]/.test(pattern.replace(/\\\./g, ''));
+	return /[.*+?()[\]{}|]|\\[a-zA-Z]/.test(pattern.replace(/\\\./g, ''));
 }
 
 function unescapeRegexLiterals(pattern: string): string {
